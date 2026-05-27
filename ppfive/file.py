@@ -395,8 +395,14 @@ class File(Mapping[str, Variable]):
             self.byte_ordering = None
             self.word_size = None
 
+
+            
+        print ('variable_index=', variable_index)
+        self._variable_index = variable_index
         self._variables = self._build_variables(variable_index or {})
-        self._refresh_variable_views()
+        print ('self._variables=', self._variables)
+        self.variables = self._variables
+#        self._refresh_variable_views()
 
     def _refresh_variable_views(self) -> None:
         all_variables: dict[str, Any] = {}
