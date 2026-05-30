@@ -40,13 +40,18 @@ class _PyfiveAttrs(dict):
             yield key, self._coerce_for_items(value)
 
 
+class _Variable:
+    def __init__(self, attrs, data):
+        pass
+    
+
 class _DimensionScale:
     """Internal pyfive-like dimension-scale dataset for cfdm bridging."""
 
     def __init__(
         self,
-        name: str,
-        size: int,
+        name: str | None = None,
+            size: int | None = None,
         file_obj: "File",
         *,
         standard_name: str | None = None,
@@ -68,7 +73,8 @@ class _DimensionScale:
         else:
             self._data = None
             self.shape = (int(size),)
-            self.dtype = np.dtype("int32")
+            self.dtype = None
+            
         self.maxshape = self.shape
         self.chunks = None
         self.attrs = {
@@ -78,20 +84,32 @@ class _DimensionScale:
         }
         if standard_name:
             self.attrs["standard_name"] = np.bytes_(standard_name)
+            
         if units:
             self.attrs["units"] = np.bytes_(units)
+
         if axis:
             self.attrs["axis"] = np.bytes_(axis)
+
         if positive:
             self.attrs["positive"] = np.bytes_(positive)
+
         if calendar:
             self.attrs["calendar"] = np.bytes_(calendar)
+
+    def setattr(name, value):
+        if isinstance(value, str):
+            value = np._bytes_(value)
+
+        self.attrs[name] = value
 
     def __getitem__(self, key):
         if self._data is not None:
             return self._data[key]
 
-        return np.arange(self.shape[0], dtype=self.dtype)[key]
+        raise ValueError("TODO")
+
+#        return np.arange(self.shape[0], dtype=self.dtype)[key]
 
 
 class _ScalarVar:
@@ -127,41 +145,6 @@ class _AuxVar:
 
 _PI_OVER_180 = np.pi / 180.0
 _ATOL = 1e-8
-
-
-def _unrotated_latlon(
-    rot_lat: np.ndarray,
-    rot_lon: np.ndarray,
-    pole_lat: float,
-    pole_lon: float,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Convert 1-D rotated lat/lon arrays to 2-D true lat/lon arrays."""
-    pole_lon = (pole_lon % 360.0) * _PI_OVER_180
-    pole_lat = pole_lat * _PI_OVER_180
-    cos_pole = np.cos(pole_lat)
-    sin_pole = np.sin(pole_lat)
-
-    rlon = rot_lon.copy()
-    rlon %= 360.0
-    rlon = np.where(rlon < 180.0, rlon, rlon - 360.0)
-
-    nlat, nlon = rot_lat.size, rlon.size
-    rlon2d = np.resize(np.deg2rad(rlon), (nlat, nlon))
-    rlat2d = np.resize(np.deg2rad(rot_lat), (nlon, nlat))
-    rlat2d = rlat2d.T
-
-    cpart = np.cos(rlon2d) * np.cos(rlat2d)
-    sin_rlat = np.sin(rlat2d)
-    x = np.clip(cos_pole * cpart + sin_pole * sin_rlat, -1.0, 1.0)
-    true_lat = np.arcsin(x)
-
-    x = np.clip((-cos_pole * sin_rlat + sin_pole * cpart) / np.cos(true_lat), -1.0, 1.0)
-    true_lon = -np.arccos(x)
-    true_lon = np.where(rlon2d > 0.0, -true_lon, true_lon)
-    true_lon += (pole_lon - np.pi) if pole_lon >= _ATOL else 0.0
-
-    return np.rad2deg(true_lat), np.rad2deg(true_lon)
-
 
 def _regular_axis_values(origin: float, delta: float, size: int, *, is_longitude: bool) -> np.ndarray:
     """Create regular coordinate values from UM origin/delta header entries."""
