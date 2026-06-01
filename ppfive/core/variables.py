@@ -138,76 +138,76 @@ def _um_identity(first: RecordInfo) -> tuple[str | None, int, str]:
     return um_stash_source, um_version, identity
 
 
-def _enrich_cf_like_attrs(first: RecordInfo) -> dict[str, Any]:
-    ih = first.int_hdr
-    rh = first.real_hdr
-    um_stash_source, um_version, identity = _um_identity(first)
-
-    attrs: dict[str, Any] = {
-        "um_version": um_version,
-        "um_identity": identity,
-        "lbrel": int(ih[INDEX_LBREL]),
-        "lbfc": int(ih[INDEX_LBFC]),
-        "lbvc": int(ih[INDEX_LBVC]),
-        "lbuser5": int(ih[INDEX_LBUSER5]),
-    }
-
-    if um_stash_source is not None:
-        attrs["um_stash_source"] = um_stash_source
-
-    stash = int(ih[INDEX_LBUSER4])
-    submodel = int(ih[INDEX_LBUSER7])
-    if stash:
-        for entry in stash_records(submodel, stash):
-            (
-                long_name,
-                units,
-                valid_from,
-                valid_to,
-                standard_name,
-                cf_info,
-                um_condition,
-            ) = entry
-
-            if valid_from is not None and um_version < valid_from:
-                continue
-            if valid_to is not None and um_version > valid_to:
-                continue
-
-            # Keep this portable and deterministic: only accept unconditional
-            # records for now, without importing cf-construct logic.
-            if um_condition:
-                continue
-
-            if standard_name:
-                attrs["standard_name"] = standard_name
-            if long_name:
-                attrs["long_name"] = long_name.rstrip()
-            if units:
-                attrs["units"] = units
-            if cf_info:
-                attrs["cf_info"] = dict(cf_info)
-
-            break
-
-    if "long_name" not in attrs:
-        attrs["long_name"] = identity
-
-    # Surface this for debugging/selection parity with legacy logic.
-    source_code = int(ih[INDEX_LBSRCE]) % 10000
-    if source_code == 1111 and um_version:
-        attrs["source"] = f"UM vn{um_version}"
-
-    # Expose small context that may be useful for future um_condition support.
-    attrs["lbcode"] = int(ih[INDEX_LBCODE])
-    attrs["bplat"] = float(rh[INDEX_BPLAT])
-    attrs["bplon"] = float(rh[INDEX_BPLON])
-    attrs["bzy"] = float(rh[INDEX_BZY])
-    attrs["bdy"] = float(rh[INDEX_BDY])
-    attrs["bzx"] = float(rh[INDEX_BZX])
-    attrs["bdx"] = float(rh[INDEX_BDX])
-
-    return attrs
+#def _enrich_cf_like_attrs(first: RecordInfo) -> dict[str, Any]:
+#    ih = first.int_hdr
+#    rh = first.real_hdr
+#    um_stash_source, um_version, identity = _um_identity(first)
+#
+#    attrs: dict[str, Any] = {
+#        "um_version": um_version,
+#        "um_identity": identity,
+#        "lbrel": int(ih[INDEX_LBREL]),
+#        "lbfc": int(ih[INDEX_LBFC]),
+#        "lbvc": int(ih[INDEX_LBVC]),
+#        "lbuser5": int(ih[INDEX_LBUSER5]),
+#    }
+#
+#    if um_stash_source is not None:
+#        attrs["um_stash_source"] = um_stash_source
+#
+#    stash = int(ih[INDEX_LBUSER4])
+#    submodel = int(ih[INDEX_LBUSER7])
+#    if stash:
+#        for entry in stash_records(submodel, stash):
+#            (
+#                long_name,
+#                units,
+#                valid_from,
+#                valid_to,
+#                standard_name,
+#                cf_info,
+#                um_condition,
+#            ) = entry
+#
+#            if valid_from is not None and um_version < valid_from:
+#                continue
+#            if valid_to is not None and um_version > valid_to:
+#                continue
+#
+#            # Keep this portable and deterministic: only accept unconditional
+#            # records for now, without importing cf-construct logic.
+#            if um_condition:
+#                continue
+#
+#            if standard_name:
+#                attrs["standard_name"] = standard_name
+#            if long_name:
+#                attrs["long_name"] = long_name.rstrip()
+#            if units:
+#                attrs["units"] = units
+#            if cf_info:
+#                attrs["cf_info"] = dict(cf_info)
+#
+#            break
+#
+#    if "long_name" not in attrs:
+#        attrs["long_name"] = identity
+#
+#    # Surface this for debugging/selection parity with legacy logic.
+#    source_code = int(ih[INDEX_LBSRCE]) % 10000
+#    if source_code == 1111 and um_version:
+#        attrs["source"] = f"UM vn{um_version}"
+#
+#    # Expose small context that may be useful for future um_condition support.
+#    attrs["lbcode"] = int(ih[INDEX_LBCODE])
+#    attrs["bplat"] = float(rh[INDEX_BPLAT])
+#    attrs["bplon"] = float(rh[INDEX_BPLON])
+#    attrs["bzy"] = float(rh[INDEX_BZY])
+#    attrs["bdy"] = float(rh[INDEX_BDY])
+#    attrs["bzx"] = float(rh[INDEX_BZX])
+#    attrs["bdx"] = float(rh[INDEX_BDX])
+#
+#    return attrs
 
 
 def _float_key(val: float) -> float:
@@ -349,12 +349,14 @@ def build_variable_index(
     variable_index: dict[str, dict[str, Any]] = {}
     name_counts: dict[str, int] = defaultdict(int)
 
+    name = 0
+    
     for _, recs in grouped.items():
         for recs_split in _split_on_duplicate_tz_pairs(recs):
             first = recs_split[0]
-            base = _stash_name(first)
-            name_counts[base] += 1
-            name = base if name_counts[base] == 1 else f"{base}_{name_counts[base]}"
+#            base = _stash_name(first)
+#            name_counts[base] += 1
+#            name = base if name_counts[base] == 1 else f"{base}_{name_counts[base]}"
 
             z_keys_set = {_z_key(r) for r in recs_split}
             has_pseudo = any(zk[0] is not None for zk in z_keys_set)
@@ -467,20 +469,20 @@ def build_variable_index(
                 return _load
 
             variable_index[name] = {
-                "attrs": {
-                    "stash_model": int(first.int_hdr[INDEX_LBUSER7]),
-                    "stash_code": int(first.int_hdr[INDEX_LBUSER4]),
-                    "lbtim": int(first.int_hdr[INDEX_LBTIM]),
-                    "lbproc": int(first.int_hdr[INDEX_LBPROC]),
-                    "packing_modes": packing_modes,
-                    "compression_modes": compression_modes,
-                    "is_packed": any(mode != 0 for mode in packing_modes),
-                    "is_wgdos_packed": 1 in packing_modes,
-                    **_enrich_cf_like_attrs(first),
-                    "time_values": time_values,
-                    "time_units": time_units,
-                    "time_calendar": calendar,
-                },
+                "attrs": {}
+#                    "stash_model": int(first.int_hdr[INDEX_LBUSER7]),
+#                    "stash_code": int(first.int_hdr[INDEX_LBUSER4]),
+#                    "lbtim": int(first.int_hdr[INDEX_LBTIM]),
+#                    "lbproc": int(first.int_hdr[INDEX_LBPROC]),
+#                    "packing_modes": packing_modes,
+#                    "compression_modes": compression_modes,
+#                    "is_packed": any(mode != 0 for mode in packing_modes),
+#                    "is_wgdos_packed": 1 in packing_modes,
+#                    **_enrich_cf_like_attrs(first),
+#                    "time_values": time_values,
+#                    "time_units": time_units,
+#                    "time_calendar": calendar,
+ #               },
                 "shape": (nz, nt, ny, nx) if z_first else (nt, nz, ny, nx),
                 "dtype": _dtype_name(first, word_size),
                 "chunk_shape": (1, 1, ny, nx),
@@ -497,6 +499,9 @@ def build_variable_index(
                     z_index,
                     z_first,
                 ),
+                "z_first": z_first
             }
+
+            name += 1
 
     return variable_index
