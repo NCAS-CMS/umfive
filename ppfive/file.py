@@ -23,6 +23,9 @@ from .lookup_header import _coord_long_name ,_axiscode_to_units,_coord_axis,_coo
 
 logger = logging.getLogger(__name__)
 
+_cache_runid = {}
+_cache_date2num = {}
+_cache_ctime = {}
 
 class _PyfiveAttrs(dict):
     """Attribute mapping tuned for cfdm/p5netcdf compatibility.
@@ -51,33 +54,36 @@ class DatasetMixin:
 
         self.attrs[name] = value
       
-    def setattrs_from_axiscode(sel, axiscode)
+    def setattrs_from_axiscode(self, axiscode, set_name_as_standard_name=False)
         if axiscode is None:
             return
+
+        attrs = self.attrs
         
         name = _coord_standard_name.setdefault(axiscode, None)
         if name is not None:
-            coord.attrs['standard_name'] = np.bytes_(name)
-            self.name = name
+            attrs['standard_name'] = np.bytes_(name)
+            if set_name_as_standard_name:
+                self.name = name
         else:
             name = _coord_long_name.setdefault(axiscode, None)
             if name is not None:
-                coord.attrs['long_name'] = np.bytes_(name)
+                attrs['long_name'] = np.bytes_(name)
                     
         axis = _coord_axis.setdefault(axiscode, None)
         if axis is not None:
-            self.attrs['axis'] = np.bytes_(axis)
+            attrs['axis'] = np.bytes_(axis)
            
         positive = _coord_positive.setdefault(axiscode, None)
         if positive is not None:
-            self.attrs['positive'] = np.bytes_(positive)
+            attrs['positive'] = np.bytes_(positive)
 
         units = _axiscode_to_units.setdefault(axiscode, None)
         if units:
-            self.attrs["units"] = np.bytes_(units)
+            attrs["units"] = np.bytes_(units)
 
         if calendar:
-            self.attrs["calendar"] = np.bytes_(calendar)
+            attrs["calendar"] = np.bytes_(calendar)
 
 
 class _DimensionScale(DatasetMixin):
@@ -109,17 +115,17 @@ class _DimensionScale(DatasetMixin):
             
         self.maxshape = self.shape
         self.chunks = None
-        self.attrs = {}
 
-        self.setattrs_from_axiscode(axiscode)
+        self.attrs = {}
+        self.setattrs_from_axiscode(axiscode, set_name_as_standard_name=True)
         if attrs:
             self.attrs.update(attrs)
-            
+
         self.attrs.update(
             {
                 "CLASS": b"DIMENSION_SCALE",
                 "NAME": b"netCDF dimension coordinate variable",
-                "_Netcdf4Dimid": 0, # TODO not always 0
+                "_Netcdf4Dimid": 0, # TODO not always 0 ??
             }
         )
         
@@ -140,9 +146,9 @@ class _AuxVar(DatasetMixin)::
         self.dtype = data.dtype
         self.maxshape = data.shape
         self.chunks = None
-        self.attrs = {}
 
-        self.setattrs_from_axiscode(axiscode)        
+        self.attrs = {}
+        self.setattrs_from_axiscode(axiscode, set_name_as_standard_name=True)
         if attrs:
             self.attrs.update(attrs)
                 
@@ -289,15 +295,16 @@ class File(Mapping[str, Variable]):
             self.byte_ordering = None
             self.word_size = None
 
-
-            
+        cache = {}
         print ('variable_index=', variable_index)
         self._variable_index = variable_index
-        self._variables = self._build_variables(variable_index or {})
+        self._variables = self._build_variables(variable_index or {}, cache)
         print ('self._variables=', self._variables)
         self.variables = self._variables
 
-    def _build_variables(self, variable_index: dict[str, dict[str, Any]]) -> dict[str, Variable]:
+        del cache
+        
+    def _build_variables(self, variable_index, cache):
       
         def _vertical_dim_name(lbvc: int) -> str:
             if lbvc == 8:
@@ -376,32 +383,20 @@ class File(Mapping[str, Variable]):
 
             return None
 
-        variables = {name: None for name in variable_index}
+        variables = {}
 
         for int_code, meta in tuple(variable_index.items()):
-#            attrs = meta.get("attrs", {})
-            zz = UMField(variables,  height_at_top_of_model)
-                        
-            shape = tuple(meta.get("shape", ()))
-            attrs = _PyfiveAttrs(attrs)
-            
-            # Mirrors the structure expected by cfdm's p5netcdf adapter.
-            if meta.z_first:
-                axis_order = 'ptyx'
-            else:
-                axis_order = 'tzyx'
-
-            dim_names = [zzz._axis[axis] for axis in axis_order]
-            attrs["DIMENSION_LIST"] = tuple(
-                (dim_name,) for dim_name in dim_names)
+            data_variable = _CreateMetadata(
+                meta, variables, height_at_top_of_model, cache
             )
-
-            variables.pop(int_code)
-            name = zzz.data_variable_ncvar
+                        
+            # Add a variables entry for athe 'Variable' representing
+            # the data variable
+            name = data_variable.name
             variables[name] = Variable(
                 name=name,
-                attrs=zzz.data_variable_attrs,
-                shape=shape,
+                attrs=_PyfiveAttrs(data_variable.attrs),
+                shape=tuple(meta.get("shape", ())),
                 dtype=meta.get("dtype"),
                 chunk_shape=meta.get("chunk_shape"),
                 data_loader=meta.get("data_loader"),
@@ -409,6 +404,9 @@ class File(Mapping[str, Variable]):
                 parent=self,
                 chunk_records=list(meta.get("chunk_records", [])),
             )
+
+            # Remove the original variables entry for 'meta'
+            variables.pop(int_code)
             
         return variables
 
@@ -502,14 +500,14 @@ class File(Mapping[str, Variable]):
             },
         }
 
-class UMField:
+class _CreateMetadata:
     """Represents Fields derived from a UM fields file."""
 
     def __init__(
         self,
-            variables,
             data_variable_meta,
-            height_at_top_of_model,
+            variables,
+            height_at_top_of_model, cache
     ):
         """**Initialisation**
 
@@ -519,12 +517,18 @@ class UMField:
 
 
         """
-        self._bool = False
-
-        self.variables=variables
-        self.data_variable_attrs = {}
+        self.variables = variables
         self.height_at_top_of_model = height_at_top_of_model
+        self._cache = cache
 
+        self._dataset_names = set()
+        
+        # Data variable attributes
+        self.attrs = {}
+
+        # Data variable name                
+        self.name = None
+        
         self.recs = [rec['record'] for rec in data_variable_meta.chunk_records]
 
         rec0 = recs[0]        
@@ -743,11 +747,13 @@ class UMField:
         if um_condition:
             identity += f"_{um_condition}"
 
-        self.data_variable_ncvar = identity
+        # Set the data variable name
+        self.name = self.add_to_variables(identity)
             
         if long_name is None:
             cf_properties["long_name"] = identity
 
+        # Unique headers for the 'Z' axis
         recs = self.recs
         self.nz = nz
         self.nt = nt
@@ -789,7 +795,7 @@ class UMField:
         if fill_value is not None:
             cf_properties["_FillValue"] = data.fill_value
              
-        self.data_variable_attrs.update(cf_properties)
+        self.attrs.update(cf_properties)
         
         # --------------------------------------------------------
         # Get the extra data for this group
@@ -834,7 +840,6 @@ class UMField:
         # Create the 'Y' dimension coordinate
         # --------------------------------------------------------
         axiscode = self.iy
-        yc = None
         if axiscode is not None:
             if axiscode in (20, 23):
                 # 'Y' axis is time-since-reference-date
@@ -848,7 +853,7 @@ class UMField:
                             axiscode, "y"
                         )
             else:
-                ykey, yc, yaxis = self.xy_coordinate(axiscode, "y")
+                yaxis = self.xy_coordinate(axiscode, "y")
                 if axiscode == 13:
                     self._axis["site_axis"] = yaxis
                     self.site_coordinates_from_extra_data()
@@ -857,8 +862,6 @@ class UMField:
         # Create the 'X' dimension coordinate
         # --------------------------------------------------------
         axiscode = self.ix
-        xc = None
-        xkey = None
         if axiscode is not None:
             if axiscode in (20, 23):
                 # X axis is time since reference date
@@ -872,7 +875,7 @@ class UMField:
                             axiscode, "x"
                         )
             else:
-                xkey, xc, xaxis = self.xy_coordinate(axiscode, "x")
+                xaxis = self.xy_coordinate(axiscode, "x")
                 if axiscode == 13:
                     self._axis["site_axis"] = xaxis
                     self.site_coordinates_from_extra_data()
@@ -894,8 +897,7 @@ class UMField:
                     "grid_north_pole_longitude": BPLON
                 }
             )
-            gm_name = self.get_unique_name(gm)
-            self.variables[gm_name] = gm
+            gm_name = self.add_to_variables(gm)
             
             if 'grid_mapping' not in data_variable.attrs:
                 data_variable.setattr( 'grid_mapping', gm_name)
@@ -927,40 +929,14 @@ class UMField:
         # --------------------------------------------------------
         self.create_cell_methods()
 
-    def __bool__(self):
-        """x.__bool__() <==> bool(x)"""
-        return self._bool
-
-    def __repr__(self):
-        """x.__repr__() <==> repr(x)"""
-        return self.fdr()
-
-    def __str__(self):
-        """x.__str__() <==> str(x)"""
-        out = [self.fdr()]
-
-        attrs = (
-            "endian",
-            "reftime",
-            "vtime",
-            "dtime",
-            "um_version",
-            "source",
-            "it",
-            "iz",
-            "ix",
-            "iy",
-            "site_time_cross_section",
-            "timeseries",
-            "file",
-        )
-
-        for attr in attrs:
-            out.append(f"{attr}={getattr(self, attr, None)}")
-
-        out.append("")
-
-        return "\n".join(out)
+        # Set the axis names for in the data variable's attributes
+        if data_variable_meta.z_first:
+            axis_order = 'ptyx'
+        else:
+            axis_order = 'tzyx'
+            
+        dim_names = [self._axis[axis] for axis in axis_order]
+        self.attrs["DIMENSION_LIST"] = tuple((ncdim,) for ncdim in dim_names)
 
     def _reorder_z_axis(self, indices, z_axis, pmaxes):
         """Reorder the Z axis `Rec` instances.
@@ -1079,136 +1055,131 @@ class UMField:
             'BHRLEV', bounds0_b, 
             'BRSVD2', bounds1_b, 
         )
-        dim_ncvar = cached.get(key)
-        if dim_ncvar is not None:
-            self.add_coordinates(data_variable, dim_ncvar)
-            return dim_ncvar
-        
-        # Height at top of atmosphere
-        toa_height = self.height_at_top_of_model
-        if toa_height is None:
-            pseudolevels = any(
-                [
-                    rec.int_hdr.item(
-                        lbuser5,
-                    )
-                    for rec in self.z_recs
-                ]
-            )
-            if pseudolevels:
-                # Pseudolevels and atmosphere hybrid height
-                # coordinates are both present => can't reliably infer
-                # height. This is due to a current limitation in the C
-                # library that means it can only create Z-T
-                # aggregations, rather than the required Z-T-P
-                # aggregations.
-                toa_height = -1
-
-        if toa_height is None:
-            toa_height = bounds1.max()
-            if toa_height <= 0:
+        dim_ncvar = self._cache.get(key)
+        if dim_ncvar is None:
+            # Height at top of atmosphere
+            toa_height = self.height_at_top_of_model
+            if toa_height is None:
+                pseudolevels = any(
+                    [
+                        rec.int_hdr.item(
+                            lbuser5,
+                        )
+                        for rec in self.z_recs
+                    ]
+                )
+                if pseudolevels:
+                    # Pseudolevels and atmosphere hybrid height
+                    # coordinates are both present => can't reliably infer
+                    # height. This is due to a current limitation in the C
+                    # library that means it can only create Z-T
+                    # aggregations, rather than the required Z-T-P
+                    # aggregations.
+                    toa_height = -1
+    
+            if toa_height is None:
+                toa_height = bounds1.max()
+                if toa_height <= 0:
+                    toa_height = None
+            elif toa_height <= 0:
                 toa_height = None
-        elif toa_height <= 0:
-            toa_height = None
-        else:
-            toa_height = float(toa_height)
+            else:
+                toa_height = float(toa_height)
+    
+            array_a = np.array(array_a,  dtype=self.real_hdr_dtype)
+            bounds0_a = np.array(bounds0_a, dtype=self.real_hdr_dtype)
+            bounds1_a = np.array(bounds1_a, dtype=self.real_hdr_dtype)
+            bounds_a = self.create_bounds_array(bounds0_a, bounds1_a)
+            
+            array_b = np.array(array_b,  dtype=self.real_hdr_dtype)
+            bounds0_b = np.array(bounds0_b, dtype=self.real_hdr_dtype)
+            bounds1_b = np.array(bounds1_b, dtype=self.real_hdr_dtype)
+            bounds_b = self.create_bounds_array(bounds0_b, bounds1_b)
+       
+            # atmosphere_hybrid_height_coordinate dimension coordinate
+            if toa_height is None:
+                d = _DimensionScale(
+                    name="atmosphere_hybrid_height_coordinate",
+                    size=array_a.size,
+                    file_obj=None
+                )
+                dim_ncvar = self.add_to_variables(d, 'dimension')
+                self._axis['z'] = dim_ncvar
+            else:
+                array = array_a / toa_height
+                bounds = bounds_a / toa_height
+                
+                dc = _DimensionScale(data=array, axiscode=axiscode, file_obj=None)
+                dim_ncvar = self.add_to_variables(dc, 'dimension_coordinate')
+                self._axis['z'] = dim_ncvar
+                
+                bounds_dim = self.bounds_dim(bounds)            
+                dc_bounds = _AuxVar(
+                    name=f"{dim_ncvar}_bounds",
+                    data=bounds,
+                    DIMENSION_LIST=((self._axis["z"],), (bounds_dim,)))
+                )
+                bounds_ncvar = self.add_to_variables(dc_bounds)
 
-        array_a = np.array(array_a,  dtype=self.real_hdr_dtype)
-        bounds0_a = np.array(bounds0_a, dtype=self.real_hdr_dtype)
-        bounds1_a = np.array(bounds1_a, dtype=self.real_hdr_dtype)
-        bounds_a = self.create_bounds_array(bounds0_a, bounds1_a)
-        
-        array_b = np.array(array_b,  dtype=self.real_hdr_dtype)
-        bounds0_b = np.array(bounds0_b, dtype=self.real_hdr_dtype)
-        bounds1_b = np.array(bounds1_b, dtype=self.real_hdr_dtype)
-        bounds_b = self.create_bounds_array(bounds0_b, bounds1_b)
-   
-        # atmosphere_hybrid_height_coordinate dimension coordinate
-        if toa_height is None:
-            d = _DimensionScale(
-                name="atmosphere_hybrid_height_coordinate",
-                size=array_a.size,
-                file_obj=None
+                dc.setattr('bounds', dc_bounds.name)
+                
+            # "a" domain ancillary
+            da_a = _AuxVar(
+                name="atmosphere_hybrid_height_coordinate_a",
+                data=array_a,
+                attrs={"long_name": "height based hybrid coeffient a",
+                       "units": "m"},
+                DIMENSION=LIST=((self._axis["z"]),)
             )
-            dim_ncvar = self.get_unique_name(d)
-            self.variables[dim_ncvar] = d
+            ncvar = self.add_to_variables(da_a)
             
-            self._axis['z'] = dim_ncvar
-        else:
-            array = array_a / toa_height
-            bounds = bounds_a / toa_height
+            # TODO                
+            da_a.setattr('bounds', da_a_bounds.name)
             
-            dc = _DimensionScale(
-                name="atmosphere_hybrid_height_coordinate",
-                data=array,
-                axiscode=axiscode,
-                attrs={"standard_name": "atmosphere_hybrid_height_coordinate",
+            # "a" domain ancillary bounds
+            bounds_dim = self.bounds_dim(bounds) 
+            da_a_bounds = _AuxVar(
+                name=f"{da_a.name}_bounds",
+                data=bounds_a,
+                DIMENSION=LIST=((_axis["z"]), (bounds_dim,))
+            )
+            ncvar = self.add_to_variables(da_a_bounds)
+    
+            # "b" domain ancillary
+            da_b = _AuxVar(
+                name="atmosphere_hybrid_height_coordinate_b",
+                data=array_b,
+                attrs={"long_name": "height based hybrid coeffient b",
                        "units": "1"},
-                file_obj=None
+                DIMENSION=LIST=((self._axis["z"]),)
             )
-            dim_ncvar = self.get_unique_name(dc)
-            self.variables[dim_ncvar] = dc
+            ncvar = self.add_to_variables(da_b)
+            
+            # "b" domain ancillary bounds
+            bounds_dim = self.bounds_dim(bounds) 
+            da_b_bounds = _AuxVar(
+                name=f"{da_b.name}_bounds",
+                data=bounds_b,
+                DIMENSION=LIST=((self._axis["z"]), (bounds_dim,))
+            )
+            ncvar = self.add_to_variables(da_b_bounds)
+    
+            # TODO                
+            da_b.setattr('bounds', da_b_bounds.name)
+                
+            # Set the 'forumla terms' attriubtes on the parent coordinate
+            # and coordinate bounds variables
+            dc.setattr('formula_terms',
+                       f"a: {da_a.name} b: {da_b.name}")
+            dc_bounds.setattr('formula_terms',
+                              f"a: {da_a_bounds.name} b: {da_b_bounds.name}")
 
+            self._cache[key] = dim_ncvar
+            
+        else:
             self._axis['z'] = dim_ncvar
             
-            bounds_dim = self.bounds_dim(bounds)            
-            dc_bounds = _AuxVar(
-                name=f"{dim_ncvar}_bounds",
-                data=bounds,
-                DIMENSION_LIST=((self._axis["z"],), (bounds_dim,)))
-            )
-            bounds_ncvar = self.get_unique_name(dc_bounds )
-            self.variables[bounds_ncvar] = dc_bounds 
-            
-        # "a" domain ancillary
-        da_a = _AuxVar(
-            name="atmosphere_hybrid_height_coordinate_a",
-            data=array_a,
-            attrs={"long_name": "height based hybrid coeffient a",
-                   "units": "m"},
-            DIMENSION=LIST=((self._axis["z"]),)
-        )
-        ncvar = self.get_unique_name(da_a)
-        self.variables[ncvar] = da_a
-        
-        # "a" domain ancillary bounds
-        bounds_dim = self.bounds_dim(bounds) 
-        da_a_bounds = _AuxVar(
-            name=f"{da_a.name}_bounds",
-            data=bounds_a,
-            DIMENSION=LIST=((_axis["z"]), (bounds_dim,))
-        )
-        ncvar = self.get_unique_name(da_a_bounds)
-        self.variables[ncvar] = da_a_bounds
-
-        # "b" domain ancillary
-        da_b = _AuxVar(
-            name="atmosphere_hybrid_height_coordinate_b",
-            data=array_b,
-            attrs={"long_name": "height based hybrid coeffient b",
-                   "units": "1"},
-            DIMENSION=LIST=((self._axis["z"]),)
-        )
-        ncvar = self.get_unique_name(da_b)
-        self.variables[ncvar] = da_b
-        
-        # "b" domain ancillary bounds
-        bounds_dim = self.bounds_dim(bounds) 
-        da_b_bounds = _AuxVar(
-            name=f"{da_b.name}_bounds",
-            data=bounds_b,
-            DIMENSION=LIST=((self._axis["z"]), (bounds_dim,))
-        )
-        ncvar = self.get_unique_name(da_b_bounds)
-        self.variables[ncvar] = da_b_bounds
-
-        # Forumla terms
-        dc.setattr('formula_terms',
-                   f"a: {da_a.name} b: {da_b.name}")
-        dc_bounds.setattr('formula_terms',
-                          f"a: {da_a_bounds.name} b: {da_b_bounds.name}")
-
-        cached[key] = dim_ncvar
+        self.add_to_coordinates(dim_ncvar)
         return dim_ncvar
 
     def atmosphere_hybrid_sigma_pressure_coordinate(self, axiscode):
@@ -1242,110 +1213,112 @@ class UMField:
 
         """
         items = tuple(self.header_bz(rec) for rec in self.z_recs)
-        key = (
-            'atmosphere_hybrid_sigma_pressure_coordinate',
-            'BLEV, BRLEV, BHLEV, BHRLEV, BULEV, BHULEV',
-            items
-        )
-        dim_ncvar = cached.get(key)
-        if dim_ncvar is not None:
-            self.add_coordinates(data_variable, dim_ncvar)
-            return dim_ncvar
-                
-        array = []
-        bounds = []
-        ak_array = []
-        ak_bounds = []
-        bk_array = []
-        bk_bounds = []        
-        
-        for BLEV, BRLEV, BHLEV, BHRLEV, BULEV, BHULEV in items:
-            array.append(BLEV + BHLEV / _pstar)
-            bounds.append([BRLEV + BHRLEV / _pstar, BULEV + BHULEV / _pstar])
-
-            ak_array.append(BHLEV)
-            ak_bounds.append((BHRLEV, BHULEV))
-
-            bk_array.append(BLEV)
-            bk_bounds.append((BRLEV, BULEV))
-
-        array = np.array(array, dtype=float)
-        bounds = np.array(bounds, dtype=float)
-        ak_array = np.array(ak_array, dtype=float)
-        ak_bounds = np.array(ak_bounds, dtype=float)
-        bk_array = np.array(bk_array, dtype=float)
-        bk_bounds = np.array(bk_bounds, dtype=float)
-
-        field = self.field
-
-        # Insert new Z axis
-        dc = _DimensionScale(data=array, axiscode=axicode, file_obj=None)
-        dim_ncvar = self.get_unique_name(dc)
-        self.variables[dim_ncvar] = dc
-
-        _axis['z'] = dim_ncvar
-
-        if bounds is not None:
+        key = ('atmosphere_hybrid_sigma_pressure_coordinate', items)
+        dim_ncvar = self._cache.get(key)
+        if dim_ncvar is None:
+            array = []
+            bounds = []
+            ak_array = []
+            ak_bounds = []
+            bk_array = []
+            bk_bounds = []        
+            
+            for BLEV, BRLEV, BHLEV, BHRLEV, BULEV, BHULEV in items:
+                array.append(BLEV + BHLEV / _pstar)
+                bounds.append(
+                    [BRLEV + BHRLEV / _pstar, BULEV + BHULEV / _pstar]
+                )
+    
+                ak_array.append(BHLEV)
+                ak_bounds.append((BHRLEV, BHULEV))
+    
+                bk_array.append(BLEV)
+                bk_bounds.append((BRLEV, BULEV))
+    
+            array = np.array(array, dtype=float)
+            bounds = np.array(bounds, dtype=float)
+            ak_array = np.array(ak_array, dtype=float)
+            ak_bounds = np.array(ak_bounds, dtype=float)
+            bk_array = np.array(bk_array, dtype=float)
+            bk_bounds = np.array(bk_bounds, dtype=float)
+    
+            field = self.field
+    
+            # Insert new Z axis
+            dc = _DimensionScale(data=array, axiscode=axicode, file_obj=None)
+            dim_ncvar = self.add_to_variables(dc, 'dimension_coordinate')
+            self._axis['z'] = dim_ncvar
+    
             bounds_dim = self.bounds_dim(bounds)            
             dc_bounds = _AuxVar(
                 name=f"{dim_ncvar}_bounds",
                 data=bounds,
                 DIMENSION_LIST=((self._axis["z"],), (bounds_dim,)))
             )
-            bounds_ncvar = self.get_unique_name(dc_bounds)
-            self.variables[bounds_ncvar] = dc_bounds
-                 
-        # "a" domain ancillary     
-        da_a = _AuxVar(
-            name="atmosphere_hybrid_sigma_pressure_coordinate_ak",
-            data=ak_array,
-            attrs={"long_name": "atmosphere_hybrid_sigma_pressure_coordinate_ak",
-                   "units": "Pa"},
-            DIMENSION_LIST=((self._axis['z'],),)
-        )
-        da_a_ncvar = self.get_unique_name(da_a)
-        self.variables[da_a_ncvar] = da_a
+            bounds_ncvar = self.add_to_variables(dc_bounds)
 
-        # "a" domain ancillary bounds
-        bounds_dim = self.bounds_dim(bounds) 
-        da_a_bounds = _AuxVar(
-            name=f"{da_a.name}_bounds",
-            data=ak_bounds,
-            DIMENSION=LIST=((self._axis["z"]), (bounds_dim,))
-        )
-        ncvar = self.get_unique_name(da_a_bounds)
-        self.variables[ncvar] = da_a_bounds
+            # TODO
+            dc.setattr('bounds', dc_bounds.name)
+                     
+            # "a" domain ancillary     
+            da_a = _AuxVar(
+                name="atmosphere_hybrid_sigma_pressure_coordinate_ak",
+                data=ak_array,
+                attrs={"long_name": "atmosphere_hybrid_sigma_pressure_coordinate_ak",
+                       "units": "Pa"},
+                DIMENSION_LIST=((self._axis['z'],),)
+            )
+            da_a_ncvar = self.add_to_variables(da_a)
+    
+            # "a" domain ancillary bounds
+            bounds_dim = self.bounds_dim(bounds) 
+            da_a_bounds = _AuxVar(
+                name=f"{da_a.name}_bounds",
+                data=ak_bounds,
+                DIMENSION=LIST=((self._axis["z"]), (bounds_dim,))
+            )
+            ncvar = self.add_to_variables(da_a_bounds)
+    
+            # TODO
+            da_a.setattr('bounds', da_a_bounds.name)
+                   
+            # "b" domain ancillary
+            da_b = _AuxVar(
+                name="atmosphere_hybrid_sigma_pressure_coordinate_bk",
+                data=bk_array,
+                attrs={
+                    "long_name": "atmosphere_hybrid_sigma_pressure_coordinate_bk",
+                    "units": "1"
+                },
+                DIMENSION=LIST=((_axis["z"],),)
+            )
+            ncvar = self.add_to_variables(da_b)
+            
+            # "b" domain ancillary bounds
+            bounds_dim = self.bounds_dim(bounds) 
+            da_b_bounds = _AuxVar(
+                name=f"{da_b.name}_bounds",
+                data=bk_bounds,
+                DIMENSION=LIST=((self._axis["z"]), (bounds_dim,))
+            )
+            ncvar = self.add_to_variables(da_b_bounds)
+    
+            # TODO
+            da_b.setattr('bounds', da_b_bounds.name)
+                
+            # Set the 'forumla terms' attriubtes on the parent coordinate
+            # and coordinate bounds variables
+            dc.setattr('formula_terms',
+                       f"a: {da_a.name} b: {da_b.name}")
+            dc_bounds.setattr('formula_terms',
+                              f"a: {da_a_bounds.name} b: {da_b_bounds.name}")
+    
+            self._cache[key] = dim_ncvar
 
-        # "b" domain ancillary
-        da_b = _AuxVar(
-            name="atmosphere_hybrid_sigma_pressure_coordinate_bk",
-            data=bk_array,
-            attrs={
-                "long_name": "atmosphere_hybrid_sigma_pressure_coordinate_bk",
-                "units": "1"
-            },
-            DIMENSION=LIST=((_axis["z"],),)
-        )
-        ncvar = self.get_unique_name(da_b)
-        self.variables[ncvar] = da_b
-        
-        # "b" domain ancillary bounds
-        bounds_dim = self.bounds_dim(bounds) 
-        da_b_bounds = _AuxVar(
-            name=f"{da_b.name}_bounds",
-            data=bk_bounds,
-            DIMENSION=LIST=((self._axis["z"]), (bounds_dim,))
-        )
-        ncvar = self.get_unique_name(da_b_bounds)
-        self.variables[ncvar] = da_b_bounds
-
-        # Forumla terms
-        dc.setattr('formula_terms',
-                   f"a: {da_a.name} b: {da_b.name}")
-        dc_bounds.setattr('formula_terms',
-                          f"a: {da_a_bounds.name} b: {da_b_bounds.name}")
-
-        cached[key] = dim_ncvar
+        else:
+            self._axis['z'] = dim_ncvar
+    
+        self.add_coordinates(dim_ncvar)
         return dim_ncvar
 
     def create_bounds_array(self, bounds0, bounds1):
@@ -1450,8 +1423,7 @@ class UMField:
                     cell_methods.append(cf_info["over"])
 
             if LBPROC == 64:
-                axis = self._axis['x']
-                cell_methods.append(f"{axis}: mean")
+                cell_methods.append(f"{self._axis['x']}: mean")
 
             # dch : do special zonal mean as as in pp_cfwrite
 
@@ -1459,8 +1431,7 @@ class UMField:
         # Vertical cell methods
         # ------------------------------------------------------------
         if LBPROC == 2048:
-            axis = self._axis['z']
-            cell_methods.append(f"{axis}: mean")
+            cell_methods.append(f"{self._axis['z']}: mean")
 
         # ------------------------------------------------------------
         # Time cell methods
@@ -1487,32 +1458,33 @@ class UMField:
         if not cell_methods:
             return
 
-        self.data_variabe_attrs['cell_methods'] = ' '.join(cell_methods)
+        self.data_variable_attrs['cell_methods'] = ' '.join(cell_methods)
 
     def ctime(self, rec):
         """Return elapsed time since the clock time of the given
         record."""
-        import cftime
-
-        reftime = self.refUnits
-        LBVTIME = tuple(self.header_vtime(rec))
-        LBDTIME = tuple(self.header_dtime(rec))
+        LBVTIME = self.header_vtime(rec)
+        LBDTIME = self.header_dtime(rec)
 
         key = (LBVTIME, LBDTIME, self.refunits, self.calendar)
-        ctime = _cached_ctime.get(key, None)
-        if ctime is None:
-            LBDTIME = list(LBDTIME)
-            LBDTIME[0] = LBVTIME[0]
-
+        ctime = _cache_ctime.get(key)
+        if ctime is not None:
+            return ctime
+            
+        import cftime
+        
+        LBDTIME = list(LBDTIME)
+        LBDTIME[0] = LBVTIME[0]
+        
+        ctime = cftime.datetime(*LBDTIME, calendar=self.calendar)
+        
+        if ctime < cftime.datetime(*LBVTIME, calendar=self.calendar):
+            LBDTIME[0] += 1
             ctime = cftime.datetime(*LBDTIME, calendar=self.calendar)
-
-            if ctime < cftime.datetime(*LBVTIME, calendar=self.calendar):
-                LBDTIME[0] += 1
-                ctime = cftime.datetime(*LBDTIME, calendar=self.calendar)
-
-            ctime = Data(ctime, reftime).array.item()
-            _cached_ctime[key] = ctime
-
+                        
+        ctime = cftime.date2num(ctime, self.refunits, self.calendar) 
+        
+        _cache_ctime[key] = ctime
         return ctime
 
     def header_vtime(self, rec):
@@ -1530,10 +1502,10 @@ class UMField:
         **Examples**
 
         >>> u.header_vtime(rec)
-        [1991, 1, 1, 0, 0]
+        (1991, 1, 1, 0, 0)
 
         """
-        return rec.int_hdr[lbyr : lbmin + 1]
+        return tuple(rec.int_hdr[lbyr : lbmin + 1])
 
     def header_dtime(self, rec):
         """Return the list [LBYRD, LBMOND, LBDATD, LBHRD, LBMIND] for
@@ -1550,10 +1522,10 @@ class UMField:
         **Examples**
 
         >>> u.header_dtime(rec)
-        [1991, 2, 1, 0, 0]
+        (1991, 2, 1, 0, 0)
 
         """
-        return rec.int_hdr[lbyrd : lbmind + 1]
+        return tuple(rec.int_hdr[lbyrd : lbmind + 1])
 
     def header_bz(self, rec):
         """Return the list [BLEV, BRLEV, BHLEV, BHRLEV, BULEV, BHULEV]
@@ -1604,9 +1576,9 @@ class UMField:
         """
         LBEXP = self.int_hdr[lbexp]
 
-        runid = _cached_runid.get(LBEXP, None)
+        runid = _cache_runid.get(LBEXP, None)
         if runid is not None:
-            # Return a cached decoding of this LBEXP
+            # Return the cached decoding
             return runid
 
         if LBEXP < 0:
@@ -1628,10 +1600,7 @@ class UMField:
 
             runid = "".join(runid)
 
-        # Enter this runid into the cache
-        _cached_runid[LBEXP] = runid
-
-        # Return the runid
+        _cache_runid[LBEXP] = runid
         return runid
 
     def dtime(self, rec):
@@ -1655,32 +1624,26 @@ class UMField:
         units = self.refunits
         calendar = self.calendar
 
-        LBDTIME = tuple(self.header_dtime(rec))
+        LBDTIME = self.header_dtime(rec)
 
         key = (LBDTIME, units, calendar)
-        time = _cached_date2num.get(key, None)
-        if time is None:
-            from netCDF4 import date2num as netCDF4_date2num
+        time = _cache_date2num.get(key)
+        if time is not None:
+            return time
+        
+        import cftime
 
-            # It is important to use the same time_units as vtime
-            try:
-                if self.calendar == "gregorian":
-                    time = netCDF4_date2num(
-                        datetime(*LBDTIME), units, calendar
-                    )
-                else:
-                    import cftime
+        # It is important to use the same time_units as vtime
+        try:
+            time = cftime.date2num(
+                cftime.datetime(*LBDTIME, calendar=calendar),
+                units,
+                calendar,
+            )
+        except ValueError:
+            time = np.nan  # ppp
 
-                    time = netCDF4_date2num(
-                        cftime.datetime(*LBDTIME, calendar=self.calendar),
-                        units,
-                        calendar,
-                    )
-
-                _cached_date2num[key] = time
-            except ValueError:
-                time = np.nan  # ppp
-
+        _cache_date2num[key] = time
         return time
 
     def model_level_number_coordinate(self, aux=False):
@@ -1692,123 +1655,107 @@ class UMField:
 
         :Returns:
 
-            out : `AuxiliaryCoordinate` or `DimensionCoordinate` or `None`
+            out: `str` or `None`
 
         """
         array = tuple(rec.int_hdr.item(lblev) for rec in self.z_recs)
-        key = (
-            'model_level_number_coordinate', aux, array
-        )
-        ncvar = cached.get(key)
-        if ncvar is not None:
-            self.add_coordinates(data_variable, ncvar)
-            return ncvar
+        key = ('model_level_number_coordinate', aux, array)
+        ncvar = self._cache.get(key)
+        if ncvar is None:
+            # Still here?
+            array = np.array(array, dtype=self.int_hdr_dtype)
+            if array.min() < 0:
+                return
+            
+            # Still here?
+            array = np.where(array==9999, 0, array)
+            axiscode = 5
+            
+            if aux:
+                ac = _AuxVar(
+                    data=array,
+                    axiscode=axiscode,
+                    DIMESNION_LIST=((self._axis["z"],),)
+                )
+                ncvar = self.add_to_variables(ac, 'auxiliary_coordinate')
+            else:
+                dc = _DimensionScale(
+                    data=array, axiscode=axiscode, file_obj=None
+                )
+                ncvar = self.add_to_variables(dc, 'dimension_coordinate')
+                        
+            self._cache[key] = ncvar
 
-        # Still here?
-        array = np.array(array, dtype=self.int_hdr_dtype)
-        if array.min() < 0:
-            return
-
-        # Still here?
-        array = np.where(array == 9999, 0, array)
-        axiscode = 5
-        
-        if aux:
-            ac = _AuxVar(
-                data=array,
-                axiscode=axiscode,
-                DIMESNION_LIST=((self._axis["z"],),)
-            )
-            ncvar = self.get_unique_name(ac)
-            self.variables[ncvar] = ac
-        else:
-            dc = _DimensionScale(data=array, axiscode=axiscode, file_obj=None)
-            ncvar = self.get_unique_name(c)
+        if not aux:
             self._axis["z"] = ncvar
-            self.variables[ncvar] = dc
-                    
-        self.add_coordinates(data_variable, ncvar)
-
-        _cached[key] = ncvar
+            
+        self.add_coordinates(ncvar)
         return ncvar
 
     def pseudolevel_coordinate(self, LBUSER5):
         """Create and return the pseudolevel coordinate."""
         if self.nz == 1:
-            array = np.array((LBUSER5,), dtype=self.int_hdr_dtype)
+            array = (LBUSER5,)
         else:
             # 'Z' aggregation has been done along the pseudolevel axis
-            array = np.array(
-                [rec.int_hdr.item(lbuser5) for rec in self.z_recs],
-                dtype=self.int_hdr_dtype,
-            )
+            array = tuple(rec.int_hdr.item(lbuser5) for rec in self.z_recs)
             self.z_axis = "p"
 
-        axiscode = 40
-
-        dc = self.implementation.initialise_DimensionCoordinate()
-        dc = self.coord_data(
-            dc, array, units=_axiscode_to_Units.setdefault(axiscode, None)
-        )
-        self.implementation.set_properties(
-            dc, {"long_name": "pseudolevel"}, copy=False
-        )
-        dc.id = "UM_pseudolevel"
-
-        da = self.implementation.initialise_DomainAxis(size=array.size)
-        axisP = self.implementation.set_domain_axis(self.field, da, copy=False)
-        self._axis["p"] = axisP
-
-        self.implementation.set_dimension_coordinate(
-            self.field,
-            dc,
-            axes=[self._axis["p"]],
-            copy=False,
-            autocyclic=_autocyclic_false,
-        )
-
-        return dc
-
+        key = ('pseudolevel_coordinate', array)
+        dim_ncvar = self._cache.get(key)
+        if dim_ncvar is None:
+            # Create new pseudolevel coordinate
+            axiscode = 40
+            array = np.array(array, dtype=self.int_hdr_dtype)
+            dc = _DimensionScale(
+                data=array,
+                axiscode=axiscode,
+                file_obj=None
+                attrs= {"long_name": "pseudolevel"}
+            )
+            dim_ncvar = self.add_to_variables(dc)
+                            
+            self._cache[key] = dim_ncvar
+            
+        self._axis["p"] = dim_ncvar
+        
+        self.add_coordinates(dim_ncvar)
+        return dim_ncvar
+        
     def radiation_wavelength_coordinate(self, rwl, rwl_units):
         """Creata and return the radiation wavelength coordinate."""
         key = ('radiation_wavelength_coordinate', rwl, rwl_units)
-        dim_ncvar = cached.get(key)
-        if ncvar is not None:
-            # Add the scalar coordinate variable to the 'coordinates'
-            # attribute
-            self.add_coordinates(data_variable, dim_ncvar)
-            return dim_ncvar
+        aux_ncvar = self._cache.get(key)
+        if aux_ncvar is None:
+            # Create new radiation wavelength coordinate
+            array = np.array(rwl, dtype=float)
+            bounds = np.array((0.0, rwl), dtype=float)
+            
+            axiscode = -20 
+            ac = _AuxVar(
+                data=array,
+                axiscode=axiscode,
+                attrs={'units': rwl_units},
+                DIMENSION_LIST=(),
+            )
+            aux_ncvar = self.add_to_variables(ac, 'auxiliary_coordinate')
+            
+            bounds_dim = self.bounds_dim(bounds)            
+            ac_bounds = _AuxVar(
+                name=f"{aux_ncvar}_bounds",
+                data=bounds,
+                DIMENSION_LIST=((bounds_dim,),)
+            )
+            bounds_ncvar = self.add_to_variables(ac_bounds)
 
-        array = np.array((rwl,), dtype=float)
-        bounds = np.array(((0.0, rwl)), dtype=float)
-
-        axiscode = -20
-        dc = _DimensionScale(
-            data=array,
-            axiscode=axiscode,
-            attrs={'units': rwl_units},
-            file_obj=None
-        )
-        dim_ncvar = self.get_unique_name(dc)        
-        self.variables[ncvar] = dc
-
+            ac.setattrs('bounds', bounds_ncvar )
+            
+            self._cache[key] = aux_ncvar
+                     
         self._axis["r"] = dim_ncvar
-
-        bounds_dim = self.bounds_dim(bounds)            
-        dc_bounds = _AuxVar(
-            name=f"{dim_ncvar}_bounds",
-            data=bounds,
-            DIMENSION_LIST=((self._axis["r"],), (bounds_dim,)))
-        )
-        bounds_ncvar = self.get_unique_name(dc_bounds)
-        self.variables[bounds_ncvar] = dc_bounds
-
-        # Add the scalar coordinate variable to the 'coordinates'
-        # attribute
-        self.add_coordinates(data_variable, dim_ncvar)
         
-        cached[key] = dim_ncvar
-        return dim_ncvar
+        self.add_coordinates(aux_ncvar)
+        return aux_ncvar
 
     def reference_time_Units(self):
         """Return the units of the `reference_time`."""
@@ -1831,31 +1778,22 @@ class UMField:
         """Create and return the size-one height coordinate."""
         # Create the height coordinate from the information given in the
         # STASH to standard_name conversion table
-        key=('size_1_height_coordinate',
-             'axiscode', axiscode,
-             'height', height,
-             'units', units
-             )
+        key=('size_1_height_coordinate', axiscode, height, units)
+        dim_ncvar = self._cache.get(key)
+        if dim_ncvar is None:
+            array = np.array((height,), dtype=float)
+            dc = _AuxVar(
+                data=array, axiscode=axiscode, file_obj=None,
+                attrs={'units': units}
+            )
+            dim_ncvar = self.add_to_variables(dc, 'scalar_coordinate')
 
-        dim_ncvar = cached.get(key)
-        if dim_ncvar is not None:
-            self._axis["z"] = dim_ncvar
-            return
-
-        # Still here?
-        array = np.array((height,), dtype=float)
+            self._cache[key] = dim_ncvar
         
-        dc = _AuxVar(data=array, axiscode=axiscode, attrs={'units': units})
-        dim_ncvar = self.get_unique_name(dc, 'scalar_coordinate')
-        self.variables[dim_ncvar] = dc
-        
-        self._axis['z'] = dim_ncvar
-
         # Add the scalar coordinate variable to the 'coordinates'
         # attribute
-        self.add_coordinate(data_variable, dim_ncvar)
-             
-        cached[key] = dim_ncvar
+        self._axis["z"] = dim_ncvar
+        self.add_coordinate(dim_ncvar)
         return dim_ncvar
 
     def test_um_condition(self, um_condition, LBCODE, BPLAT, BPLON):
@@ -1973,86 +1911,74 @@ class UMField:
         """
         recs = self.t_recs
 
-        key  = tuple(
+        key  = (
             't_coordinate',
-            'vtime, dtime',
             tuple(
-                (tuple(self.header_vtime(rec)),
-                 tuple(self.header_dtime(rec)))  for rec in recs
+                (self.header_vtime(rec), self.header_dtime(rec))
+                for rec in recs
             ),
-            'refunits',
             self.refunits,
-            'calendar',
             self.calendar
         )
         
-        dim_ncvar = cached.get(key)
-        if dim_ncvar is not None:
-            self._axis["t"] = dim_ncvar
-            return dim_ncvar
-
-        # Still here?        
-        vtimes = np.array([self.vtime(rec) for rec in recs], dtype=float)
-        dtimes = np.array([self.dtime(rec) for rec in recs], dtype=float)
-
-        if np.isnan(vtimes.sum()) or np.isnan(dtimes.sum()):
-            return  # ppp
-
-        IB = self.lbtim_ib
-
-        if IB <= 1 or vtimes.item(0) >= dtimes.item(0):
-            array = vtimes
-            bounds = None
-            climatology = False
-        elif IB == 3:
-            # The field is a time mean from T1 to T2 for each year
-            # from LBYR to LBYRD
-            ctimes = np.array([self.ctime(rec) for rec in recs])
-            array = 0.5 * (vtimes + ctimes)
-            bounds = self.create_bounds_array(vtimes, dtimes)
-            climatology = True
-        else:
-            array = 0.5 * (vtimes + dtimes)
-            bounds = self.create_bounds_array(vtimes, dtimes)
-            climatology = False
-            
-        dc = _DimensionScale(data=array, axiscode=axiscode, file_obj=None)
-        dim_ncvar = self.get_unique_name(dc)
-        self._axis["t"] = dim_ncvar
-        
-        self.variables[dim_ncvar] = dc
-        
-        if bounds is not None:
-            bounds_dim = self.bounds_dim(bounds)            
-            dc_bounds = _AuxVar(
-                name=f"{dim_ncvar}_bounds",
-                data=bounds,
-                DIMENSION_LIST=((self._axis["t"],), (bounds_dim,)))
-            )
-            bounds_ncvar = self.get_unique_name(dc_bounds)
-            self.variables[bounds_ncvar] = dc_bounds
-            
-            if climatology:                
-                dc.setattr('climatology', bounds_ncvar)
+        dim_ncvar = self._cache.get(key)
+        if dim_ncvar is None:
+            # Create new 'T' coordinate
+            vtimes = np.array([self.vtime(rec) for rec in recs], dtype=float)
+            dtimes = np.array([self.dtime(rec) for rec in recs], dtype=float)
+    
+            if np.isnan(vtimes.sum()) or np.isnan(dtimes.sum()):
+                return  # ppp
+    
+            IB = self.lbtim_ib
+    
+            if IB <= 1 or vtimes.item(0) >= dtimes.item(0):
+                array = vtimes
+                bounds = None
+                climatology = False
+            elif IB == 3:
+                # The field is a time mean from T1 to T2 for each year
+                # from LBYR to LBYRD
+                ctimes = np.array([self.ctime(rec) for rec in recs])
+                array = 0.5 * (vtimes + ctimes)
+                bounds = self.create_bounds_array(vtimes, dtimes)
+                climatology = True
             else:
-                dc.setattr('bounds', bounds_ncvar)
+                array = 0.5 * (vtimes + dtimes)
+                bounds = self.create_bounds_array(vtimes, dtimes)
+                climatology = False
+                
+            dc = _DimensionScale(data=array, axiscode=axiscode, file_obj=None)
+            dim_ncvar = self.add_to_variables(dc, 'dimension_coordinate')
+            self._axis["t"] = dim_ncvar
+            
+            if bounds is not None:
+                bounds_dim = self.bounds_dim(bounds)            
+                dc_bounds = _AuxVar(
+                    name=f"{dim_ncvar}_bounds",
+                    data=bounds,
+                    DIMENSION_LIST=((self._axis["t"],), (bounds_dim,)))
+                )
+                bounds_ncvar = self.add_to_variables(dc_bounds)
+                
+                if climatology:                
+                    dc.setattr('climatology', bounds_ncvar)
+                else:
+                    dc.setattr('bounds', bounds_ncvar)
 
-        self.add_coordinates(data_variable, dim_ncvar)
+            self._cache[key] = dim_ncvar
 
-        cached[key] = dim_ncvar
+        else:
+            self._axis["t"] = dim_ncvar
+        
+        self.add_coordinates(dim_ncvar)
         return dim_ncvar 
 
-    def bounds_dim(bounds):        
-        size = bounds.shape[-1] 
-        if size in ggg:
-            bounds_dim = ggg[size]
-        else:
-            bounds_dim = self.get_unique_name(f"bounds{size}")
-            b = _DimensionScale(name=bounds_dim, size=size, file_obj=None)
-            self.variables[bounds_dim] = b                
-            ggg[size] = bounds_dim
-        
-        return bounds_dim            
+    def bounds_dim(bounds):
+        size = bounds.shape[-1]
+        b = _DimensionScale(name=f"bounds{size}", size=size, file_obj=None)
+        name = self.add_to_variables(b)
+        return name
     
     def time_coordinate_from_extra_data(self, axiscode, axis):
         """Create the time coordinate from extra data and return it.
@@ -2158,26 +2084,27 @@ class UMField:
         units = self.refunits
         calendar = self.calendar
 
-        LBVTIME = tuple(self.header_vtime(rec))
-
+        LBVTIME = self.header_vtime(rec)
+        
         key = (LBVTIME, units, calendar)
 
-        time = _cached_date2num.get(key, None)
-        if time is None:
-            import cftime
+        time = _cache_date2num.get(key)
+        if time is not None:
+            return time
+        
+        import cftime
 
-            # It is important to use the same time_units as dtime
-            try:
-                time = cftime.date2num(
-                    cftime.datetime(*LBVTIME, calendar=self.calendar),
-                    units,
-                    calendar,
-                )
+        # It is important to use the same time_units as dtime
+        try:
+            time = cftime.date2num(
+                cftime.datetime(*LBVTIME, calendar=self.calendar),
+                units,
+                calendar,
+            )
+        except ValueError:
+            time = np.nan  # ppp
 
-                _cached_date2num[key] = time
-            except ValueError:
-                time = np.nan  # ppp
-
+        self._cache_date2num[key] = time
         return time
 
     #    def dddd(self):
@@ -2251,11 +2178,21 @@ class UMField:
     #                            dimensions=[xdim],
     #                        )  # DCH xdim?
 
-    def get_unique_name(name, default='variable'):
-       
+    def add_to_coordinates(self, ncvar):
+        attrs = self.attrs
+        coordinates = attrs.get('coordinates', '')
+        if coordinates:
+            coordinates += f" {ncvar}"
+        else:
+            coordinates = ncvar
+
+        attrs['coordinates'] = coordinates
+
+    def add_to_variables(name, default='variable'):
+        """TODO"""
         if not isinstance(name, (str, None)):
             var = name
-            name = name.name
+            name = var.name
         else:
             var = None
             
@@ -2264,15 +2201,14 @@ class UMField:
 
         counter = 0
         unique_name = name
-        while unique_name in _dataset_names:
-            unique_name = f"{name}_{counter}"
+        while add_to_variables in self.variables:
+            unique_name=f"{name}_{counter}"
             counter += 1
-
-        _dataset_names.add(unique_name)
 
         if var is not None:
             var.name = unique_name
             
+        self.variables[unique_name] = var            
         return unique_name
 
     def xy_coordinate(self, axiscode, axis):
@@ -2301,80 +2237,74 @@ class UMField:
             origin = self.real_hdr[bzy]
             size = self.lbrow
 
-        key = (
-            f"{axis}_coordinate",
-            'delta, origin, size',
-            (delta, origin, size)            
-        )
-        ncvar = cached.get(key)
-        if ncvar is not None:
-            self.add_coordinates(data_variable, ncvar)
-            return ncvar
-
-        # Still here?
-        if abs(delta) > self.atol:
-            # Create regular coordinates from header items
-            if axiscode == 11 or axiscode == -11:
-                origin -= divmod(origin + delta * size, 360.0)[0] * 360
-                while origin + delta * size > 360.0:
-                    origin -= 360.0
-                while origin + delta * size < -360.0:
-                    origin += 360.0
-
-            array = _cached_regular_array.get((origin, delta, size))
-            if array is None:
-                array = np.arange(
-                    origin + delta,
-                    origin + delta * (size + 0.5),
-                    delta,
-                    dtype=float,
-                )
-                _cached_regular_array[(origin, delta, size)] = array
-
-            # Create the coordinate bounds
-            if axiscode in (13, 31, 40, 99):
-                # The following axiscodes do not have bounds:
-                # 13 = Site number (set of parallel rows or columns
-                #      e.g.Time series)
-                # 31 = Logarithm to base 10 of pressure in mb
-                # 40 = Pseudolevel
-                # 99 = Other
-                bounds = None
-            else:
-                bounds = _cached_regular_bounds.get((origin, delta, size))
-                if bounds is None:
-                    delta_by_2 = 0.5 * delta
-                    bounds = self.create_bounds_array(
-                        array - delta_by_2, array + delta_by_2
+        key = (f"{axis}_coordinate", delta, origin, size)
+        dim_ncvar = self._cache.get(key)
+        if dim_ncvar is None:
+            if abs(delta) > self.atol:
+                # Create regular coordinates from header items
+                if axiscode == 11 or axiscode == -11:
+                    origin -= divmod(origin + delta * size, 360.0)[0] * 360
+                    while origin + delta * size > 360.0:
+                        origin -= 360.0
+                    while origin + delta * size < -360.0:
+                        origin += 360.0
+    
+                array = _cached_regular_array.get((origin, delta, size))
+                if array is None:
+                    array = np.arange(
+                        origin + delta,
+                        origin + delta * (size + 0.5),
+                        delta,
+                        dtype=float,
                     )
-                    _cached_regular_bounds[(origin, delta, size)] = bounds
-        else:
-            # Create coordinate from extra data
-            array = self.extra.get(axis, None)
-            lower_bounds = self.extra.get(axis + "_lower_bound", None)
-            upper_bounds = self.extra.get(axis + "_upper_bound", None)
-            if lower_bounds is not None and upper_bounds is not None:
-                bounds = self.create_bounds_array(lower_bounds, upper_bounds)
+                    _cached_regular_array[(origin, delta, size)] = array
+    
+                # Create the coordinate bounds
+                if axiscode in (13, 31, 40, 99):
+                    # The following axiscodes do not have bounds:
+                    # 13 = Site number (set of parallel rows or columns
+                    #      e.g.Time series)
+                    # 31 = Logarithm to base 10 of pressure in mb
+                    # 40 = Pseudolevel
+                    # 99 = Other
+                    bounds = None
+                else:
+                    bounds = _cached_regular_bounds.get((origin, delta, size))
+                    if bounds is None:
+                        delta_by_2 = 0.5 * delta
+                        bounds = self.create_bounds_array(
+                            array - delta_by_2, array + delta_by_2
+                        )
+                        _cached_regular_bounds[(origin, delta, size)] = bounds
             else:
-                bounds = None
-
-        dc = _DimensionScale(data=array, axiscode=axiscode, file_obj=None)
-        dim_ncvar = self.get_unique_name(dc)
-        self.variables[dim_ncvar] = dc
-        
-        self._axis[axis] = dim_ncvar
-
-        if bounds is not None:
-            bounds_dim = self.bounds_dim(bounds)            
-            b = _AuxVar(data=f"{dim_ncvar}_bounds",
-                        DIMENSION_LIST=((self._axis[axis],), (bounds_dim,)))
-            )
-            bounds_ncvar = self.get_unique_name(b) 
-            self.variables[bounds_ncvar] = b       
-
-            dc.setattr('bounds', bounds_ncvar)
+                # Create coordinate from extra data
+                array = self.extra.get(axis, None)
+                lower_bounds = self.extra.get(axis + "_lower_bound", None)
+                upper_bounds = self.extra.get(axis + "_upper_bound", None)
+                if lower_bounds is not None and upper_bounds is not None:
+                    bounds = self.create_bounds_array(
+                        lower_bounds, upper_bounds
+                    )
+                else:
+                    bounds = None
+    
+            dc = _DimensionScale(data=array, axiscode=axiscode, file_obj=None)
+            dim_ncvar = self.add_to_variables(dc)
             
-        return key, dc, axis_key
+            if bounds is not None:
+                bounds_dim = self.bounds_dim(bounds)            
+                dc_bounds= _AuxVar(
+                    data=f"{dim_ncvar}_bounds",
+                    DIMENSION_LIST=((self._axis[axis],), (bounds_dim,)))
+                )
+                bounds_ncvar = self.add_to_variables(dc_bounds)
+
+                # TODO
+                dc.setattr('bounds', bounds_ncvar)
+            
+        self.add_to_coordinates(ncvar)
+        self._axis[axis] = dim_ncvar
+        return dim_ncvar
 
     def site_coordinates_from_extra_data(self):
         """Create site-related coordinates from extra data.
@@ -2456,7 +2386,7 @@ class UMField:
             'BRLEV', bounds0,
             'BRSVD1', bounds1
         )
-        dim_ncvar = cached.get(key)
+        dim_ncvar = self._cache.get(key)
         if dim_ncvar is not None:
             self._axis["z"] = dim_ncvar
             return dim_ncvar
@@ -2475,8 +2405,7 @@ class UMField:
             bounds = self.create_bounds_array(bounds0, bounds1)
 
         dc = _DimensionScale(data=array, axiscode=axiscode, file_obj=None)
-        dim_ncvar = self.get_unique_name(dc, 'dimension_coordinate')
-        self.variables[dim_ncvar] = dc
+        dim_ncvar = self.add_to_variables(dc, 'dimension_coordinate')
 
         self._axis["z"] = dim_ncvar
 
@@ -2487,10 +2416,11 @@ class UMField:
                 data=bounds,
                 DIMENSION_LIST=((self._axis["z"],), (bounds_dim,)))
             )
-            bound_ncvar = self.get_unique_name(b)
-            self.variables[bounds_ncvar] = b
+            bounds_ncvar = self.add_to_variables(b)
 
+            # Set the 'bounds' attribute on the parent corodiante
+            # variable
             dc.setattr('bounds', bounds_ncvar)
         
-        cached[key] = dim_ncvar
+        self._cache[key] = dim_ncvar
         return dim_ncvar
