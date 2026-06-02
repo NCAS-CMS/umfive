@@ -78,13 +78,14 @@ class DatasetMixin:
         if positive is not None:
             attrs['positive'] = np.bytes_(positive)
 
-        units = _axiscode_to_units.setdefault(axiscode, None)
-        if units:
-            attrs["units"] = np.bytes_(units)
-
-        if calendar:
-            attrs["calendar"] = np.bytes_(calendar)
-
+        if axiscode in (20, 23):            
+            attrs["units"] = np.bytes_(self._refunits)
+            attrs["calendar"] = np.bytes_(self._calendar)
+        else:
+            units = _axiscode_to_units.setdefault(axiscode, None)
+            if units:
+                attrs["units"] = np.bytes_(units)
+                    
 
 class _DimensionScale(DatasetMixin):
     """Internal pyfive-like dimension-scale dataset for cfdm bridging."""
@@ -121,14 +122,23 @@ class _DimensionScale(DatasetMixin):
         if attrs:
             self.attrs.update(attrs)
 
-        self.attrs.update(
-            {
-                "CLASS": b"DIMENSION_SCALE",
-                "NAME": b"netCDF dimension coordinate variable",
-                "_Netcdf4Dimid": 0, # TODO not always 0 ??
-            }
-        )
-        
+        if data is not None:
+            self.attrs.update(
+                {
+                    "CLASS": b"DIMENSION_SCALE",
+                    "NAME": b"netCDF dimension coordinate variable",
+                    "_Netcdf4Dimid": 0, # TODO not always 0 ??
+                }
+            )
+        else:
+            self.attrs.update(
+                {
+                    "CLASS": b"TODO SOMEthinDIMENSION_SCALE",
+                    "NAME": b"netCDF dimension coordinate variable",
+                    "_Netcdf4Dimid": 0, # TODO not always 0 ??
+                }
+            )
+            
     def __getitem__(self, key):
         if self._data is not None:
             return self._data[key]
@@ -205,6 +215,8 @@ class File(Mapping[str, Variable]):
         self,
         filename: str | ByteReader | Any,
         mode: str = "r",
+        um_version=405,
+        height_at_top_of_model=None,
         metadata_buffer_size: int = 1,
         disable_os_cache: bool = False,
         *,
@@ -225,6 +237,11 @@ class File(Mapping[str, Variable]):
 
         self.filename = str(Path(filename))
         self.mode = mode
+
+        self._um_version=um_version
+        self._height_at_top_of_model=height_at_top_of_model
+        
+        
         self.metadata_buffer_size = metadata_buffer_size
         self.disable_os_cache = bool(disable_os_cache)
         self._owns_reader = reader is None
@@ -256,7 +273,8 @@ class File(Mapping[str, Variable]):
             
             if not self._records:
                 raise ValueError(
-                    f"No valid records found in {self.fmt} file {self.filename}. "
+                    f"No valid records found in {self.fmt} file "
+                    f"{self.filename}. "
                     f"The file may be corrupted or empty."
                 )
 
@@ -295,99 +313,45 @@ class File(Mapping[str, Variable]):
             self.byte_ordering = None
             self.word_size = None
 
+        # Dictionary of all dataset variables, keyed by their dataset
+        # names
+        variables = {}
+
         cache = {}
-        print ('variable_index=', variable_index)
-        self._variable_index = variable_index
-        self._variables = self._build_variables(variable_index or {}, cache)
-        print ('self._variables=', self._variables)
-        self.variables = self._variables
+        for int_code, meta in tuple(variable_index.items()):
+            data_variable = _VariableMetadata(
+                meta, variables, self, cache
+            )
+                        
+            # Add a variables entry for athe 'Variable' representing
+            # the data variable
+            name = data_variable.name
+            variables[name] = Variable(
+                name=name,
+                attrs=_PyfiveAttrs(data_variable.attrs),
+                shape=tuple(meta.get("shape", ())),
+                dtype=meta.get("dtype"),
+                chunk_shape=meta.get("chunk_shape"),
+                data_loader=meta.get("data_loader"),
+                file=self,
+                parent=self,
+                chunk_records=list(meta.get("chunk_records", [])),
+            )
 
-        del cache
-        
+            # Remove the original variables entry for 'meta'
+            variables.pop(int_code)
+            
+        self.variables = variables
+                
     def _build_variables(self, variable_index, cache):
-      
-        def _vertical_dim_name(lbvc: int) -> str:
-            if lbvc == 8:
-                return "air_pressure"
-            return "model_level_number"
-
-        def _semantic_dim_names(shape: tuple[int, ...], attrs: Mapping[str, Any]) -> tuple[str, ...]:
-            if len(shape) != 4:
-                return tuple(
-                    f"dim_{axis}_{size}" for axis, size in enumerate(shape)
-                )
-
-            lbvc = int(attrs.get("lbvc", 0) or 0)
-            lbuser5 = int(attrs.get("lbuser5", 0) or 0)
-            has_pseudo = lbuser5 not in (0, INT_MISSING_DATA)
-            z_name = "pseudo_level" if has_pseudo else _vertical_dim_name(lbvc)
-
-            # Mirrors build_variable_index ordering for pseudo-level fields.
-            z_first = has_pseudo and shape[0] > 1 and shape[1] > 1
-            if z_first:
-                return (z_name, "time", "grid_latitude", "grid_longitude")
-
-            return ("time", z_name, "grid_latitude", "grid_longitude")
-
-        def _dim_units(name: str) -> str | None:
-            if name == "air_pressure":
-                return "Pa"
-            if name in ("grid_latitude", "grid_longitude"):
-                return "degrees"
-            return None
-
-        def _dim_standard_name(name: str) -> str | None:
-            if name.startswith("dim_"):
-                return None
-            return name
-
-        def _resolve_dim_name(base_name: str, dim_size: int) -> str:
-            existing = self._pyfive_dimension_scales.get(base_name)
-            if existing is None:
-                return base_name
-            if existing.shape == (int(dim_size),):
-                return base_name
-
-            return f"{base_name}_{dim_size}"
-
-        def _dim_data(
-            dim_name: str,
-            dim_size: int,
-            shape: tuple[int, ...],
-            dim_names: tuple[str, ...],
-            attrs: Mapping[str, Any],
-        ) -> np.ndarray | None:
-            if dim_name == "time":
-                values = attrs.get("time_values")
-                if values is not None:
-                    return np.asarray(values, dtype=np.float64)
-
-            if len(shape) < 2:
-                return None
-
-            if dim_name == "grid_latitude" and len(dim_names) >= 2 and dim_names[-2] == dim_name:
-                return _regular_axis_values(
-                    origin=float(attrs.get("bzy", 0.0)),
-                    delta=float(attrs.get("bdy", 1.0)),
-                    size=dim_size,
-                    is_longitude=False,
-                )
-
-            if dim_name == "grid_longitude" and len(dim_names) >= 1 and dim_names[-1] == dim_name:
-                return _regular_axis_values(
-                    origin=float(attrs.get("bzx", 0.0)),
-                    delta=float(attrs.get("bdx", 1.0)),
-                    size=dim_size,
-                    is_longitude=True,
-                )
-
-            return None
-
+        """TODO"""
+        # Dictionary of all dataset variables, keyed by their dataset
+        # names
         variables = {}
 
         for int_code, meta in tuple(variable_index.items()):
-            data_variable = _CreateMetadata(
-                meta, variables, height_at_top_of_model, cache
+            data_variable = _VariableMetadata(
+                meta, variables, self, cache
             )
                         
             # Add a variables entry for athe 'Variable' representing
@@ -500,14 +464,14 @@ class File(Mapping[str, Variable]):
             },
         }
 
-class _CreateMetadata:
-    """Represents Fields derived from a UM fields file."""
-
+class _VariableMetadata:
+    """TODO"""
     def __init__(
         self,
             data_variable_meta,
             variables,
-            height_at_top_of_model, cache
+            file_obj,
+            cache
     ):
         """**Initialisation**
 
@@ -517,53 +481,57 @@ class _CreateMetadata:
 
 
         """
-        self.variables = variables
-        self.height_at_top_of_model = height_at_top_of_model
-        self._cache = cache
-
-        self._dataset_names = set()
-        
         # Data variable attributes
         self.attrs = {}
 
         # Data variable name                
         self.name = None
         
-        self.recs = [rec['record'] for rec in data_variable_meta.chunk_records]
+        self.variables = variables
+        
+        self._file_obj = file_obj
+        self._height_at_top_of_model = file_obj._height_at_top_of_model
+        um_version =  file_obj._um_version
+        
+        self._cache = cache
+        
+        self._recs = [
+            rec['record'] for rec in data_variable_meta.chunk_records
+        ]
 
         rec0 = recs[0]        
         int_hdr = rec0.int_hdr
-        self.int_hdr_dtype = int_hdr.dtype
-        self.real_hdr_dtype = rec0.real_hdr.dtype
+        self._int_hdr_dtype = int_hdr.dtype
+        self._real_hdr_dtype = rec0.real_hdr.dtype
         int_hdr = int_hdr.tolist()
-
         real_hdr = rec0.real_hdr.tolist()
 
-        self.int_hdr = int_hdr
-        self.real_hdr = real_hdr
+        self._int_hdr = int_hdr
+        self._real_hdr = real_hdr
 
         # ------------------------------------------------------------
         # Set some metadata quantities which are guaranteed to be the
         # same for all records in a variable
         # ------------------------------------------------------------
-        LBNPT = int_hdr[lbnpt]
-        LBROW = int_hdr[lbrow]
-        LBTIM = int_hdr[lbtim]
-        LBCODE = int_hdr[lbcode]
-        LBPROC = int_hdr[lbproc]
-        LBVC = int_hdr[lbvc]
-        stash = int_hdr[lbuser4]
-        LBUSER5 = int_hdr[lbuser5]
-        submodel = int_hdr[lbuser7]
-        BPLAT = real_hdr[bplat]
-        BPLON = real_hdr[bplon]
-        BDX = real_hdr[bdx]
-        BDY = real_hdr[bdy]
+        LBYR = int_hdr.item(INDEX_LBYR,)
+        LBNPT = int_hdr.item(INDEX_LBNPT,)
+        LBROW = int_hdr[INDEX_LBROW]
+        LBTIM = int_hdr[INDEX_LBTIM]
+        LBCODE = int_hdr[INDEX_LBCODE]
+        LBPROC = int_hdr[INDEX_LBPROC]
+        LBVC = int_hdr[INDEX_LBVC]
+        stash = int_hdr[INDEX_LBUSER4]
+        LBUSER5 = int_hdr[INDEX_LBUSER5]
+        submodel = int_hdr[INDEX_LBUSER7]
+        BPLAT = real_hdr[INDEX_BPLAT]
+        BPLON = real_hdr[INDEX_BPLON]
+        BDX = real_hdr[INDEX_BDX]
+        BDY = real_hdr[INDEX_BDY]
 
         if not LBROW or not LBNPT:
             logger.warn(
                 f"WARNING: Skipping STASH code {stash} with LBROW={LBROW}, "
-                f"LBNPT={LBNPT}, LBPACK={int_hdr[lbpack]} "
+                f"LBNPT={LBNPT}, LBPACK={int_hdr[INDEX_LBPACK]} " # TODO
                 "(possibly runlength encoded)"
             )  # pragma: no cover
             self.field = (None,)
@@ -575,15 +543,18 @@ class _CreateMetadata:
         else:
             um_stash_source = None
 
-        header_um_version, source = divmod(int_hdr[lbsrce], 10000)
+        header_um_version, source = divmod(int_hdr[INDEX_LBSRCE], 10000)
 
         if header_um_version > 0 and int(um_version) == um_version:
+            # Use version derived from from header
             model_um_version = header_um_version
-            self.um_version = header_um_version
+            um_version = header_um_version
         else:
+            # Use version provided
             model_um_version = None
-            self.um_version = um_version
 
+        self._um_version = um_version
+        
         # Set source
         source = _lbsrce_model_codes.setdefault(source, None)
         if source is not None and model_um_version is not None:
@@ -622,31 +593,31 @@ class _CreateMetadata:
             return
 
         # Still here?
-        self.lbnpt = LBNPT
-        self.lbrow = LBROW
-        self.lbtim = LBTIM
-        self.lbproc = LBPROC
-        self.lbvc = LBVC
-        self.bplat = BPLAT
-        self.bplon = BPLON
-        self.bdx = BDX
-        self.bdy = BDY
+        self._lbnpt = LBNPT
+        self._lbrow = LBROW
+        self._lbtim = LBTIM
+        self._lbproc = LBPROC
+        self._lbvc = LBVC
+        self._bplat = BPLAT
+        self._bplon = BPLON
+        self._bdx = BDX
+        self._bdy = BDY
 
         # ------------------------------------------------------------
         # Set some derived metadata quantities which are (as good as)
         # guaranteed to be the same for all records in a variable
         # ------------------------------------------------------------
-        self.lbtim_ia, ib = divmod(LBTIM, 100)
-        self.lbtim_ib, ic = divmod(ib, 10)
+        ia, ib = divmod(LBTIM, 100)
+        self._lbtim_ib, ic = divmod(ib, 10)
 
         if ic == 1:
-            self.calendar = "gregorian"
+            self._calendar = "gregorian"
         elif ic == 4:
-            self.calendar = "365_day"
+            self._calendar = "365_day"
         else:
-            self.calendar = "360_day"
+            self._calendar = "360_day"
 
-        self.refunits = f"days since {int_hdr[lbyr]}-1-1"
+        self._refunits = f"days since {LBYR}-1-1"
 
         cf_properties = {}        
         if source:
@@ -660,89 +631,77 @@ class _CreateMetadata:
             # 1 = Unrotated regular lat/long grid
             # 2 = Regular lat/lon grid boxes (grid points are box
             #     centres)
-            self.ix = 11
-            self.iy = 10
+            self._ix = 11
+            self._iy = 10
         elif LBCODE == 101 or LBCODE == 102:
             # 101 = Rotated regular lat/long grid
             # 102 = Rotated regular lat/lon grid boxes (grid points
             #       are box centres)
-            self.ix = -11  # rotated longitude (not an official axis code)
-            self.iy = -10  # rotated latitude  (not an official axis code)
+            self._ix = -11  # rotated longitude (not an official axis code)
+            self._iy = -10  # rotated latitude  (not an official axis code)
         elif LBCODE >= 10000:
             # Cross section
-            self.ix, self.iy = divmod(divmod(LBCODE, 10000)[1], 100)
+            self._ix, self._iy = divmod(divmod(LBCODE, 10000)[1], 100)
         else:
-            self.ix = None
-            self.iy = None
+            self._ix = None
+            self._iy = None
 
-        iz = _lbvc_to_axiscode.setdefault(LBVC, None)
+        self._iz = _lbvc_to_axiscode.setdefault(LBVC, None)
 
-        # Set it from the calendar type
-        if iy in (20, 23) or ix in (20, 23):
+        # Set _it from the calendar type
+        if self._iy in (20, 23) or self._ix in (20, 23):
             # Time is dealt with by x or y
-            self.it = None
+            self._it = None
         elif calendar == "gregorian":
-            self.it = 20
+            self._it = 20
         else:
-            self.it = 23
+            self._it = 23
 
-        self.cf_info = {}
+        self._cf_info = {}
 
-        # Set a identifying name based on the submodel and STASHcode
-        # (or field code).
-        #        stash = int_hdr[lbuser4]#
-        self.stash = stash
 
         # The STASH code has been set in the PP header, so try to find
         # its standard_name from the conversion table
-#        stash_records = _stash2standard_name.get((submodel, stash), None)
-
-        um_Units = None
         um_condition = None
-
         long_name = None
         standard_name = None
+        for (
+            long_name,
+            units,
+            valid_from,
+            valid_to,
+            standard_name,
+            cf_info,
+            um_condition,
+        ) in stash_records(submodel, stash):
+            # Check that conditions are met
+            if not self.test_um_version(valid_from, valid_to, um_version):
+                continue
 
-        if stash_records:
-            um_version = self.um_version
-            for (
-                long_name,
-                units,
-                valid_from,
-                valid_to,
-                standard_name,
-                cf_info,
-                um_condition,
-            ) in stash_records(submodel, stash):
-                # Check that conditions are met
-                if not self.test_um_version(valid_from, valid_to, um_version):
+            if um_condition:
+                if not self.test_um_condition(
+                    um_condition, LBCODE, BPLAT, BPLON
+                ):
                     continue
 
-                if um_condition:
-                    if not self.test_um_condition(
-                        um_condition, LBCODE, BPLAT, BPLON
-                    ):
-                        continue
+            # Still here? Then we have our standard_name, etc.
+            if standard_name:
+                cf_properties["standard_name"] = standard_name
 
-                # Still here? Then we have our standard_name, etc.
-                if standard_name:
-                    cf_properties["standard_name"] = standard_name
+            cf_properties["long_name"] = long_name.rstrip()
 
-                cf_properties["long_name"] = long_name.rstrip()
+            if units:
+                cf_properties["units"] = units
 
-                self.um_units = units
-                if units:
-                    cf_properties["units"] = units
+            self._cf_info = cf_info
 
-                self.cf_info = cf_info
-
-                break
+            break
 
         if um_stash_source is not None:
             cf_properties["um_stash_source"] = um_stash_source
-            identity = f"UM_{um_stash_source}_vn{self.um_version}"
+            identity = f"UM_{um_stash_source}_vn{um_version}"
         else:
-            identity = f"UM_{submodel}_fc{int_hdr[lbfc]}_vn{self.um_version}"
+            identity = f"UM_{submodel}_fc{int_hdr[INDEX_LBFC]}_vn{um_version}"
 
         if um_condition:
             identity += f"_{um_condition}"
@@ -754,17 +713,16 @@ class _CreateMetadata:
             cf_properties["long_name"] = identity
 
         # Unique headers for the 'Z' axis
-        recs = self.recs
-        self.nz = nz
-        self.nt = nt
-        self.z_recs = recs[:nz]
-        self.t_recs = recs[::nz]
+        recs = self._recs
+        self._nz = nz
+        self._z_recs = recs[:nz]
+        self._t_recs = recs[::nz]
         
         self._axis = {}
         
         LBUSER5 = recs[0].int_hdr.item(lbuser5)
         
-        self.z_axis = "z"
+        self._z_axis = "z"
         
         cf_properties["Conventions"] = __Conventions__
         cf_properties["runid"] = self.decode_lbexp()
@@ -777,13 +735,13 @@ class _CreateMetadata:
         # property. E.g. 405 -> '4.5', 606.3 -> '6.6.3', 1002 ->
         # '10.2'
         #
-        # Note: We don't just do `divmod(self.um_version, 100)`
-        #       because if self.um_version has a fractional part then
+        # Note: We don't just do `divmod(self._um_version, 100)`
+        #       because if self._um_version has a fractional part then
         #       it would likely get altered in the divmod calculation.
-        a, b = divmod(int(self.um_version), 100)
-        fraction = str(self.um_version).split(".")[-1]
+        a, b = divmod(int(um_version), 100)
+        fraction = str(um_version).split(".")[-1]
         um = f"{a}.{b}"
-        if fraction != "0" and fraction != str(self.um_version):
+        if fraction != "0" and fraction != str(um_version):
             um += f".{fraction}"
             
         cf_properties["um_version"] = um
@@ -793,7 +751,7 @@ class _CreateMetadata:
         # --------------------------------------------------------
         fill_value = data.fill_value
         if fill_value is not None:
-            cf_properties["_FillValue"] = data.fill_value
+            cf_properties["_FillValue"] = data.fill_value # TODO
              
         self.attrs.update(cf_properties)
         
@@ -806,21 +764,21 @@ class _CreateMetadata:
         # --------------------------------------------------------
         # Create the 'T' dimension coordinate
         # --------------------------------------------------------
-        axiscode = self.it
+        axiscode = self._it
         if axiscode is not None:
             c = self.time_coordinate(axiscode)
             
         # --------------------------------------------------------
         # Create the 'Z' dimension coordinate
         # --------------------------------------------------------
-        axiscode = self.iz
+        axiscode = self._iz
         if axiscode is not None:
             # Get 'Z' coordinate from LBVC
             if axiscode == 3:
                 c = self.atmosphere_hybrid_sigma_pressure_coordinate(
                     axiscode
                 )
-            elif axiscode == 2 and "height" in self.cf_info:
+            elif axiscode == 2 and "height" in self._cf_info:
                 # Create the height coordinate from the information
                 # given in the STASH to standard_name conversion table
                 height, units = self.cf_info["height"]
@@ -831,24 +789,25 @@ class _CreateMetadata:
                 c = self.z_coordinate(axiscode)
 
             # Create a model_level_number auxiliary coordinate
-            LBLEV = int_hdr[lblev]
+            LBLEV = int_hdr[INDEX_LBLEV]
             if LBVC in (2, 9, 65) or LBLEV in (7777, 8888):  # CHECK!
-                self.LBLEV = LBLEV
+                self._lblev = LBLEV
                 c = self.model_level_number_coordinate(aux=bool(c))
 
         # --------------------------------------------------------
         # Create the 'Y' dimension coordinate
         # --------------------------------------------------------
-        axiscode = self.iy
+        axiscode = self._iy
         if axiscode is not None:
             if axiscode in (20, 23):
                 # 'Y' axis is time-since-reference-date
                 if extra.get("y", None) is not None:
                     c = self.time_coordinate_from_extra_data(axiscode, "y")
                 else:
-                    LBUSER3 = int_hdr[lbuser3]
+                    LBUSER3 = int_hdr[INDEX_LBUSER3]
+                    self._lbuser3 = LBUSER3
                     if LBUSER3 == LBROW:
-                        self.lbuser3 = LBUSER3
+                        self._lbuser3 = LBUSER3
                         c = self.time_coordinate_from_um_timeseries(
                             axiscode, "y"
                         )
@@ -861,16 +820,17 @@ class _CreateMetadata:
         # --------------------------------------------------------
         # Create the 'X' dimension coordinate
         # --------------------------------------------------------
-        axiscode = self.ix
+        axiscode = self._ix
         if axiscode is not None:
             if axiscode in (20, 23):
                 # X axis is time since reference date
                 if extra.get("x", None) is not None:
                     c = self.time_coordinate_from_extra_data(axiscode, "x")
                 else:
-                    LBUSER3 = int_hdr[lbuser3]
+                    LBUSER3 = int_hdr[INDEX_LBUSER3]
+                    self._lbuser3 = LBUSER3
                     if LBUSER3 == LBNPT:
-                        self.lbuser3 = LBUSER3
+                        self._lbuser3 = LBUSER3
                         c = self.time_coordinate_from_um_timeseries(
                             axiscode, "x"
                         )
@@ -883,7 +843,7 @@ class _CreateMetadata:
         # -10: rotated latitude  (not an official axis code)
         # -11: rotated longitude (not an official axis code)
 
-        if set((self.iy, self.ix)) == set((-10, -11)):
+        if set((self._iy, self._ix)) == set((-10, -11)):
             # ----------------------------------------------------
             # Create a ROTATED_LATITUDE_LONGITUDE grid_mapping
             # variable
@@ -898,15 +858,13 @@ class _CreateMetadata:
                 }
             )
             gm_name = self.add_to_variables(gm)
-            
-            if 'grid_mapping' not in data_variable.attrs:
-                data_variable.setattr( 'grid_mapping', gm_name)
+            self.attrs['grid_mapping'] =  gm_name
             
         # --------------------------------------------------------
         # Create a RADIATION WAVELENGTH dimension coordinate
         # --------------------------------------------------------
         try:
-            rwl, rwl_units = self.cf_info["below"]
+            rwl, rwl_units = self._cf_info["below"]
         except (KeyError, TypeError):
             pass
         else:
@@ -1035,16 +993,16 @@ class _CreateMetadata:
             `DimensionCoordinate` or `None`
 
         """
-        field = self.field
+        z_recs = self._z_recs
 
-        array = tuple(rec.real_hdr[blev] for rec in self.z_recs) # Zsea
+        array = tuple(rec.real_hdr[INDEX_BLEV] for rec in z_recs) # Zsea
         
-        bounds0_a = tuple(rec.real_hdr[brlev] for rec in self.z_recs),  # Zsea lower            
-        bounds1_a = tuple(rec.real_hdr[brsvd1] for rec in self.z_recs)  # Zsea upper
+        bounds0_a = tuple(rec.real_hdr[INDEX_BRLEV] for rec in z_recs),  # Zsea lower            
+        bounds1_a = tuple(rec.real_hdr[INDEX_BRSVD1] for rec in z_recs)  # Zsea upper
 
-        array_b = tuple(rec.real_hdr[bhlev] for rec in self.z_recs)
-        bounds0_b = tuple(rec.real_hdr[bhrlev] for rec in self.z_recs)
-        bounds1_b = tuple(rec.real_hdr[brsvd2] for rec in self.z_recs)
+        array_b = tuple(rec.real_hdr[INDEX_BHLEV] for rec in z_recs)
+        bounds0_b = tuple(rec.real_hdr[INDEX_BHRLEV] for rec in z_recs)
+        bounds1_b = tuple(rec.real_hdr[INDEX_BRSVD2] for rec in z_recs)
 
         key = (
             'atmosphere_hybrid_height_coordinate'
@@ -1058,15 +1016,10 @@ class _CreateMetadata:
         dim_ncvar = self._cache.get(key)
         if dim_ncvar is None:
             # Height at top of atmosphere
-            toa_height = self.height_at_top_of_model
+            toa_height = self._height_at_top_of_model
             if toa_height is None:
                 pseudolevels = any(
-                    [
-                        rec.int_hdr.item(
-                            lbuser5,
-                        )
-                        for rec in self.z_recs
-                    ]
+                    [rec.int_hdr.item(lbuser5,) for rec in z_recs]
                 )
                 if pseudolevels:
                     # Pseudolevels and atmosphere hybrid height
@@ -1085,15 +1038,17 @@ class _CreateMetadata:
                 toa_height = None
             else:
                 toa_height = float(toa_height)
-    
-            array_a = np.array(array_a,  dtype=self.real_hdr_dtype)
-            bounds0_a = np.array(bounds0_a, dtype=self.real_hdr_dtype)
-            bounds1_a = np.array(bounds1_a, dtype=self.real_hdr_dtype)
+
+            real_dtype = self._real_hdr_dtype
+                
+            array_a = np.array(array_a,  dtype=real_dtype)
+            bounds0_a = np.array(bounds0_a, dtype=real_dtype)
+            bounds1_a = np.array(bounds1_a, dtype=real_dtype)
             bounds_a = self.create_bounds_array(bounds0_a, bounds1_a)
             
-            array_b = np.array(array_b,  dtype=self.real_hdr_dtype)
-            bounds0_b = np.array(bounds0_b, dtype=self.real_hdr_dtype)
-            bounds1_b = np.array(bounds1_b, dtype=self.real_hdr_dtype)
+            array_b = np.array(array_b,  dtype=real_dtype)
+            bounds0_b = np.array(bounds0_b, dtype=real_dtype)
+            bounds1_b = np.array(bounds1_b, dtype=real_dtype)
             bounds_b = self.create_bounds_array(bounds0_b, bounds1_b)
        
             # atmosphere_hybrid_height_coordinate dimension coordinate
@@ -1101,7 +1056,7 @@ class _CreateMetadata:
                 d = _DimensionScale(
                     name="atmosphere_hybrid_height_coordinate",
                     size=array_a.size,
-                    file_obj=None
+                    file_obj=self._file_obj
                 )
                 dim_ncvar = self.add_to_variables(d, 'dimension')
                 self._axis['z'] = dim_ncvar
@@ -1109,7 +1064,9 @@ class _CreateMetadata:
                 array = array_a / toa_height
                 bounds = bounds_a / toa_height
                 
-                dc = _DimensionScale(data=array, axiscode=axiscode, file_obj=None)
+                dc = _DimensionScale(
+                    data=array, axiscode=axiscode, file_obj=self._file_obj
+                )
                 dim_ncvar = self.add_to_variables(dc, 'dimension_coordinate')
                 self._axis['z'] = dim_ncvar
                 
@@ -1212,7 +1169,7 @@ class _CreateMetadata:
             `DimensionCoordinate`
 
         """
-        items = tuple(self.header_bz(rec) for rec in self.z_recs)
+        items = tuple(self.header_bz(rec) for rec in self._z_recs)
         key = ('atmosphere_hybrid_sigma_pressure_coordinate', items)
         dim_ncvar = self._cache.get(key)
         if dim_ncvar is None:
@@ -1242,10 +1199,10 @@ class _CreateMetadata:
             bk_array = np.array(bk_array, dtype=float)
             bk_bounds = np.array(bk_bounds, dtype=float)
     
-            field = self.field
-    
             # Insert new Z axis
-            dc = _DimensionScale(data=array, axiscode=axicode, file_obj=None)
+            dc = _DimensionScale(
+                data=array, axiscode=axicode, file_obj=self._file_obj
+            )
             dim_ncvar = self.add_to_variables(dc, 'dimension_coordinate')
             self._axis['z'] = dim_ncvar
     
@@ -1386,8 +1343,8 @@ class _CreateMetadata:
         """
         cell_methods = []
 
-        LBPROC = self.lbproc
-        LBTIM_IB = self.lbtim_ib
+        LBPROC = self._lbproc
+        LBTIM_IB = self._lbtim_ib
         tmean_proc = 0
 
         # ------------------------------------------------------------
@@ -1406,14 +1363,14 @@ class _CreateMetadata:
         # ------------------------------------------------------------
         # -10: rotated latitude  (not an official axis code)
         # -11: rotated longitude (not an official axis code)
-        if self.ix in (10, 11, 12, -10, -11) and self.iy in (
+        if self._ix in (10, 11, 12, -10, -11) and self._iy in (
             10,
             11,
             12,
             -10,
             -11,
         ):
-            cf_info = self.cf_info
+            cf_info = self._cf_info
 
             if "where" in cf_info:
                 cell_methods.append("area: mean")
@@ -1458,15 +1415,18 @@ class _CreateMetadata:
         if not cell_methods:
             return
 
-        self.data_variable_attrs['cell_methods'] = ' '.join(cell_methods)
+        self.attrs['cell_methods'] = ' '.join(cell_methods)
 
     def ctime(self, rec):
         """Return elapsed time since the clock time of the given
         record."""
+        calendar = self._calendar
+        refunits = self._refunits
+        
         LBVTIME = self.header_vtime(rec)
         LBDTIME = self.header_dtime(rec)
 
-        key = (LBVTIME, LBDTIME, self.refunits, self.calendar)
+        key = (LBVTIME, LBDTIME, refunits, calendar)
         ctime = _cache_ctime.get(key)
         if ctime is not None:
             return ctime
@@ -1476,13 +1436,13 @@ class _CreateMetadata:
         LBDTIME = list(LBDTIME)
         LBDTIME[0] = LBVTIME[0]
         
-        ctime = cftime.datetime(*LBDTIME, calendar=self.calendar)
+        ctime = cftime.datetime(*LBDTIME, calendar=calendar)
         
-        if ctime < cftime.datetime(*LBVTIME, calendar=self.calendar):
+        if ctime < cftime.datetime(*LBVTIME, calendar=calendar):
             LBDTIME[0] += 1
-            ctime = cftime.datetime(*LBDTIME, calendar=self.calendar)
+            ctime = cftime.datetime(*LBDTIME, calendar=calendar)
                         
-        ctime = cftime.date2num(ctime, self.refunits, self.calendar) 
+        ctime = cftime.date2num(ctime, refunits, calendar) 
         
         _cache_ctime[key] = ctime
         return ctime
@@ -1505,7 +1465,7 @@ class _CreateMetadata:
         (1991, 1, 1, 0, 0)
 
         """
-        return tuple(rec.int_hdr[lbyr : lbmin + 1])
+        return tuple(rec.int_hdr[INDEX_LBYR : INDEX_LBMIN + 1])
 
     def header_dtime(self, rec):
         """Return the list [LBYRD, LBMOND, LBDATD, LBHRD, LBMIND] for
@@ -1525,7 +1485,7 @@ class _CreateMetadata:
         (1991, 2, 1, 0, 0)
 
         """
-        return tuple(rec.int_hdr[lbyrd : lbmind + 1])
+        return tuple(rec.int_hdr[INDEX_LBYRD : INDEX_LBMIND + 1])
 
     def header_bz(self, rec):
         """Return the list [BLEV, BRLEV, BHLEV, BHRLEV, BULEV, BHULEV]
@@ -1546,9 +1506,9 @@ class _CreateMetadata:
         """
         real_hdr = rec.real_hdr
         return tuple(
-            real_hdr[blev : bhrlev + 1].tolist()
+            real_hdr[INDEX_BLEV : INDEX_BHRLEV + 1].tolist()
             + real_hdr[  # BLEV, BRLEV, BHLEV, BHRLEV
-                brsvd1 : brsvd2 + 1
+                INDEX_BRSVD1 : INDEX_BRSVD2 + 1
             ].tolist()  # BULEV, BHULEV
         )
 
@@ -1574,7 +1534,7 @@ class _CreateMetadata:
         '-34'
 
         """
-        LBEXP = self.int_hdr[lbexp]
+        LBEXP = self._int_hdr[INDEX_LBEXP]
 
         runid = _cache_runid.get(LBEXP, None)
         if runid is not None:
@@ -1621,12 +1581,12 @@ class _CreateMetadata:
         31.5
 
         """
-        units = self.refunits
-        calendar = self.calendar
+        refunits = self._refunits
+        calendar = self._calendar
 
         LBDTIME = self.header_dtime(rec)
 
-        key = (LBDTIME, units, calendar)
+        key = (LBDTIME, refunits, calendar)
         time = _cache_date2num.get(key)
         if time is not None:
             return time
@@ -1637,7 +1597,7 @@ class _CreateMetadata:
         try:
             time = cftime.date2num(
                 cftime.datetime(*LBDTIME, calendar=calendar),
-                units,
+                refunits,
                 calendar,
             )
         except ValueError:
@@ -1658,12 +1618,12 @@ class _CreateMetadata:
             out: `str` or `None`
 
         """
-        array = tuple(rec.int_hdr.item(lblev) for rec in self.z_recs)
+        array = tuple(rec.int_hdr.item(INDEX_LBLEV) for rec in self._z_recs)
         key = ('model_level_number_coordinate', aux, array)
         ncvar = self._cache.get(key)
         if ncvar is None:
             # Still here?
-            array = np.array(array, dtype=self.int_hdr_dtype)
+            array = np.array(array, dtype=self._int_hdr_dtype)
             if array.min() < 0:
                 return
             
@@ -1680,7 +1640,7 @@ class _CreateMetadata:
                 ncvar = self.add_to_variables(ac, 'auxiliary_coordinate')
             else:
                 dc = _DimensionScale(
-                    data=array, axiscode=axiscode, file_obj=None
+                    data=array, axiscode=axiscode, file_obj=self._file_obj
                 )
                 ncvar = self.add_to_variables(dc, 'dimension_coordinate')
                         
@@ -1694,23 +1654,23 @@ class _CreateMetadata:
 
     def pseudolevel_coordinate(self, LBUSER5):
         """Create and return the pseudolevel coordinate."""
-        if self.nz == 1:
+        if self._nz == 1:
             array = (LBUSER5,)
         else:
             # 'Z' aggregation has been done along the pseudolevel axis
-            array = tuple(rec.int_hdr.item(lbuser5) for rec in self.z_recs)
-            self.z_axis = "p"
+            array = tuple(rec.int_hdr.item(lbuser5) for rec in self._z_recs)
+            self._z_axis = "p"
 
         key = ('pseudolevel_coordinate', array)
         dim_ncvar = self._cache.get(key)
         if dim_ncvar is None:
             # Create new pseudolevel coordinate
             axiscode = 40
-            array = np.array(array, dtype=self.int_hdr_dtype)
+            array = np.array(array, dtype=self._int_hdr_dtype)
             dc = _DimensionScale(
                 data=array,
                 axiscode=axiscode,
-                file_obj=None
+                file_obj=self._file_obj,
                 attrs= {"long_name": "pseudolevel"}
             )
             dim_ncvar = self.add_to_variables(dc)
@@ -1757,22 +1717,6 @@ class _CreateMetadata:
         self.add_coordinates(aux_ncvar)
         return aux_ncvar
 
-    def reference_time_Units(self):
-        """Return the units of the `reference_time`."""
-        LBYR = self.int_hdr[lbyr]
-        time_units = f"days since {self.int_hdr[lbyr]}-1-1"
-#        calendar = self.calendar
-#
-#        key = time_units + " calendar=" + calendar
-#        units = _Units.get(key, None)
-#        if units is None:
-#            units = Units(time_units, calendar)
-#            _Units[key] = units#
-#
-#        self.refUnits = units
-#        self.refunits = time_units
-
-        return time_units
 
     def size_1_height_coordinate(self, axiscode, height, units):
         """Create and return the size-one height coordinate."""
@@ -1783,7 +1727,7 @@ class _CreateMetadata:
         if dim_ncvar is None:
             array = np.array((height,), dtype=float)
             dc = _AuxVar(
-                data=array, axiscode=axiscode, file_obj=None,
+                data=array, axiscode=axiscode, file_obj=self._file_obj,
                 attrs={'units': units}
             )
             dim_ncvar = self.add_to_variables(dc, 'scalar_coordinate')
@@ -1826,7 +1770,7 @@ class _CreateMetadata:
                 return True
 
             # Check pole location in case of incorrect LBCODE
-            atol = self.atol
+            atol = self._atol
             if (
                 abs(BPLAT - 90.0) <= atol + cf_rtol() * 90.0
                 and abs(BPLON) <= atol
@@ -1838,9 +1782,9 @@ class _CreateMetadata:
                 return True
 
             # Check pole location in case of incorrect LBCODE
-            atol = self.atol
+            atol = self._atol
             if not (
-                abs(BPLAT - 90.0) <= atol + cf_rtol() * 90.0
+                abs(BPLAT - 90.0) <= atol + self._rtol() * 90.0
                 and abs(BPLON) <= atol
             ):
                 return True
@@ -1909,28 +1853,27 @@ class _CreateMetadata:
             `DimensionCoordinate`
 
         """
-        recs = self.t_recs
-
+        t_recs = self._t_recs
         key  = (
             't_coordinate',
             tuple(
                 (self.header_vtime(rec), self.header_dtime(rec))
-                for rec in recs
+                for rec in t_recs
             ),
-            self.refunits,
-            self.calendar
+            self._refunits,
+            self._calendar
         )
         
         dim_ncvar = self._cache.get(key)
         if dim_ncvar is None:
             # Create new 'T' coordinate
-            vtimes = np.array([self.vtime(rec) for rec in recs], dtype=float)
-            dtimes = np.array([self.dtime(rec) for rec in recs], dtype=float)
+            vtimes = np.array([self.vtime(rec) for rec in t_recs], dtype=float)
+            dtimes = np.array([self.dtime(rec) for rec in t_recs], dtype=float)
     
             if np.isnan(vtimes.sum()) or np.isnan(dtimes.sum()):
                 return  # ppp
     
-            IB = self.lbtim_ib
+            IB = self._lbtim_ib
     
             if IB <= 1 or vtimes.item(0) >= dtimes.item(0):
                 array = vtimes
@@ -1939,7 +1882,7 @@ class _CreateMetadata:
             elif IB == 3:
                 # The field is a time mean from T1 to T2 for each year
                 # from LBYR to LBYRD
-                ctimes = np.array([self.ctime(rec) for rec in recs])
+                ctimes = np.array([self.ctime(rec) for rec in t_recs])
                 array = 0.5 * (vtimes + ctimes)
                 bounds = self.create_bounds_array(vtimes, dtimes)
                 climatology = True
@@ -1948,7 +1891,9 @@ class _CreateMetadata:
                 bounds = self.create_bounds_array(vtimes, dtimes)
                 climatology = False
                 
-            dc = _DimensionScale(data=array, axiscode=axiscode, file_obj=None)
+            dc = _DimensionScale(
+                data=array, axiscode=axiscode, file_obj=self._file_obj
+            )
             dim_ncvar = self.add_to_variables(dc, 'dimension_coordinate')
             self._axis["t"] = dim_ncvar
             
@@ -1976,7 +1921,9 @@ class _CreateMetadata:
 
     def bounds_dim(bounds):
         size = bounds.shape[-1]
-        b = _DimensionScale(name=f"bounds{size}", size=size, file_obj=None)
+        b = _DimensionScale(
+            name=f"bounds{size}", size=size, file_obj=self._file_obj
+        )
         name = self.add_to_variables(b)
         return name
     
@@ -1995,7 +1942,7 @@ class _CreateMetadata:
 
         calendar = self.calendar
         if calendar == "360_day":
-            units = _Units["360_day 0-1-1"]
+            units = "days since 0-1-1"
         elif calendar == "gregorian":
             units = _Units["gregorian 1752-09-13"]
         elif calendar == "365_day":
@@ -2031,37 +1978,34 @@ class _CreateMetadata:
         # This PP/FF field is a timeseries. The validity time is
         # taken to be the time for the first sample, the data time
         # for the last sample, with the others evenly between.
-        rec = self.recs[0]
+        rec = self._recs[0]
         vtime = self.vtime(rec)
         dtime = self.dtime(rec)
 
-        size = self.lbuser3 - 1.0
+        size = self._lbuser3 - 1.0
         delta = (dtime - vtime) / size
 
-        calendar = self.calendar
+        calendar = self._calendar
         if calendar == "360_day":
-            units = _Units["360_day 0-1-1"]
+            units = "days since 0-1-1"
         elif calendar == "gregorian":
-            units = _Units["gregorian 1752-09-13"]
+            units = "days since 1752-09-13"
         elif calendar == "365_day":
-            units = _Units["365_day 1752-09-13"]
-        else:
-            units = None
+            units = "days since 1752-09-13"
 
         array = np.arange(vtime, vtime + delta * size, size, dtype=float)
 
-        dc = self.implementation.initialise_DimensionCoordinate()
-        dc = self.coord_data(dc, array, units=units)
-        dc = self.coord_axis(dc, axiscode)
-        dc = self.coord_names(dc, axiscode)
-        self.implementation.set_dimension_coordinate(
-            self.field,
-            dc,
-            axes=[self._axis[axis]],
-            copy=False,
-            autocyclic=_autocyclic_false,
+        dc = _DimensionScale(
+            data=array,
+            axiscode=axiscode,
+            file_obj=self.fle_obj
+            attrs={'units': units, 'calendar': calendar}
         )
-        return dc
+        dim_ncvar = self.add_to_variablesd(dc)
+
+        self._axis[axis] = dim_ncvar        
+        self.add_to_coordinates(dim_ncvar)
+        return dim_ncvar
 
     def vtime(self, rec):
         """Return the elapsed time since the validity time of the given
@@ -2081,12 +2025,11 @@ class _CreateMetadata:
         31.5
 
         """
-        units = self.refunits
-        calendar = self.calendar
-
+        refunits = self._refunits
+        calendar = self._calendar
         LBVTIME = self.header_vtime(rec)
         
-        key = (LBVTIME, units, calendar)
+        key = (LBVTIME, refunits, calendar)
 
         time = _cache_date2num.get(key)
         if time is not None:
@@ -2097,8 +2040,8 @@ class _CreateMetadata:
         # It is important to use the same time_units as dtime
         try:
             time = cftime.date2num(
-                cftime.datetime(*LBVTIME, calendar=self.calendar),
-                units,
+                cftime.datetime(*LBVTIME, calendar=calendar),
+                refunits,
                 calendar,
             )
         except ValueError:
@@ -2229,18 +2172,18 @@ class _CreateMetadata:
 
         """
         if axis == "x":
-            delta = self.bdx
-            origin = self.real_hdr[bzx]
-            size = self.lbnpt
+            delta = self._bdx
+            origin = self._real_hdr[INDEX_BZX]
+            size = self._lbnpt
         else:
-            delta = self.bdy
-            origin = self.real_hdr[bzy]
-            size = self.lbrow
+            delta = self._bdy
+            origin = self._real_hdr[INDEX_BZY]
+            size = self._lbrow
 
         key = (f"{axis}_coordinate", delta, origin, size)
         dim_ncvar = self._cache.get(key)
         if dim_ncvar is None:
-            if abs(delta) > self.atol:
+            if abs(delta) > self._atol:
                 # Create regular coordinates from header items
                 if axiscode == 11 or axiscode == -11:
                     origin -= divmod(origin + delta * size, 360.0)[0] * 360
@@ -2288,7 +2231,9 @@ class _CreateMetadata:
                 else:
                     bounds = None
     
-            dc = _DimensionScale(data=array, axiscode=axiscode, file_obj=None)
+            dc = _DimensionScale(
+                data=array, axiscode=axiscode, file_obj=self._file_obj
+            )
             dim_ncvar = self.add_to_variables(dc)
             
             if bounds is not None:
@@ -2368,17 +2313,11 @@ class _CreateMetadata:
             `DimensionCoordinate`
 
         """
-        if self.info:
-            logger.info(
-                "Creating Z coordinates and bounds from BLEV, BRLEV and "
-                "BRSVD1:"
-            )  # pragma: no cover
-
-        z_recs = self.z_recs
+        z_recs = self._z_recs
         
-        array = tuple(rec.real_hdr.item(blev) for rec in z_recs)
-        bounds0 = tuple(rec.real_hdr[brlev] for rec in z_recs) # lower level boundary
-        bounds1 = tuple(rec.real_hdr[brsvd1] for rec in z_recs)  # bulev
+        array = tuple(rec.real_hdr.item(INDEX_BLEV,) for rec in z_recs)
+        bounds0 = tuple(rec.real_hdr.item(INDEX_BRLEV,) for rec in z_recs) # lower level boundary
+        bounds1 = tuple(rec.real_hdr.item(INDEX_BRSVD1,) for rec in z_recs)  # bulev
 
         key  = tuple(
             'z_coordinate',
@@ -2394,9 +2333,10 @@ class _CreateMetadata:
         if _coord_positive.get(axiscode, None) == "down":
             bounds0, bounds1 = bounds1, bounds0
 
-        array = np.array(array, dtype=self.real_hdr_dtype)
-        bounds0 = np.array(bounds0, dtype=self.real_hdr_dtype)
-        bounds1 = np.array(bounds1, dtype=self.real_hdr_dtype)
+        real_dtype = self._real_hdr_dtype
+        array = np.array(array, dtype=real_dtype)
+        bounds0 = np.array(bounds0, dtype=real_dtype)
+        bounds1 = np.array(bounds1, dtype=real_dtype)
         bounds = self.create_bounds_array(bounds0, bounds1)
 
         if (bounds0 == bounds1).all() or np.allclose(bounds.min(), _pp_rmdi):
@@ -2404,7 +2344,9 @@ class _CreateMetadata:
         else:
             bounds = self.create_bounds_array(bounds0, bounds1)
 
-        dc = _DimensionScale(data=array, axiscode=axiscode, file_obj=None)
+        dc = _DimensionScale(
+            data=array, axiscode=axiscode, file_obj=self._file_obj
+        )
         dim_ncvar = self.add_to_variables(dc, 'dimension_coordinate')
 
         self._axis["z"] = dim_ncvar
