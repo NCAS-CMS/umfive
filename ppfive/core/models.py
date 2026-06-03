@@ -19,6 +19,7 @@ class RecordInfo:
     header_offset: int
     data_offset: int
     disk_length: int
+    extra_data: None
 
 
 @dataclass(frozen=True)

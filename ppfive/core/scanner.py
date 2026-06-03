@@ -4,9 +4,9 @@ from ppfive.io.base import ByteReader
 
 from .constants import INDEX_LBBEGIN, N_HDR
 from .header import decode_header_from_bytes
-from .interpret import get_ff_disk_length
+from .interpret import get_ff_disk_length, get_extra_data_offset_and_length
 from .models import FileTypeInfo, RecordInfo
-
+from .extra_data import ExtraDataUnpacker
 
 def _read_word(reader: ByteReader, word_index: int, word_size: int, byte_ordering: str) -> int:
     offset = word_index * word_size
@@ -75,6 +75,16 @@ def scan_pp_headers(reader: ByteReader, file_type: FileTypeInfo) -> list[RecordI
         data_record_len, after_data = data
         data_offset = after_header + word_size
 
+        extra_data_offset, extra_data_length = (
+            get_extra_data_offset_and_length(
+                int_hdr, data_offset, data_record_len, word_size
+            )
+        )
+
+        extra_data = read_extra_data(reader, 
+            extra_data_offset, extra_data_length, word_size, byte_ordering
+        )
+        
         recs.append(
             RecordInfo(
                 int_hdr=int_hdr,
@@ -82,6 +92,7 @@ def scan_pp_headers(reader: ByteReader, file_type: FileTypeInfo) -> list[RecordI
                 header_offset=header_offset,
                 data_offset=data_offset,
                 disk_length=data_record_len,
+                extra_data=extra_data
             )
         )
         pos = after_data
@@ -153,3 +164,11 @@ def scan_ff_headers(reader: ByteReader, file_type: FileTypeInfo) -> list[RecordI
         )
 
     return recs
+
+def read_extra_data(
+        reader, extra_data_offset,  extra_data_length, word_size, byte_ordering
+):
+    
+    raw_extra_data = reader.read_at(extra_data_offset,  extra_data_length)
+    extra = ExtraDataUnpacker(raw_extra_data , word_size, byte_ordering)
+    return extra.get_data()

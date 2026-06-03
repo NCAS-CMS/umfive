@@ -57,85 +57,7 @@ from .data import (
 )
 from .interpret import get_type
 from .models import RecordInfo
-from .stash_table import stash_records
 
-
-def _calendar_from_lbtim(lbtim: int) -> str:
-    _, ib_ic = divmod(int(lbtim), 100)
-    _, ic = divmod(ib_ic, 10)
-    if ic == 1:
-        return "gregorian"
-    if ic == 4:
-        return "365_day"
-    return "360_day"
-
-
-def _time_values_from_t_steps(
-    t_steps: list[tuple[Any, ...]],
-    *,
-    units: str,
-    calendar: str,
-) -> np.ndarray:
-    values: list[float] = []
-    if calendar == "gregorian":
-        ref_year = int(units.split()[2].split("-")[0])
-        ref = datetime(ref_year, 1, 1, 0, 0)
-        for tkey in t_steps:
-            dt = datetime(int(tkey[1]), int(tkey[2]), int(tkey[3]), int(tkey[5]), int(tkey[6]))
-            delta = dt - ref
-            values.append(delta.total_seconds() / 86400.0)
-        return np.asarray(values, dtype=np.float64)
-
-    try:
-        import cftime
-
-        for tkey in t_steps:
-            dt = cftime.datetime(
-                int(tkey[1]),
-                int(tkey[2]),
-                int(tkey[3]),
-                int(tkey[5]),
-                int(tkey[6]),
-                calendar=calendar,
-            )
-            values.append(float(cftime.date2num(dt, units, calendar)))
-        return np.asarray(values, dtype=np.float64)
-    except Exception:
-        # Keep shape correct even if non-gregorian conversion support is unavailable.
-        return np.arange(len(t_steps), dtype=np.float64)
-
-
-def _infer_um_version(first: RecordInfo) -> int:
-    ih = first.int_hdr
-    header_um_version, _ = divmod(int(ih[INDEX_LBSRCE]), 10000)
-    if header_um_version > 0:
-        return int(header_um_version)
-
-    # Mirrors legacy fallback for older release-2 style headers.
-    if int(ih[INDEX_LBREL]) == 2:
-        return 405
-
-    return 0
-
-
-def _um_identity(first: RecordInfo) -> tuple[str | None, int, str]:
-    ih = first.int_hdr
-    model = int(ih[INDEX_LBUSER7])
-    stash = int(ih[INDEX_LBUSER4])
-    um_version = _infer_um_version(first)
-
-    if stash:
-        section, item = divmod(stash, 1000)
-        um_stash_source = f"m{model:02d}s{section:02d}i{item:03d}"
-    else:
-        um_stash_source = None
-
-    if um_stash_source is not None:
-        identity = f"UM_{um_stash_source}_vn{um_version}"
-    else:
-        identity = f"UM_{model}_fc{int(ih[INDEX_LBFC])}_vn{um_version}"
-
-    return um_stash_source, um_version, identity
 
 def _float_key(val: float) -> float:
     return round(float(val), 9)
@@ -205,19 +127,11 @@ def _record_is_skippable(rec: RecordInfo) -> bool:
     return False
 
 
-def _stash_name(rec: RecordInfo) -> str:
-    ih = rec.int_hdr
-    model = int(ih[INDEX_LBUSER7])
-    user4 = int(ih[INDEX_LBUSER4])
-    section = user4 // 1000
-    item = user4 % 1000
-    return f"m{model:02d}s{section:02d}i{item:03d}"
-
-
 def _dtype_name(first: RecordInfo, word_size: int) -> str:
     kind = get_type(first.int_hdr)
     if kind == "integer":
         return "int32" if word_size == 4 else "int64"
+    
     return "float32" if word_size == 4 else "float64"
 
 
@@ -285,18 +199,12 @@ def build_variable_index(
 
             z_keys_set = {_z_key(r) for r in recs_split}
             has_pseudo = any(zk[0] is not None for zk in z_keys_set)
-            z_levels = sorted(z_keys_set, reverse=not has_pseudo)
+            depth = first.int_hdr[INDEX_LBVC] == 2
+            # Don't reverse pseudolevels and depth levels
+            z_levels = sorted(z_keys_set, reverse=not has_pseudo and not depth)
             t_steps = sorted({_t_key(r) for r in recs_split})
             z_index = {k: i for i, k in enumerate(z_levels)}
             t_index = {k: i for i, k in enumerate(t_steps)}
-
-            calendar = _calendar_from_lbtim(int(first.int_hdr[INDEX_LBTIM]))
-            time_units = f"days since {int(first.int_hdr[INDEX_LBYR])}-1-1"
-            time_values = _time_values_from_t_steps(
-                t_steps,
-                units=time_units,
-                calendar=calendar,
-            )
 
             ny = int(first.int_hdr[INDEX_LBROW])
             nx = int(first.int_hdr[INDEX_LBNPT])
@@ -319,9 +227,14 @@ def build_variable_index(
                     }
                 )
 
-            def _make_loader(group_recs, _nt, _nz, _ny, _nx, _dtype, _t_index, _z_index, _z_first):
+            def _make_loader(group_recs, _nt, _nz, _ny, _nx, _dtype,
+                             _t_index, _z_index, _z_first):
                 def _load():
-                    out_shape = (_nz, _nt, _ny, _nx) if _z_first else (_nt, _nz, _ny, _nx)
+                    if _z_first:                        
+                        out_shape = (_nz, _nt, _ny, _nx)
+                    else:
+                        out_shape = (_nt, _nz, _ny, _nx)
+                        
                     out = np.empty(out_shape, dtype=_dtype)
                     out.fill(np.nan if _dtype.kind == "f" else 0)
 
@@ -378,6 +291,7 @@ def build_variable_index(
                                     out[zi, ti, :, :] = values.reshape((_ny, _nx))
                                 else:
                                     out[ti, zi, :, :] = values.reshape((_ny, _nx))
+                                    
                         return out
 
                     # Strategy C: serial fallback.
@@ -389,12 +303,13 @@ def build_variable_index(
                             out[zi, ti, :, :] = values.reshape((_ny, _nx))
                         else:
                             out[ti, zi, :, :] = values.reshape((_ny, _nx))
+                            
                     return out
 
                 return _load
 
-            variable_index[name] = {
-                "attrs": {}
+            variable_index[int_code] = {
+                "attrs": {},
                 "shape": (nz, nt, ny, nx) if z_first else (nt, nz, ny, nx),
                 "dtype": _dtype_name(first, word_size),
                 "chunk_shape": (1, 1, ny, nx),

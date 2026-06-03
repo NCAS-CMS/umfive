@@ -13,8 +13,10 @@ from ..wgdos import unpack_wgdos
 def _endian_prefix(byte_ordering: str) -> str:
     if byte_ordering == "little_endian":
         return "<"
+
     if byte_ordering == "big_endian":
         return ">"
+    
     raise ValueError(f"Unsupported byte_ordering: {byte_ordering!r}")
 
 
@@ -23,6 +25,7 @@ def _dtype_for_record(rec: RecordInfo, word_size: int, byte_ordering: str) -> np
     prefix = _endian_prefix(byte_ordering)
     if data_type == "integer":
         return np.dtype(f"{prefix}i{word_size}")
+    
     return np.dtype(f"{prefix}f{word_size}")
 
 
@@ -31,6 +34,7 @@ def _unpack_cray32(raw: bytes, nwords: int, byte_ordering: str, word_size: int) 
     packed = np.frombuffer(raw[: nwords * 4], dtype=np.dtype(f"{prefix}f4"), count=nwords)
     if word_size == 4:
         return packed.astype(np.float32, copy=True)
+    
     return packed.astype(np.float64, copy=True)
 
 

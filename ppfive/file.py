@@ -5,27 +5,110 @@ from collections.abc import Iterator, Mapping
 from pathlib import Path
 import posixpath
 from typing import Any
+from sys import float_info
 
 import numpy as np
 
 from .core.constants import INT_MISSING_DATA
 from .core import detect_file_type, scan_ff_headers, scan_pp_headers
+from .core.stash_table import stash_records # needs TODO to be lazy
 from .core.variables import build_variable_index
 from .io.base import ByteReader
 from .io.fileobj import FileObjReader
 from .io.fsspec_reader import FsspecReader
 from .io.local import LocalPosixReader
-from .variable import Variable
+from .variable import DataVariable
 
-from .stash_table import stash_records # needs to be lazy
+from .lookup_header import (
+    BMDI_no_missing_data_value,
+    CF_CONVENTIONS ,INDEX_LBYR,
+INDEX_LBMON,
+INDEX_LBDAT,
+INDEX_LBHR,
+INDEX_LBMIN,
+INDEX_LBDAY,
+INDEX_LBYRD,
+INDEX_LBMOND,
+INDEX_LBDATD,
+INDEX_LBHRD,
+INDEX_LBMIND,
+INDEX_LBDAYD,
+INDEX_LBTIM,
+INDEX_LBFT,
+INDEX_LBLREC,
+INDEX_LBCODE,
+INDEX_LBHEM,
+INDEX_LBROW,
+INDEX_LBNPT,
+INDEX_LBEXT,
+INDEX_LBPACK,
+INDEX_LBREL,
+INDEX_LBFC,
+INDEX_LBCFC,
+INDEX_LBPROC,
+INDEX_LBVC,
+INDEX_LBRVC,
+INDEX_LBEXP,
+INDEX_LBEGIN,
+INDEX_LBNREC,
+INDEX_LBPROJ,
+INDEX_LBTYP,
+INDEX_LBLEV,
+INDEX_LBRSVD1,
+INDEX_LBRSVD2,
+INDEX_LBRSVD3,
+INDEX_LBRSVD4,
+INDEX_LBSRCE,
+INDEX_LBUSER1,
+INDEX_LBUSER2,
+INDEX_LBUSER3,
+INDEX_LBUSER4,
+INDEX_LBUSER5,
+INDEX_LBUSER6,
+    INDEX_LBUSER7,
+    INDEX_BRSVD1,
+ INDEX_BRSVD2,
+ INDEX_BRSVD3 ,
+ INDEX_BRSVD4 ,
+ INDEX_BDATUM ,
+ INDEX_BACC  ,
+ INDEX_BLEV ,
+ INDEX_BRLEV,
+ INDEX_BHLEV,
+ INDEX_BHRLEV,
+ INDEX_BPLAT ,
+ INDEX_BPLON ,
+ INDEX_BGOR ,
+ INDEX_BZY ,
+ INDEX_BDY ,
+ INDEX_BZX ,
+ INDEX_BDX ,
+ INDEX_BMDI,
+    INDEX_BMKS,
+    PP_RMDI,
+    PSTAR ,
+)
 
-from .lookup_header import _coord_long_name ,_axiscode_to_units,_coord_axis,_coord_positive,_lbvc_to_axiscode,_lbsrce_model_codes,_extra_data_name,_true_latitude_longitude_lbcodes,_rotated_latitude_longitude_lbcodes,_coord_standard_name, _characters
+from .lookup_header import (
+    _coord_long_name ,
+    _axiscode_to_units,
+    _coord_axis,
+    _coord_positive,
+    _lbvc_to_axiscode,
+    _lbsrce_model_codes,
+    _extra_data_name,
+    _true_latitude_longitude_lbcodes,
+    _rotated_latitude_longitude_lbcodes,
+    _coord_standard_name,
+    _runid_characters, _n_runid_characters
+)
 
 logger = logging.getLogger(__name__)
 
+# Cache of runids derived from the lookup header
 _cache_runid = {}
+# Cache of days-since-reference-time derived from the lookup header
 _cache_date2num = {}
-_cache_ctime = {}
 
 class _PyfiveAttrs(dict):
     """Attribute mapping tuned for cfdm/p5netcdf compatibility.
@@ -47,54 +130,53 @@ class _PyfiveAttrs(dict):
             yield key, self._coerce_for_items(value)
 
 
-class DatasetMixin:
+class Mixin:
+    """Mixin class for `_DimensionScale` and `_Variable`."""
     def setattr(self, name, value):
+        """TODO"""
         if isinstance(value, str):
-            value = np._bytes(value)
+            value = np.bytes_(value)
 
         self.attrs[name] = value
       
-    def setattrs_from_axiscode(self, axiscode, set_name_as_standard_name=False)
+    def setattrs_from_axiscode(self, axiscode):
+        """TODO"""
         if axiscode is None:
             return
 
         attrs = self.attrs
         
-        name = _coord_standard_name.setdefault(axiscode, None)
+        name = _coord_standard_name.get(axiscode)
         if name is not None:
             attrs['standard_name'] = np.bytes_(name)
-            if set_name_as_standard_name:
+            if self.name is None:
                 self.name = name
         else:
-            name = _coord_long_name.setdefault(axiscode, None)
+            name = _coord_long_name.get(axiscode)
             if name is not None:
                 attrs['long_name'] = np.bytes_(name)
                     
-        axis = _coord_axis.setdefault(axiscode, None)
+        axis = _coord_axis.get(axiscode)
         if axis is not None:
             attrs['axis'] = np.bytes_(axis)
            
-        positive = _coord_positive.setdefault(axiscode, None)
+        positive = _coord_positive.get(axiscode)
         if positive is not None:
             attrs['positive'] = np.bytes_(positive)
 
-        if axiscode in (20, 23):            
-            attrs["units"] = np.bytes_(self._refunits)
-            attrs["calendar"] = np.bytes_(self._calendar)
-        else:
-            units = _axiscode_to_units.setdefault(axiscode, None)
-            if units:
-                attrs["units"] = np.bytes_(units)
-                    
+        units = _axiscode_to_units.get(axiscode)
+        if units:
+            attrs["units"] = np.bytes_(units)
+            
 
-class _DimensionScale(DatasetMixin):
+class _DimensionScale(Mixin):
     """Internal pyfive-like dimension-scale dataset for cfdm bridging."""
 
     def __init__(
             self,
             name=None,
             data=None,
-            size=None
+            size=None,
             file_obj="File",
             axiscode=None,
             attrs=None, 
@@ -118,7 +200,7 @@ class _DimensionScale(DatasetMixin):
         self.chunks = None
 
         self.attrs = {}
-        self.setattrs_from_axiscode(axiscode, set_name_as_standard_name=True)
+        self.setattrs_from_axiscode(axiscode)
         if attrs:
             self.attrs.update(attrs)
 
@@ -133,8 +215,8 @@ class _DimensionScale(DatasetMixin):
         else:
             self.attrs.update(
                 {
-                    "CLASS": b"TODO SOMEthinDIMENSION_SCALE",
-                    "NAME": b"netCDF dimension coordinate variable",
+                    "CLASS": b"DIMENSION_SCALE",
+                    "NAME": b"This is a netCDF dimension but not a netCDF variable.",
                     "_Netcdf4Dimid": 0, # TODO not always 0 ??
                 }
             )
@@ -145,11 +227,12 @@ class _DimensionScale(DatasetMixin):
 
         return np.arange(self.shape[0], dtype=self.dtype)[key]
 
-class _AuxVar(DatasetMixin)::
-    """2-D auxiliary coordinate variable (e.g. unrotated latitude/longitude)."""
+class _Variable(Mixin):
+    """TODO"""
 
     def __init__(self, name=None, data=None, axiscode=None, attrs=None,
-                 DIMESNION_LIST=None):
+                 DIMENSION_LIST=None):
+        """TODO"""        
         self.name = name
         self._data = data
         self.shape = data.shape
@@ -158,7 +241,7 @@ class _AuxVar(DatasetMixin)::
         self.chunks = None
 
         self.attrs = {}
-        self.setattrs_from_axiscode(axiscode, set_name_as_standard_name=True)
+        self.setattrs_from_axiscode(axiscode)
         if attrs:
             self.attrs.update(attrs)
                 
@@ -168,11 +251,11 @@ class _AuxVar(DatasetMixin)::
     def __getitem__(self, key):
         return self._data[key]
 
+_ATOL = float_info.epsilon
+_RTOL = _ATOL
 
-_ATOL = sys.float_info.epsilon
 
-
-class File(Mapping[str, Variable]):
+class File(Mapping[str, DataVariable]):
     """A pyfive-style file handle exposing variables as a Mapping."""
 
     @staticmethod
@@ -238,10 +321,9 @@ class File(Mapping[str, Variable]):
         self.filename = str(Path(filename))
         self.mode = mode
 
-        self._um_version=um_version
-        self._height_at_top_of_model=height_at_top_of_model
-        
-        
+        self._um_version = um_version 
+        self._height_at_top_of_model = height_at_top_of_model
+                
         self.metadata_buffer_size = metadata_buffer_size
         self.disable_os_cache = bool(disable_os_cache)
         self._owns_reader = reader is None
@@ -255,11 +337,9 @@ class File(Mapping[str, Variable]):
         self.parent = None
         self.name = "/"
         self.path = "/"
-        self.attrs: dict[str, Any] = {}
+        self.attrs: dict[str, Any] = {'Conventions': np.bytes_(CF_CONVENTIONS)}
         self.groups: dict[str, Any] = {}
         self.dimensions: dict[str, Any] = {}
-        self._pyfive_dimension_scales: dict[str, _DimensionScale] = {}
-        self._grid_mapping_vars: dict[str, _ScalarVar] = {}
 
         if variable_index is None:
             file_type = detect_file_type(self._reader)
@@ -319,14 +399,14 @@ class File(Mapping[str, Variable]):
 
         cache = {}
         for int_code, meta in tuple(variable_index.items()):
-            data_variable = _VariableMetadata(
+            data_variable = _DataVariableMetadata(
                 meta, variables, self, cache
             )
                         
-            # Add a variables entry for athe 'Variable' representing
-            # the data variable
+            # Add a variables entry for athe 'DataVariable'
+            # representing the data variable
             name = data_variable.name
-            variables[name] = Variable(
+            variables[name] = DataVariable(
                 name=name,
                 attrs=_PyfiveAttrs(data_variable.attrs),
                 shape=tuple(meta.get("shape", ())),
@@ -338,9 +418,6 @@ class File(Mapping[str, Variable]):
                 chunk_records=list(meta.get("chunk_records", [])),
             )
 
-            # Remove the original variables entry for 'meta'
-            variables.pop(int_code)
-            
         self.variables = variables
                 
     def _build_variables(self, variable_index, cache):
@@ -350,14 +427,14 @@ class File(Mapping[str, Variable]):
         variables = {}
 
         for int_code, meta in tuple(variable_index.items()):
-            data_variable = _VariableMetadata(
+            data_variable = _DataVariableMetadata(
                 meta, variables, self, cache
             )
                         
-            # Add a variables entry for athe 'Variable' representing
+            # Add a variables entry for athe 'DataVariable' representing
             # the data variable
             name = data_variable.name
-            variables[name] = Variable(
+            variables[name] = DataVariable(
                 name=name,
                 attrs=_PyfiveAttrs(data_variable.attrs),
                 shape=tuple(meta.get("shape", ())),
@@ -382,7 +459,7 @@ class File(Mapping[str, Variable]):
     def consolidated_metadata(self) -> bool | None:
         return None
 
-    def get_lazy_view(self, key: str) -> Variable:
+    def get_lazy_view(self, key: str) -> DataVariable:
         # UM guidance says this cannot be fully implemented yet.
         logger.info("get_lazy_view is not supported; returning normal variable view")
         return self[key]
@@ -414,14 +491,14 @@ class File(Mapping[str, Variable]):
                     "cat_range_allowed": self._cat_range_allowed,
                 },
             )
-            self._pyfive_dimension_scales = {}
-            self._grid_mapping_vars = {}
+#            self._pyfive_dimension_scales = {}
+#            self._grid_mapping_vars = {}
             self._variables = self._build_variables(variable_index)
-            self._refresh_variable_views()
+#            self._refresh_variable_views()
 
-    def __getitem__(self, key: str) -> Variable:
+    def __getitem__(self, key: str) -> DataVariable:
         if not isinstance(key, str):
-            raise TypeError("Variable key must be a string")
+            raise TypeError("DataVariable key must be a string")
 
         path = posixpath.normpath(key)
         if path == ".":
@@ -464,7 +541,7 @@ class File(Mapping[str, Variable]):
             },
         }
 
-class _VariableMetadata:
+class _DataVariableMetadata:
     """TODO"""
     def __init__(
         self,
@@ -494,17 +571,19 @@ class _VariableMetadata:
         um_version =  file_obj._um_version
         
         self._cache = cache
-        
-        self._recs = [
-            rec['record'] for rec in data_variable_meta.chunk_records
-        ]
+#        print(data_variable_meta)
 
-        rec0 = recs[0]        
+        chunk_recs = data_variable_meta['chunk_records']
+        self._chunk_recs = chunk_recs
+#        self._recs = [chunk_rec['record'] for chunk_rec in chunk_recs]
+
+        rec0 = chunk_recs[0]['record']
         int_hdr = rec0.int_hdr
+        real_hdr = rec0.real_hdr
         self._int_hdr_dtype = int_hdr.dtype
-        self._real_hdr_dtype = rec0.real_hdr.dtype
-        int_hdr = int_hdr.tolist()
-        real_hdr = rec0.real_hdr.tolist()
+        self._real_hdr_dtype = real_hdr.dtype
+#        int_hdr = int_hdr.tolist()
+#        real_hdr = rec0.real_hdr.tolist()
 
         self._int_hdr = int_hdr
         self._real_hdr = real_hdr
@@ -513,8 +592,8 @@ class _VariableMetadata:
         # Set some metadata quantities which are guaranteed to be the
         # same for all records in a variable
         # ------------------------------------------------------------
-        LBYR = int_hdr.item(INDEX_LBYR,)
-        LBNPT = int_hdr.item(INDEX_LBNPT,)
+        LBYR = int_hdr[INDEX_LBYR]
+        LBNPT = int_hdr[INDEX_LBNPT]
         LBROW = int_hdr[INDEX_LBROW]
         LBTIM = int_hdr[INDEX_LBTIM]
         LBCODE = int_hdr[INDEX_LBCODE]
@@ -525,8 +604,15 @@ class _VariableMetadata:
         submodel = int_hdr[INDEX_LBUSER7]
         BPLAT = real_hdr[INDEX_BPLAT]
         BPLON = real_hdr[INDEX_BPLON]
-        BDX = real_hdr[INDEX_BDX]
-        BDY = real_hdr[INDEX_BDY]
+#        BDX = real_hdr[INDEX_BDX]
+#        BDY = real_hdr[INDEX_BDY]
+
+        self._lbnpt = LBNPT
+        self._lbrow = LBROW
+        self._lbtim = LBTIM
+        self._lbproc = LBPROC
+#        self._bdx = BDX
+#        self._bdy = BDY
 
         if not LBROW or not LBNPT:
             logger.warn(
@@ -556,52 +642,9 @@ class _VariableMetadata:
         self._um_version = um_version
         
         # Set source
-        source = _lbsrce_model_codes.setdefault(source, None)
+        source = _lbsrce_model_codes.get(source)
         if source is not None and model_um_version is not None:
             source += f" vn{model_um_version}"
-
-        # Only process the requested fields
-        ok = True
-        if select:
-            values1 = (
-                f"stash_code={stash}",
-                f"lbproc={LBPROC}",
-                f"lbtim={LBTIM}",
-                f"runid={self.decode_lbexp()}",
-                f"submodel={submodel}",
-            )
-            if um_stash_source is not None:
-                values1 += (f"um_stash_source={um_stash_source}",)
-            if source:
-                values1 += (f"source={source}",)
-
-            ok = False
-            for value0 in select:
-                for value1 in values1:
-                    ok = Constructs._matching_values(
-                        value0, None, value1, basic=True
-                    )
-                    if ok:
-                        break
-
-                if ok:
-                    break
-
-        if not ok:
-            # This PP/UM field does not match the requested selection
-            self.field = (None,)
-            return
-
-        # Still here?
-        self._lbnpt = LBNPT
-        self._lbrow = LBROW
-        self._lbtim = LBTIM
-        self._lbproc = LBPROC
-        self._lbvc = LBVC
-        self._bplat = BPLAT
-        self._bplon = BPLON
-        self._bdx = BDX
-        self._bdy = BDY
 
         # ------------------------------------------------------------
         # Set some derived metadata quantities which are (as good as)
@@ -645,20 +688,20 @@ class _VariableMetadata:
         else:
             self._ix = None
             self._iy = None
-
-        self._iz = _lbvc_to_axiscode.setdefault(LBVC, None)
+        print('lbvc=',LBVC, LBCODE)
+        self._iz = _lbvc_to_axiscode.get(LBVC)
 
         # Set _it from the calendar type
         if self._iy in (20, 23) or self._ix in (20, 23):
             # Time is dealt with by x or y
             self._it = None
-        elif calendar == "gregorian":
+        elif self._calendar == "gregorian":
             self._it = 20
         else:
             self._it = 23
 
         self._cf_info = {}
-
+        print(self._it, self._iz, self._iy, self._ix)
 
         # The STASH code has been set in the PP header, so try to find
         # its standard_name from the conversion table
@@ -712,20 +755,39 @@ class _VariableMetadata:
         if long_name is None:
             cf_properties["long_name"] = identity
 
-        # Unique headers for the 'Z' axis
-        recs = self._recs
+        # ------------------------------------------------------------
+        # Unique headers for the 'T' and 'Z' axes
+        # ------------------------------------------------------------
+        # Assume first tht 'T' is the first axis
+        nt, nz = data_variable_meta['shape'][0:2]
+        z_recs = chunk_recs[:nz]
+        t_recs = chunk_recs[::nz]
+        z_first = data_variable_meta['z_first']
+        if z_first:
+            # Reverse 'T' and 'Z'
+            nz, nt = nt, nz
+            z_recs, t_recs = t_recs, z_rec
+        
+        # The 'Z' headers might be in the wrong order (i.e. not in the
+        # order that we wan the coordinate arrays to be), so let's get
+        # them in correct order.
+        z_recs = sorted(z_recs, key=lambda x: x['chunk_coords'])
+        z_recs = [chunk_rec['record'] for chunk_rec in z_recs]
+        
+        t_recs = [chunk_rec['record'] for chunk_rec in t_recs]
+        
+        self._z_recs = z_recs
+        self._t_recs = t_recs
         self._nz = nz
-        self._z_recs = recs[:nz]
-        self._t_recs = recs[::nz]
         
         self._axis = {}
         
-        LBUSER5 = recs[0].int_hdr.item(lbuser5)
-        
+        LBUSER5 = rec0.int_hdr[INDEX_LBUSER5]
+        print(rec0)
+        print(data_variable_meta['shape'])
         self._z_axis = "z"
         
-        cf_properties["Conventions"] = __Conventions__
-        cf_properties["runid"] = self.decode_lbexp()
+        cf_properties["runid"] = self.runid()
         cf_properties["lbproc"] = str(LBPROC)
         cf_properties["lbtim"] = str(LBTIM)
         cf_properties["stash_code"] = str(stash)
@@ -745,20 +807,14 @@ class _VariableMetadata:
             um += f".{fraction}"
             
         cf_properties["um_version"] = um
-            
-        # --------------------------------------------------------
-        # Insert attributes and CF properties into the field
-        # --------------------------------------------------------
-        fill_value = data.fill_value
-        if fill_value is not None:
-            cf_properties["_FillValue"] = data.fill_value # TODO
-             
+                       
+        # Set data variable attribtues
         self.attrs.update(cf_properties)
         
         # --------------------------------------------------------
         # Get the extra data for this group
         # --------------------------------------------------------
-        extra = recs[0].get_extra_data()
+        extra = rec0.extra_data
         self.extra = extra
         
         # --------------------------------------------------------
@@ -766,33 +822,37 @@ class _VariableMetadata:
         # --------------------------------------------------------
         axiscode = self._it
         if axiscode is not None:
-            c = self.time_coordinate(axiscode)
+            self.time_coordinate(axiscode)
             
         # --------------------------------------------------------
         # Create the 'Z' dimension coordinate
         # --------------------------------------------------------
         axiscode = self._iz
         if axiscode is not None:
+            dim_ncvar = None
+            
             # Get 'Z' coordinate from LBVC
             if axiscode == 3:
-                c = self.atmosphere_hybrid_sigma_pressure_coordinate(
+                dim_ncvar = self.atmosphere_hybrid_sigma_pressure_coordinate(
                     axiscode
                 )
             elif axiscode == 2 and "height" in self._cf_info:
                 # Create the height coordinate from the information
                 # given in the STASH to standard_name conversion table
-                height, units = self.cf_info["height"]
-                c = self.size_1_height_coordinate(axiscode, height, units)
+                height, units = self._cf_info["height"]
+                dim_ncvar = self.size_1_height_coordinate(
+                    axiscode, height, units
+                )
             elif axiscode == 14:
-                c = self.atmosphere_hybrid_height_coordinate(axiscode)
+                dim_ncvar = self.atmosphere_hybrid_height_coordinate(axiscode)
             else:
-                c = self.z_coordinate(axiscode)
+                dim_ncvar = self.z_coordinate(axiscode)
 
             # Create a model_level_number auxiliary coordinate
             LBLEV = int_hdr[INDEX_LBLEV]
             if LBVC in (2, 9, 65) or LBLEV in (7777, 8888):  # CHECK!
                 self._lblev = LBLEV
-                c = self.model_level_number_coordinate(aux=bool(c))
+                self.model_level_number_coordinate(aux=dim_ncvar is not None)
 
         # --------------------------------------------------------
         # Create the 'Y' dimension coordinate
@@ -801,20 +861,16 @@ class _VariableMetadata:
         if axiscode is not None:
             if axiscode in (20, 23):
                 # 'Y' axis is time-since-reference-date
-                if extra.get("y", None) is not None:
-                    c = self.time_coordinate_from_extra_data(axiscode, "y")
+                if extra.get("y") is not None:
+                    self.time_coordinate_from_extra_data(axiscode, "y")
                 else:
                     LBUSER3 = int_hdr[INDEX_LBUSER3]
                     self._lbuser3 = LBUSER3
                     if LBUSER3 == LBROW:
-                        self._lbuser3 = LBUSER3
-                        c = self.time_coordinate_from_um_timeseries(
-                            axiscode, "y"
-                        )
+                        self.time_coordinate_from_um_timeseries(axiscode, "y")
             else:
-                yaxis = self.xy_coordinate(axiscode, "y")
+                dim_ncvar = self.xy_coordinate(axiscode, "y")
                 if axiscode == 13:
-                    self._axis["site_axis"] = yaxis
                     self.site_coordinates_from_extra_data()
 
         # --------------------------------------------------------
@@ -824,20 +880,17 @@ class _VariableMetadata:
         if axiscode is not None:
             if axiscode in (20, 23):
                 # X axis is time since reference date
-                if extra.get("x", None) is not None:
-                    c = self.time_coordinate_from_extra_data(axiscode, "x")
+                if extra.get("x") is not None:
+                    self.time_coordinate_from_extra_data(axiscode, "x")
                 else:
                     LBUSER3 = int_hdr[INDEX_LBUSER3]
                     self._lbuser3 = LBUSER3
                     if LBUSER3 == LBNPT:
                         self._lbuser3 = LBUSER3
-                        c = self.time_coordinate_from_um_timeseries(
-                            axiscode, "x"
-                        )
+                        self.time_coordinate_from_um_timeseries(axiscode, "x")
             else:
-                xaxis = self.xy_coordinate(axiscode, "x")
+                dim_ncvar = self.xy_coordinate(axiscode, "x")
                 if axiscode == 13:
-                    self._axis["site_axis"] = xaxis
                     self.site_coordinates_from_extra_data()
 
         # -10: rotated latitude  (not an official axis code)
@@ -848,17 +901,7 @@ class _VariableMetadata:
             # Create a ROTATED_LATITUDE_LONGITUDE grid_mapping
             # variable
             # ----------------------------------------------------
-            gm = _AuxVar(
-                name="rotated_latitude_longitude",
-                data=np.array("", dtype='S1')
-                attrs={
-                    "grid_mapping_name": "rotated_latitude_longitude",
-                    "grid_north_pole_latitude": BPLAT,
-                    "grid_north_pole_longitude": BPLON
-                }
-            )
-            gm_name = self.add_to_variables(gm)
-            self.attrs['grid_mapping'] =  gm_name
+            self.grid_mapping(BPLAT, BPLON)
             
         # --------------------------------------------------------
         # Create a RADIATION WAVELENGTH dimension coordinate
@@ -868,84 +911,90 @@ class _VariableMetadata:
         except (KeyError, TypeError):
             pass
         else:
-            c = self.radiation_wavelength_coordinate(rwl, rwl_units)
+            self.radiation_wavelength_coordinate(rwl, rwl_units)
 
-            # Set LBUSER5 to zero so that it is not confused for a
-            # pseudolevel
+            # Set LBUSER5 to zero so that later it is not confused for
+            # a pseudolevel
             LBUSER5 = 0
 
-        # --------------------------------------------------------
+        # ------------------------------------------------------------
         # Create a PSEUDOLEVEL dimension coordinate. This must be done
         # *after* the possible creation of a radiation wavelength
         # dimension coordinate.
-        # --------------------------------------------------------
+        # ------------------------------------------------------------
         if LBUSER5 != 0:
             self.pseudolevel_coordinate(LBUSER5)
 
-        # --------------------------------------------------------
-        # Create cell methods
-        # --------------------------------------------------------
-        self.create_cell_methods()
+        # Set cell methods
+        self.cell_methods()
 
-        # Set the axis names for in the data variable's attributes
-        if data_variable_meta.z_first:
+        # Set packing attributes
+        self.packing()
+        
+        # Set missing value attributes
+        self.missing_value()
+
+        # Set the axis names in the data variable's attributes
+        if z_first:
             axis_order = 'ptyx'
         else:
             axis_order = 'tzyx'
-            
-        dim_names = [self._axis[axis] for axis in axis_order]
+
+        print(self._axis)
+        dim_names = []
+        um_dummy_dim =  'um_dummy_dim' 
+        for axis in axis_order:
+            if axis in self._axis:
+                dim_names.append(self._axis[axis])
+            else:
+                if um_dummy_dim in self.variables:
+                    # Use an existing size-1 dummy dimension
+                    dim_ncvar = self.variables[um_dummy_dim]
+                else:
+                    # Create a size-1 dummy dimension
+                    d = _DimensionScale(
+                        name=um_dummy_dim, size=1, file_obj=self._file_obj
+                    )
+                    dim_ncvar = self.add_to_variables(d)
+
+                dim_names.append(dim_ncvar)
+                           
         self.attrs["DIMENSION_LIST"] = tuple((ncdim,) for ncdim in dim_names)
 
-    def _reorder_z_axis(self, indices, z_axis, pmaxes):
-        """Reorder the Z axis `Rec` instances.
+    def add_to_coordinates(self, ncvar):
+        """TODO"""
+        attrs = self.attrs
+        coordinates = attrs.get("coordinates")
+        if coordinates:
+            coordinates += f" {ncvar}"
+        else:
+            coordinates = ncvar
 
-        :Parameters:
+        attrs["coordinates"] = coordinates
 
-            indices: `list`
-                Aggregation axis indices. See `create_data` for
-                details.
+    def add_to_variables(self, name, default='variable'):
+        """TODO"""
+        if not (name is None or isinstance(name, str)):
+            # 'name' is some sort of variable instance
+            var = name
+            name = var.name
+        else:
+            var = None
+            
+        if name is None:
+            name = default
 
-            z_axis: `int`
-                The identifier of the Z axis.
+        counter = 1
+        unique_name = name
+        while unique_name in self.variables:
+            unique_name=f"{name}_{counter}"
+            counter += 1
 
-            pmaxes: sequence of `int`
-                The aggregation axes, which include the Z axis.
-
-        :Returns:
-
-            `list`
-
-        **Examples**
-
-        >>> _reorder_z_axis([(0, <Rec A>), (1, <Rec B>)], 0, [0])
-        [(0, <Rec B>), (1, <Rec A>)]
-
-        >>> _reorder_z_axis(
-        ...     [(0, 0, <Rec A>),
-        ...      (0, 1, <Rec B>),
-        ...      (1, 0, <Rec C>),
-        ...      (1, 1, <Rec D>)],
-        ...     1, [0, 1]
-        ... )
-        [(0, 0, <Rec B>), (0, 1, <Rec A>), (1, 0, <Rec D>), (1, 1, <Rec C>)]
-
-        """
-        indices_new = []
-        zpos = pmaxes.index(z_axis)
-        aaa0 = indices[0]
-        indices2 = [aaa0]
-        for aaa in indices[1:]:
-            if aaa[zpos] > aaa0[zpos]:
-                indices2.append(aaa)
-            else:
-                indices_new.extend(indices2[::-1])
-                aaa0 = aaa
-                indices2 = [aaa0]
-
-        indices_new.extend(indices2[::-1])
-
-        indices = [a[:-1] + b[-1:] for a, b in zip(indices, indices_new)]
-        return indices
+        if var is not None:
+            var.name = unique_name
+            
+        self.variables[unique_name] = var            
+        return unique_name
 
     def atmosphere_hybrid_height_coordinate(self, axiscode):
         """`atmosphere_hybrid_height_coordinate` when not an array axis.
@@ -1019,7 +1068,7 @@ class _VariableMetadata:
             toa_height = self._height_at_top_of_model
             if toa_height is None:
                 pseudolevels = any(
-                    [rec.int_hdr.item(lbuser5,) for rec in z_recs]
+                    [rec.int_hdr[INDEX_LBUSER5] for rec in z_recs]
                 )
                 if pseudolevels:
                     # Pseudolevels and atmosphere hybrid height
@@ -1038,17 +1087,15 @@ class _VariableMetadata:
                 toa_height = None
             else:
                 toa_height = float(toa_height)
-
-            real_dtype = self._real_hdr_dtype
                 
-            array_a = np.array(array_a,  dtype=real_dtype)
-            bounds0_a = np.array(bounds0_a, dtype=real_dtype)
-            bounds1_a = np.array(bounds1_a, dtype=real_dtype)
+            array_a = np.array(array_a)
+            bounds0_a = np.array(bounds0_a)
+            bounds1_a = np.array(bounds1_a)
             bounds_a = self.create_bounds_array(bounds0_a, bounds1_a)
             
-            array_b = np.array(array_b,  dtype=real_dtype)
-            bounds0_b = np.array(bounds0_b, dtype=real_dtype)
-            bounds1_b = np.array(bounds1_b, dtype=real_dtype)
+            array_b = np.array(array_b)
+            bounds0_b = np.array(bounds0_b)
+            bounds1_b = np.array(bounds1_b)
             bounds_b = self.create_bounds_array(bounds0_b, bounds1_b)
        
             # atmosphere_hybrid_height_coordinate dimension coordinate
@@ -1071,22 +1118,22 @@ class _VariableMetadata:
                 self._axis['z'] = dim_ncvar
                 
                 bounds_dim = self.bounds_dim(bounds)            
-                dc_bounds = _AuxVar(
+                dc_bounds = _Variable(
                     name=f"{dim_ncvar}_bounds",
                     data=bounds,
-                    DIMENSION_LIST=((self._axis["z"],), (bounds_dim,)))
+                    DIMENSION_LIST=((self._axis["z"],), (bounds_dim,))
                 )
                 bounds_ncvar = self.add_to_variables(dc_bounds)
 
                 dc.setattr('bounds', dc_bounds.name)
                 
             # "a" domain ancillary
-            da_a = _AuxVar(
+            da_a = _Variable(
                 name="atmosphere_hybrid_height_coordinate_a",
                 data=array_a,
                 attrs={"long_name": "height based hybrid coeffient a",
                        "units": "m"},
-                DIMENSION=LIST=((self._axis["z"]),)
+                DIMENSION_LIST=((self._axis["z"],),)
             )
             ncvar = self.add_to_variables(da_a)
             
@@ -1095,29 +1142,29 @@ class _VariableMetadata:
             
             # "a" domain ancillary bounds
             bounds_dim = self.bounds_dim(bounds) 
-            da_a_bounds = _AuxVar(
+            da_a_bounds = _Variable(
                 name=f"{da_a.name}_bounds",
                 data=bounds_a,
-                DIMENSION=LIST=((_axis["z"]), (bounds_dim,))
+                DIMENSION_LIST=((_axis["z"],), (bounds_dim,))
             )
             ncvar = self.add_to_variables(da_a_bounds)
     
             # "b" domain ancillary
-            da_b = _AuxVar(
+            da_b = _Variable(
                 name="atmosphere_hybrid_height_coordinate_b",
                 data=array_b,
                 attrs={"long_name": "height based hybrid coeffient b",
                        "units": "1"},
-                DIMENSION=LIST=((self._axis["z"]),)
+                DIMENSION_LIST=((self._axis["z"],),)
             )
             ncvar = self.add_to_variables(da_b)
             
             # "b" domain ancillary bounds
             bounds_dim = self.bounds_dim(bounds) 
-            da_b_bounds = _AuxVar(
+            da_b_bounds = _Variable(
                 name=f"{da_b.name}_bounds",
                 data=bounds_b,
-                DIMENSION=LIST=((self._axis["z"]), (bounds_dim,))
+                DIMENSION_LIST=((self._axis["z"],), (bounds_dim,))
             )
             ncvar = self.add_to_variables(da_b_bounds)
     
@@ -1207,10 +1254,10 @@ class _VariableMetadata:
             self._axis['z'] = dim_ncvar
     
             bounds_dim = self.bounds_dim(bounds)            
-            dc_bounds = _AuxVar(
+            dc_bounds = _Variable(
                 name=f"{dim_ncvar}_bounds",
                 data=bounds,
-                DIMENSION_LIST=((self._axis["z"],), (bounds_dim,)))
+                DIMENSION_LIST=((self._axis["z"],), (bounds_dim,))
             )
             bounds_ncvar = self.add_to_variables(dc_bounds)
 
@@ -1218,7 +1265,7 @@ class _VariableMetadata:
             dc.setattr('bounds', dc_bounds.name)
                      
             # "a" domain ancillary     
-            da_a = _AuxVar(
+            da_a = _Variable(
                 name="atmosphere_hybrid_sigma_pressure_coordinate_ak",
                 data=ak_array,
                 attrs={"long_name": "atmosphere_hybrid_sigma_pressure_coordinate_ak",
@@ -1229,10 +1276,10 @@ class _VariableMetadata:
     
             # "a" domain ancillary bounds
             bounds_dim = self.bounds_dim(bounds) 
-            da_a_bounds = _AuxVar(
+            da_a_bounds = _Variable(
                 name=f"{da_a.name}_bounds",
                 data=ak_bounds,
-                DIMENSION=LIST=((self._axis["z"]), (bounds_dim,))
+                DIMENSION_LIST=((self._axis["z"],), (bounds_dim,))
             )
             ncvar = self.add_to_variables(da_a_bounds)
     
@@ -1240,23 +1287,23 @@ class _VariableMetadata:
             da_a.setattr('bounds', da_a_bounds.name)
                    
             # "b" domain ancillary
-            da_b = _AuxVar(
+            da_b = _Variable(
                 name="atmosphere_hybrid_sigma_pressure_coordinate_bk",
                 data=bk_array,
                 attrs={
                     "long_name": "atmosphere_hybrid_sigma_pressure_coordinate_bk",
                     "units": "1"
                 },
-                DIMENSION=LIST=((_axis["z"],),)
+                DIMENSION_LIST=((_axis["z"],),)
             )
             ncvar = self.add_to_variables(da_b)
             
             # "b" domain ancillary bounds
             bounds_dim = self.bounds_dim(bounds) 
-            da_b_bounds = _AuxVar(
+            da_b_bounds = _Variable(
                 name=f"{da_b.name}_bounds",
                 data=bk_bounds,
-                DIMENSION=LIST=((self._axis["z"]), (bounds_dim,))
+                DIMENSION_LIST=((self._axis["z"],), (bounds_dim,))
             )
             ncvar = self.add_to_variables(da_b_bounds)
     
@@ -1275,7 +1322,7 @@ class _VariableMetadata:
         else:
             self._axis['z'] = dim_ncvar
     
-        self.add_coordinates(dim_ncvar)
+        self.add_to_coordinates(dim_ncvar)
         return dim_ncvar
 
     def create_bounds_array(self, bounds0, bounds1):
@@ -1306,7 +1353,7 @@ class _VariableMetadata:
         bounds[:, 1] = bounds1
         return bounds
 
-    def create_cell_methods(self):
+    def cell_methods(self):
         """Create the cell methods.
 
         **UMDP F3**
@@ -1337,13 +1384,12 @@ class _VariableMetadata:
 
         :Returns:
 
-            `list` of `str`
-               The cell methods.
+            `None`
 
         """
         cell_methods = []
-
         LBPROC = self._lbproc
+        print('LBPROC=',LBPROC)
         LBTIM_IB = self._lbtim_ib
         tmean_proc = 0
 
@@ -1354,10 +1400,12 @@ class _VariableMetadata:
             cell_methods.append("realization: mean")
             LBPROC -= 131072
 
+        print('LBPROC=',LBPROC, LBTIM_IB )
         if LBTIM_IB in (2, 3) and LBPROC in (128, 192, 2176, 4224, 8320):
             tmean_proc = 128
             LBPROC -= 128
 
+        print('LBPROC=',LBPROC)
         # ------------------------------------------------------------
         # Area cell methods
         # ------------------------------------------------------------
@@ -1393,11 +1441,7 @@ class _VariableMetadata:
         # ------------------------------------------------------------
         # Time cell methods
         # ------------------------------------------------------------
-        if "t" in self._axis:
-            axis = self._axis['t']
-        else:
-            axis = "time"
-
+        axis = getattr(self, '_time_axis', 'time')
         if LBTIM_IB == 0 or LBTIM_IB == 1:
             if axis == "t":
                 cell_methods.append(f"{axis}: point")
@@ -1412,10 +1456,9 @@ class _VariableMetadata:
                 cell_methods.append(f"{axis}: mean within years")
                 cell_methods.append(f"{axis}: mean over years")
 
-        if not cell_methods:
-            return
-
-        self.attrs['cell_methods'] = ' '.join(cell_methods)
+        # Set the data variable cell_methods attribute
+        if cell_methods:
+            self.attrs['cell_methods'] = ' '.join(cell_methods)
 
     def ctime(self, rec):
         """Return elapsed time since the clock time of the given
@@ -1426,8 +1469,8 @@ class _VariableMetadata:
         LBVTIME = self.header_vtime(rec)
         LBDTIME = self.header_dtime(rec)
 
-        key = (LBVTIME, LBDTIME, refunits, calendar)
-        ctime = _cache_ctime.get(key)
+        key = ('ctime', LBVTIME, LBDTIME, refunits, calendar)
+        ctime = _cache_date2num.get(key)
         if ctime is not None:
             return ctime
             
@@ -1444,124 +1487,8 @@ class _VariableMetadata:
                         
         ctime = cftime.date2num(ctime, refunits, calendar) 
         
-        _cache_ctime[key] = ctime
+        _cache__date2num[key] = ctime
         return ctime
-
-    def header_vtime(self, rec):
-        """Return the list [LBYR, LBMON, LBDAT, LBHR, LBMIN] for the
-        given record.
-
-        :Parameters:
-
-            rec:
-
-        :Returns:
-
-            `list`
-
-        **Examples**
-
-        >>> u.header_vtime(rec)
-        (1991, 1, 1, 0, 0)
-
-        """
-        return tuple(rec.int_hdr[INDEX_LBYR : INDEX_LBMIN + 1])
-
-    def header_dtime(self, rec):
-        """Return the list [LBYRD, LBMOND, LBDATD, LBHRD, LBMIND] for
-        the given record.
-
-        :Parameters:
-
-            rec:
-
-        :Returns:
-
-            `list`
-
-        **Examples**
-
-        >>> u.header_dtime(rec)
-        (1991, 2, 1, 0, 0)
-
-        """
-        return tuple(rec.int_hdr[INDEX_LBYRD : INDEX_LBMIND + 1])
-
-    def header_bz(self, rec):
-        """Return the list [BLEV, BRLEV, BHLEV, BHRLEV, BULEV, BHULEV]
-        for the given record.
-
-        :Parameters:
-
-            rec:
-
-        :Returns:
-
-            `list`
-
-        **Examples**
-
-        >>> u.header_bz(rec)
-
-        """
-        real_hdr = rec.real_hdr
-        return tuple(
-            real_hdr[INDEX_BLEV : INDEX_BHRLEV + 1].tolist()
-            + real_hdr[  # BLEV, BRLEV, BHLEV, BHRLEV
-                INDEX_BRSVD1 : INDEX_BRSVD2 + 1
-            ].tolist()  # BULEV, BHULEV
-        )
-
-    def decode_lbexp(self):
-        """Decode the integer value of LBEXP in the PP header into a
-        runid.
-
-        If this value has already been decoded, then it will be returned
-        from the cache, otherwise the value will be decoded and then added
-        to the cache.
-
-        :Returns:
-
-            `str`
-               A string derived from LBEXP. If LBEXP is a negative integer
-               then that number is returned as a string.
-
-        **Examples**
-
-        >>> self.decode_lbexp()
-        'aaa5u'
-        >>> self.decode_lbexp()
-        '-34'
-
-        """
-        LBEXP = self._int_hdr[INDEX_LBEXP]
-
-        runid = _cache_runid.get(LBEXP, None)
-        if runid is not None:
-            # Return the cached decoding
-            return runid
-
-        if LBEXP < 0:
-            runid = str(LBEXP)
-        else:
-            # Convert LBEXP to a binary string, filled out to 30 bits with
-            # zeros
-            bits = bin(LBEXP)
-            bits = bits.lstrip("0b").zfill(30)
-
-            # Step through 6 bits at a time, converting each 6 bit chunk into
-            # a decimal integer, which is used as an index to the characters
-            # lookup list.
-            runid = []
-            for i in range(0, 30, 6):
-                index = int(bits[i : i + 6], 2)
-                if index < _n_characters:
-                    runid.append(_characters[index])
-
-            runid = "".join(runid)
-
-        _cache_runid[LBEXP] = runid
-        return runid
 
     def dtime(self, rec):
         """Return the elapsed time since the data time of the given
@@ -1606,6 +1533,91 @@ class _VariableMetadata:
         _cache_date2num[key] = time
         return time
 
+    def grid_mapping(self, BPLAT, BPLON):
+        """TODO"""
+        key = ('grid_mapping', BPLAT, BPLON)
+        gm_name = self._cache.get(key)
+        if gm_name is None:
+            array = np.array("", dtype='S1')
+            gm = _Variable(
+                name="rotated_latitude_longitude",
+                data=array,
+                attrs={
+                    "grid_mapping_name": "rotated_latitude_longitude",
+                    "grid_north_pole_latitude": BPLAT,
+                    "grid_north_pole_longitude": BPLON
+                }
+            )
+            gm_name = self.add_to_variables(gm)
+            self._cache[key] = gm_name
+            
+        self.attrs['grid_mapping'] =  gm_name
+            
+    def header_bz(self, rec):
+        """Return the list [BLEV, BRLEV, BHLEV, BHRLEV, BULEV, BHULEV]
+        for the given record.
+
+        :Parameters:
+
+            rec:
+
+        :Returns:
+
+            `list`
+
+        **Examples**
+
+        >>> u.header_bz(rec)
+
+        """
+        real_hdr = rec.real_hdr
+        return tuple(
+            real_hdr[INDEX_BLEV : INDEX_BHRLEV + 1].tolist()
+            + real_hdr[  # BLEV, BRLEV, BHLEV, BHRLEV
+                INDEX_BRSVD1 : INDEX_BRSVD2 + 1
+            ].tolist()  # BULEV, BHULEV
+        )
+
+    def header_dtime(self, rec):
+        """Return the list [LBYRD, LBMOND, LBDATD, LBHRD, LBMIND] for
+        the given record.
+
+        :Parameters:
+
+            rec:
+
+        :Returns:
+
+            `list`
+
+        **Examples**
+
+        >>> u.header_dtime(rec)
+        (1991, 2, 1, 0, 0)
+
+        """
+        return tuple(rec.int_hdr[INDEX_LBYRD : INDEX_LBMIND + 1])
+
+    def header_vtime(self, rec):
+        """Return the list [LBYR, LBMON, LBDAT, LBHR, LBMIN] for the
+        given record.
+
+        :Parameters:
+
+            rec:
+
+        :Returns:
+
+            `list`
+
+        **Examples**
+
+        >>> u.header_vtime(rec)
+        (1991, 1, 1, 0, 0)
+
+        """
+        return tuple(rec.int_hdr[INDEX_LBYR : INDEX_LBMIN + 1])
+    
     def model_level_number_coordinate(self, aux=False):
         """model_level_number dimension or auxiliary coordinate.
 
@@ -1618,12 +1630,12 @@ class _VariableMetadata:
             out: `str` or `None`
 
         """
-        array = tuple(rec.int_hdr.item(INDEX_LBLEV) for rec in self._z_recs)
+        array = tuple(rec.int_hdr[INDEX_LBLEV] for rec in self._z_recs)
         key = ('model_level_number_coordinate', aux, array)
         ncvar = self._cache.get(key)
         if ncvar is None:
             # Still here?
-            array = np.array(array, dtype=self._int_hdr_dtype)
+            array = np.array(array)
             if array.min() < 0:
                 return
             
@@ -1632,7 +1644,7 @@ class _VariableMetadata:
             axiscode = 5
             
             if aux:
-                ac = _AuxVar(
+                ac = _Variable(
                     data=array,
                     axiscode=axiscode,
                     DIMESNION_LIST=((self._axis["z"],),)
@@ -1649,39 +1661,9 @@ class _VariableMetadata:
         if not aux:
             self._axis["z"] = ncvar
             
-        self.add_coordinates(ncvar)
+        self.add_to_coordinates(ncvar)
         return ncvar
 
-    def pseudolevel_coordinate(self, LBUSER5):
-        """Create and return the pseudolevel coordinate."""
-        if self._nz == 1:
-            array = (LBUSER5,)
-        else:
-            # 'Z' aggregation has been done along the pseudolevel axis
-            array = tuple(rec.int_hdr.item(lbuser5) for rec in self._z_recs)
-            self._z_axis = "p"
-
-        key = ('pseudolevel_coordinate', array)
-        dim_ncvar = self._cache.get(key)
-        if dim_ncvar is None:
-            # Create new pseudolevel coordinate
-            axiscode = 40
-            array = np.array(array, dtype=self._int_hdr_dtype)
-            dc = _DimensionScale(
-                data=array,
-                axiscode=axiscode,
-                file_obj=self._file_obj,
-                attrs= {"long_name": "pseudolevel"}
-            )
-            dim_ncvar = self.add_to_variables(dc)
-                            
-            self._cache[key] = dim_ncvar
-            
-        self._axis["p"] = dim_ncvar
-        
-        self.add_coordinates(dim_ncvar)
-        return dim_ncvar
-        
     def radiation_wavelength_coordinate(self, rwl, rwl_units):
         """Creata and return the radiation wavelength coordinate."""
         key = ('radiation_wavelength_coordinate', rwl, rwl_units)
@@ -1692,16 +1674,15 @@ class _VariableMetadata:
             bounds = np.array((0.0, rwl), dtype=float)
             
             axiscode = -20 
-            ac = _AuxVar(
+            ac = _Variable(
                 data=array,
                 axiscode=axiscode,
                 attrs={'units': rwl_units},
-                DIMENSION_LIST=(),
             )
             aux_ncvar = self.add_to_variables(ac, 'auxiliary_coordinate')
             
             bounds_dim = self.bounds_dim(bounds)            
-            ac_bounds = _AuxVar(
+            ac_bounds = _Variable(
                 name=f"{aux_ncvar}_bounds",
                 data=bounds,
                 DIMENSION_LIST=((bounds_dim,),)
@@ -1714,9 +1695,89 @@ class _VariableMetadata:
                      
         self._axis["r"] = dim_ncvar
         
-        self.add_coordinates(aux_ncvar)
+        self.add_to_coordinates(aux_ncvar)
         return aux_ncvar
 
+    def pseudolevel_coordinate(self, LBUSER5):
+        """Create and return the pseudolevel coordinate."""
+        if self._nz == 1:
+            array = (LBUSER5,)
+        else:
+            # 'Z' aggregation has been done along the pseudolevel axis
+            array = tuple(rec.int_hdr[INDEX_LBUSER5] for rec in self._z_recs)
+            self._z_axis = "p"
+
+        key = ('pseudolevel_coordinate', array)
+        dim_ncvar = self._cache.get(key)
+        if dim_ncvar is None:
+            # Create new pseudolevel coordinate
+            axiscode = 40
+            array = np.array(array)
+            dc = _DimensionScale(
+                data=array,
+                axiscode=axiscode,
+                file_obj=self._file_obj,
+                attrs= {"long_name": "pseudolevel"}
+            )
+            dim_ncvar = self.add_to_variables(dc)
+                            
+            self._cache[key] = dim_ncvar
+            
+        self._axis["p"] = dim_ncvar
+        
+        self.add_to_coordinates(dim_ncvar)
+        return dim_ncvar
+        
+    def runid(self):
+        """Decode the integer value of LBEXP in the PP header into a
+        runid.
+
+        If this value has already been decoded, then it will be returned
+        from the cache, otherwise the value will be decoded and then added
+        to the cache.
+
+        :Returns:
+
+            `str`
+               A string derived from LBEXP. If LBEXP is a negative integer
+               then that number is returned as a string.
+
+        **Examples**
+
+        >>> self.runid()
+        'aaa5u'
+        >>> self.runid()
+        '-34'
+
+        """
+        LBEXP = self._int_hdr[INDEX_LBEXP]
+
+        runid = _cache_runid.get(LBEXP)
+        if runid is not None:
+            # Return the cached decoding
+            return runid
+
+        if LBEXP < 0:
+            runid = str(LBEXP)
+        else:
+            # Convert LBEXP to a binary string, filled out to 30 bits with
+            # zeros
+            bits = bin(LBEXP)
+            bits = bits.lstrip("0b").zfill(30)
+
+            # Step through 6 bits at a time, converting each 6 bit chunk into
+            # a decimal integer, which is used as an index to the characters
+            # lookup list.
+            runid = []
+            for i in range(0, 30, 6):
+                index = int(bits[i : i + 6], 2)
+                if index < _n_runid_characters:
+                    runid.append(_runid_characters[index])
+
+            runid = "".join(runid)
+
+        _cache_runid[LBEXP] = runid
+        return runid
 
     def size_1_height_coordinate(self, axiscode, height, units):
         """Create and return the size-one height coordinate."""
@@ -1726,18 +1787,16 @@ class _VariableMetadata:
         dim_ncvar = self._cache.get(key)
         if dim_ncvar is None:
             array = np.array((height,), dtype=float)
-            dc = _AuxVar(
-                data=array, axiscode=axiscode, file_obj=self._file_obj,
-                attrs={'units': units}
+            dc = _DimensionScale(
+                data=array, axiscode=axiscode, attrs={'units': units}
             )
-            dim_ncvar = self.add_to_variables(dc, 'scalar_coordinate')
+            dim_ncvar = self.add_to_variables(dc, 'dimension_coordinate')
 
             self._cache[key] = dim_ncvar
         
-        # Add the scalar coordinate variable to the 'coordinates'
-        # attribute
         self._axis["z"] = dim_ncvar
-        self.add_coordinate(dim_ncvar)
+        
+        self.add_to_coordinates(dim_ncvar)
         return dim_ncvar
 
     def test_um_condition(self, um_condition, LBCODE, BPLAT, BPLON):
@@ -1770,10 +1829,9 @@ class _VariableMetadata:
                 return True
 
             # Check pole location in case of incorrect LBCODE
-            atol = self._atol
             if (
-                abs(BPLAT - 90.0) <= atol + cf_rtol() * 90.0
-                and abs(BPLON) <= atol
+                abs(BPLAT - 90.0) <= _ATOL + _RTOL * 90.0
+                and abs(BPLON) <= _ATOL
             ):
                 return True
 
@@ -1782,10 +1840,9 @@ class _VariableMetadata:
                 return True
 
             # Check pole location in case of incorrect LBCODE
-            atol = self._atol
             if not (
-                abs(BPLAT - 90.0) <= atol + self._rtol() * 90.0
-                and abs(BPLON) <= atol
+                abs(BPLAT - 90.0) <= _ATOL + _RTOL * 90.0
+                and abs(BPLON) <= _ATOL
             ):
                 return True
 
@@ -1892,17 +1949,18 @@ class _VariableMetadata:
                 climatology = False
                 
             dc = _DimensionScale(
-                data=array, axiscode=axiscode, file_obj=self._file_obj
+                data=array, axiscode=axiscode, file_obj=self._file_obj,
+                attrs={"units": self._refunits, "calendar": self._calendar}
             )
             dim_ncvar = self.add_to_variables(dc, 'dimension_coordinate')
             self._axis["t"] = dim_ncvar
             
             if bounds is not None:
                 bounds_dim = self.bounds_dim(bounds)            
-                dc_bounds = _AuxVar(
+                dc_bounds = _Variable(
                     name=f"{dim_ncvar}_bounds",
                     data=bounds,
-                    DIMENSION_LIST=((self._axis["t"],), (bounds_dim,)))
+                    DIMENSION_LIST=((self._axis["t"],), (bounds_dim,))
                 )
                 bounds_ncvar = self.add_to_variables(dc_bounds)
                 
@@ -1915,18 +1973,59 @@ class _VariableMetadata:
 
         else:
             self._axis["t"] = dim_ncvar
-        
-        self.add_coordinates(dim_ncvar)
+            
+        self._time_axis = dim_ncvar
+            
+        self.add_to_coordinates(dim_ncvar)
         return dim_ncvar 
 
-    def bounds_dim(bounds):
+    def bounds_dim(self, bounds):
         size = bounds.shape[-1]
-        b = _DimensionScale(
-            name=f"bounds{size}", size=size, file_obj=self._file_obj
-        )
+        name = f"bounds{size}"
+        if name in self.variables:
+            return name
+        
+        b = _DimensionScale(name=name, size=size, file_obj=self._file_obj)
         name = self.add_to_variables(b)
         return name
     
+    def missing_value(self):
+        """TODO"""   
+        int_hdr = self._int_hdr
+        real_hdr = self._real_hdr
+        
+        missing_value = real_hdr[INDEX_BMDI]
+        if missing_value != BMDI_no_missing_data_value:
+            if int_hdr[INDEX_LBUSER1] == 2:
+                # Must have an integer _FillValue for integer data
+                missing_value = missing_value.astype(int_hdr.dtype)
+                   
+            self.attrs["_FillValue"] = missing_value
+            self.attrs["missing_value"] = missing_value
+
+    def packing(self):
+        """TODO"""        
+        # Treat BMKS as a scale_factor if it is neither 0 nor 1
+        int_hdr = self._int_hdr
+        real_hdr = self._real_hdr
+        
+        scale_factor = real_hdr[INDEX_BMKS]
+        if scale_factor != 1.0 and scale_factor != 0.0:
+            if int_hdr[INDEX_LBUSER1] == 2:
+                # Must have an integer scale_factor for integer data
+                scale_factor = scale_factor.astype(int_hdr.dtype)
+                
+            self.attrs["scale_factor"] = scale_factor
+
+        # Treat BDATUM as an add_offset if it is not 0
+        add_offset = real_hdr[INDEX_BDATUM]
+        if add_offset != 0.0:
+            if int_hdr[INDEX_LBUSER1] == 2:
+                # Must have an integer add_offset for integer data
+                add_offset = add_offset.astype(int_hdr.dtype)
+                    
+            self.attrs["add_offset"] = add_offset
+
     def time_coordinate_from_extra_data(self, axiscode, axis):
         """Create the time coordinate from extra data and return it.
 
@@ -1936,49 +2035,53 @@ class _VariableMetadata:
 
         """
         extra = self.extra
-
         array = extra[axis]
-        bounds = extra.get(axis + "_bounds", None)
+        lower_bounds = extra.get(f"{axis}_lower_bound")
+        upper_bounds = extra.get(f"{axis}_lupper_bound")
 
-        calendar = self.calendar
+        calendar = self._calendar
         if calendar == "360_day":
             units = "days since 0-1-1"
         elif calendar == "gregorian":
-            units = _Units["gregorian 1752-09-13"]
+            units = "days since 1752-09-13"
         elif calendar == "365_day":
-            units = _Units["365_day 1752-09-13"]
-        else:
-            units = None
-
+            units = "days since 1752-09-13"
+       
         # Create time domain axis.
         #
         # Note that `axis` might not be "t". For instance, it could be
         # "y" if the time coordinates are coming from extra data.
-        da = self.implementation.initialise_DomainAxis(size=array.size)
-        axisT = self.implementation.set_domain_axis(self.field, da, copy=False)
-        self._axis[axis] = axisT
 
-        dc = self.implementation.initialise_DimensionCoordinate()
-        dc = self.coord_data(dc, array, bounds, units=units)
-        dc = self.coord_axis(dc, axiscode)
-        dc = self.coord_names(dc, axiscode)
-
-        self.implementation.set_dimension_coordinate(
-            self.field,
-            dc,
-            axes=(axisT,),
-            copy=False,
-            autocyclic=_autocyclic_false,
+        dc = _DimensionScale(
+            data=array, axiscode=axiscode,file_obj=self._file_obj,
+            attrs={'units': units}
         )
+        dim_ncvar = self.add_to_variables(dc)
+        
+        self._axis[axis] = dim_ncvar 
+        self._time_axis = dim_ncvar
+        
+        if lower_bounds is not None and upper_bounds is not None:
+            bounds = self.create_bounds_array(lower_bounds, upper_bounds)
+            bounds_dim = self.bounds_dim(bounds)            
+            dc_bounds= _Variable(
+                name=f"{dim_ncvar}_bounds",
+                data=bounds,
+                DIMENSION_LIST=((self._axis[axis],), (bounds_dim,))
+            )
+            dc_bounds_ncvar = self.add_to_variables(dc_bounds)
 
-        return dc
+            dc.setattr('bounds', dc_bounds_ncvar)
+
+        self.add_to_coordinates(dim_ncvar)
+        return dim_ncvar
 
     def time_coordinate_from_um_timeseries(self, axiscode, axis):
         """Create the time coordinate from a timeseries field."""
         # This PP/FF field is a timeseries. The validity time is
         # taken to be the time for the first sample, the data time
         # for the last sample, with the others evenly between.
-        rec = self._recs[0]
+        rec = self._chunk_recs[0]['record']
         vtime = self.vtime(rec)
         dtime = self.dtime(rec)
 
@@ -1997,13 +2100,15 @@ class _VariableMetadata:
 
         dc = _DimensionScale(
             data=array,
+            file_obj=self.file_obj,
             axiscode=axiscode,
-            file_obj=self.fle_obj
             attrs={'units': units, 'calendar': calendar}
         )
         dim_ncvar = self.add_to_variablesd(dc)
 
-        self._axis[axis] = dim_ncvar        
+        self._axis[axis] = dim_ncvar  
+        self._time_axis = dim_ncvar
+        
         self.add_to_coordinates(dim_ncvar)
         return dim_ncvar
 
@@ -2047,7 +2152,7 @@ class _VariableMetadata:
         except ValueError:
             time = np.nan  # ppp
 
-        self._cache_date2num[key] = time
+        _cache_date2num[key] = time
         return time
 
     #    def dddd(self):
@@ -2121,39 +2226,67 @@ class _VariableMetadata:
     #                            dimensions=[xdim],
     #                        )  # DCH xdim?
 
-    def add_to_coordinates(self, ncvar):
-        attrs = self.attrs
-        coordinates = attrs.get('coordinates', '')
-        if coordinates:
-            coordinates += f" {ncvar}"
-        else:
-            coordinates = ncvar
+    def site_coordinates_from_extra_data(self):
+        """Create site-related coordinates from extra data.
 
-        attrs['coordinates'] = coordinates
+        :Returns:
 
-    def add_to_variables(name, default='variable'):
-        """TODO"""
-        if not isinstance(name, (str, None)):
-            var = name
-            name = var.name
-        else:
-            var = None
+            `None`
+
+        """
+        # Create coordinate from extra data
+        for axis, standard_name, units in zip(
+            ("x", "y"),
+            ("longitude", "latitude"),
+            ("degrees_east", "degrees_north"),
+        ):
+            lower_bounds = self.extra.get(axis + "_domain_lower_bound")
+            upper_bounds = self.extra.get(axis + "_domain_upper_bound")
+            if lower_bounds is None or upper_bounds is None:
+                continue
+
+            # Still here?
+            bounds = self.create_bounds_array(lower_bounds, upper_bounds)
+            array = np.average(bounds, axis=1)
+
+            ac = _Variable(
+                name=standard_name,
+                data=array,
+                attrs={'standard_name': standard_name,
+                       'long_name': "region limit",
+                       'units': units},
+                DIMENSION_LIST=((self._axis[axis],),)
+            )
+            aux_ncvar = self.add_to_variables(ac)
+
+            bounds_dim = self.bounds_dim(bounds)            
+            ac_bounds= _Variable(
+                name=f"{aux_ncvar}_bounds",
+                data=bounds,
+                DIMENSION_LIST=((self._axis[axis],),(bounds_dim,))
+            )
+            ac_bounds_ncvar = self.add_to_variables(ac_bounds)
+
+            ac.setattr('bounds', ac_bounds_ncvar)
+
+            self.add_to_coordinates(aux_ncvar)
             
-        if name is None:
-            name = default
+        array = self.extra.get("domain_title")
+        if array is not None:
+            if self._ix == 13:
+                axis = self._axis["x"]                
+            elif self._iy == 13:
+                axis = self._axis["y"]
+                
+            ac = _Variable(
+                name="region",
+                data=array,
+                DIMENSION_LIST=((axis,),)
+            )
+            aux__ncvar = self.add_to_variables(ac)
+            self.add_to_coordinates(aux__ncvar)
 
-        counter = 0
-        unique_name = name
-        while add_to_variables in self.variables:
-            unique_name=f"{name}_{counter}"
-            counter += 1
-
-        if var is not None:
-            var.name = unique_name
             
-        self.variables[unique_name] = var            
-        return unique_name
-
     def xy_coordinate(self, axiscode, axis):
         """Create an X or Y dimension coordinate from header entries or
         extra data.
@@ -2171,19 +2304,21 @@ class _VariableMetadata:
             (`str`, `DimensionCoordinate`)
 
         """
+        real_hdr = self._real_hdr
         if axis == "x":
-            delta = self._bdx
-            origin = self._real_hdr[INDEX_BZX]
+            delta = real_hdr[INDEX_BDX]
+            origin = real_hdr[INDEX_BZX]
             size = self._lbnpt
         else:
-            delta = self._bdy
-            origin = self._real_hdr[INDEX_BZY]
+            delta = real_hdr[INDEX_BDY]
+            origin = real_hdr[INDEX_BZY]
             size = self._lbrow
 
         key = (f"{axis}_coordinate", delta, origin, size)
         dim_ncvar = self._cache.get(key)
         if dim_ncvar is None:
-            if abs(delta) > self._atol:
+            name = None
+            if abs(delta) > _ATOL:
                 # Create regular coordinates from header items
                 if axiscode == 11 or axiscode == -11:
                     origin -= divmod(origin + delta * size, 360.0)[0] * 360
@@ -2192,15 +2327,12 @@ class _VariableMetadata:
                     while origin + delta * size < -360.0:
                         origin += 360.0
     
-                array = _cached_regular_array.get((origin, delta, size))
-                if array is None:
-                    array = np.arange(
-                        origin + delta,
-                        origin + delta * (size + 0.5),
-                        delta,
-                        dtype=float,
-                    )
-                    _cached_regular_array[(origin, delta, size)] = array
+                array = np.arange(
+                    origin + delta,
+                    origin + delta * (size + 0.5),
+                    delta,
+                    dtype=float,
+                )
     
                 # Create the coordinate bounds
                 if axiscode in (13, 31, 40, 99):
@@ -2212,94 +2344,54 @@ class _VariableMetadata:
                     # 99 = Other
                     bounds = None
                 else:
-                    bounds = _cached_regular_bounds.get((origin, delta, size))
-                    if bounds is None:
-                        delta_by_2 = 0.5 * delta
-                        bounds = self.create_bounds_array(
-                            array - delta_by_2, array + delta_by_2
-                        )
-                        _cached_regular_bounds[(origin, delta, size)] = bounds
+                    delta_by_2 = 0.5 * delta
+                    bounds = self.create_bounds_array(
+                        array - delta_by_2, array + delta_by_2
+                    )
+
             else:
                 # Create coordinate from extra data
-                array = self.extra.get(axis, None)
-                lower_bounds = self.extra.get(axis + "_lower_bound", None)
-                upper_bounds = self.extra.get(axis + "_upper_bound", None)
+                array = self.extra.get(axis)
+                lower_bounds = self.extra.get(axis + "_lower_bound")
+                upper_bounds = self.extra.get(axis + "_upper_bound")
                 if lower_bounds is not None and upper_bounds is not None:
                     bounds = self.create_bounds_array(
                         lower_bounds, upper_bounds
                     )
                 else:
                     bounds = None
+
+                if axiscode == 13:                    
+                    name = _coord_long_name[13]
     
             dc = _DimensionScale(
-                data=array, axiscode=axiscode, file_obj=self._file_obj
+                name=name, data=array, axiscode=axiscode,
+                file_obj=self._file_obj
             )
-            dim_ncvar = self.add_to_variables(dc)
-            
+            dim_ncvar = self.add_to_variables(dc)            
+            self._axis[axis] = dim_ncvar
+                                    
             if bounds is not None:
                 bounds_dim = self.bounds_dim(bounds)            
-                dc_bounds= _AuxVar(
-                    data=f"{dim_ncvar}_bounds",
-                    DIMENSION_LIST=((self._axis[axis],), (bounds_dim,)))
+                dc_bounds= _Variable(
+                    name=f"{dim_ncvar}_bounds",
+                    data=bounds,
+                    DIMENSION_LIST=((self._axis[axis],), (bounds_dim,))
                 )
                 bounds_ncvar = self.add_to_variables(dc_bounds)
 
                 # TODO
                 dc.setattr('bounds', bounds_ncvar)
+
+            self._cache[key] = dim_ncvar
+        else:        
+            self._axis[axis] = dim_ncvar
+        
+        if axiscode in (20, 23):
+            self._time_axis = dim_ncvar
             
-        self.add_to_coordinates(ncvar)
-        self._axis[axis] = dim_ncvar
+        self.add_to_coordinates(dim_ncvar)
         return dim_ncvar
-
-    def site_coordinates_from_extra_data(self):
-        """Create site-related coordinates from extra data.
-
-        :Returns:
-
-            `None`
-
-        """
-        # Create coordinate from extra data
-        for axis, standard_name, units in zip(
-            ("x", "y"),
-            ("longitude", "latitude"),
-            (_Units["degrees_east"], _Units["degrees_north"]),
-        ):
-            lower_bounds = self.extra.get(axis + "_domain_lower_bound", None)
-            upper_bounds = self.extra.get(axis + "_domain_upper_bound", None)
-            if lower_bounds is None or upper_bounds is None:
-                continue
-
-            # Still here?
-            bounds = self.create_bounds_array(lower_bounds, upper_bounds)
-            array = np.average(bounds, axis=1)
-
-            ac = self.implementation.initialise_AuxiliaryCoordinate()
-            ac = self.coord_data(ac, array, bounds, units=units)
-
-            ac.standard_name = standard_name
-            ac.long_name = "region limit"
-            self.implementation.set_auxiliary_coordinate(
-                self.field,
-                ac,
-                axes=[_axis["site_axis"]],
-                copy=False,
-                autocyclic=_autocyclic_false,
-            )
-
-        array = self.extra.get("domain_title", None)
-        if array is not None:
-            ac = self.implementation.initialise_AuxiliaryCoordinate()
-            ac = self.coord_data(ac, array, None, units=None)
-
-            ac.standard_name = "region"
-            self.implementation.set_auxiliary_coordinate(
-                self.field,
-                ac,
-                axes=[_axis["site_axis"]],
-                copy=False,
-                autocyclic=_autocyclic_false,
-            )
 
     def z_coordinate(self, axiscode):
         """Create a Z dimension coordinate from BLEV.
@@ -2313,56 +2405,57 @@ class _VariableMetadata:
             `DimensionCoordinate`
 
         """
-        z_recs = self._z_recs
+        z_recs = self._z_recs        
         
-        array = tuple(rec.real_hdr.item(INDEX_BLEV,) for rec in z_recs)
-        bounds0 = tuple(rec.real_hdr.item(INDEX_BRLEV,) for rec in z_recs) # lower level boundary
-        bounds1 = tuple(rec.real_hdr.item(INDEX_BRSVD1,) for rec in z_recs)  # bulev
-
-        key  = tuple(
-            'z_coordinate',
-            'BLEV', array,
-            'BRLEV', bounds0,
-            'BRSVD1', bounds1
-        )
+        # layer centre
+        array = tuple(rec.real_hdr[INDEX_BLEV] for rec in z_recs)
+        # lower level boundary
+        bounds0 = tuple(rec.real_hdr[INDEX_BRLEV] for rec in z_recs)
+        # bulev 
+        bounds1 = tuple(rec.real_hdr[INDEX_BRSVD1] for rec in z_recs)
+        
+        key  = ('z_coordinate', array, bounds0, bounds1)
         dim_ncvar = self._cache.get(key)
-        if dim_ncvar is not None:
-            self._axis["z"] = dim_ncvar
-            return dim_ncvar
-        
-        if _coord_positive.get(axiscode, None) == "down":
-            bounds0, bounds1 = bounds1, bounds0
-
-        real_dtype = self._real_hdr_dtype
-        array = np.array(array, dtype=real_dtype)
-        bounds0 = np.array(bounds0, dtype=real_dtype)
-        bounds1 = np.array(bounds1, dtype=real_dtype)
-        bounds = self.create_bounds_array(bounds0, bounds1)
-
-        if (bounds0 == bounds1).all() or np.allclose(bounds.min(), _pp_rmdi):
-            bounds = None
-        else:
+        if dim_ncvar is None:
+            if _coord_positive.get(axiscode) == "down":
+                bounds0, bounds1 = bounds1, bounds0
+    
+            array = np.array(array)
+            bounds0 = np.array(bounds0)
+            bounds1 = np.array(bounds1)
             bounds = self.create_bounds_array(bounds0, bounds1)
-
-        dc = _DimensionScale(
-            data=array, axiscode=axiscode, file_obj=self._file_obj
-        )
-        dim_ncvar = self.add_to_variables(dc, 'dimension_coordinate')
-
-        self._axis["z"] = dim_ncvar
-
-        if bounds is not None:
-            bounds_dim = self.bounds_dim(bounds)            
-            b = _AuxVar(
-                name=f"{dim_ncvar}_bounds",
-                data=bounds,
-                DIMENSION_LIST=((self._axis["z"],), (bounds_dim,)))
+    
+            if (bounds0 == bounds1).all() or np.allclose(bounds.min(), PP_RMDI):
+                bounds = None
+            else:
+                bounds = self.create_bounds_array(bounds0, bounds1)
+    
+            dc = _DimensionScale(
+                data=array, axiscode=axiscode, file_obj=self._file_obj
             )
-            bounds_ncvar = self.add_to_variables(b)
+            dim_ncvar = self.add_to_variables(dc, 'dimension_coordinate')
+    
+            self._axis["z"] = dim_ncvar
+    
+            if bounds is not None:
+                bounds_dim = self.bounds_dim(bounds)            
+                b = _Variable(
+                    name=f"{dim_ncvar}_bounds",
+                    data=bounds,
+                    DIMENSION_LIST=((self._axis["z"],), (bounds_dim,))
+                )
+                bounds_ncvar = self.add_to_variables(b)
+    
+                # Set the 'bounds' attribute on the parent corodiante
+                # variable
+                dc.setattr('bounds', bounds_ncvar)
 
-            # Set the 'bounds' attribute on the parent corodiante
-            # variable
-            dc.setattr('bounds', bounds_ncvar)
-        
-        self._cache[key] = dim_ncvar
+            self._cache[key] = dim_ncvar
+        else:
+            self._axis["z"] = dim_ncvar
+
+        if axiscode in (20, 23):
+            self._time_axis = dim_ncvar
+            
+        self.add_to_coordinates(dim_ncvar)
         return dim_ncvar

@@ -10,7 +10,7 @@ from .core.data import read_record_raw
 from .core.interpret import get_extra_data_length
 from .core.models import StoreInfo
 from .io.chunk_read import ChunkReadMixin
-
+from .lookup_header import CF_CONVENTIONS
 
 class AstypeContext:
     """Context manager to cast reads from a variable."""
@@ -26,10 +26,10 @@ class AstypeContext:
         self._variable._astype = None
 
 
-class VariableID(ChunkReadMixin):
-    """Small dataset-id-like object that backs Variable reads."""
+class DataVariableID(ChunkReadMixin):
+    """Small dataset-id-like object that backs DataVariable reads."""
 
-    def __init__(self, variable: "Variable"):
+    def __init__(self, variable: "DataVariable"):
         self._variable = variable
         self._index_cache = None
         self._nthindex = None
@@ -188,7 +188,7 @@ class VariableID(ChunkReadMixin):
 
 
 @dataclass
-class Variable:
+class DataVariable:
     """Minimal pyfive-like variable surface for PP/Fields data."""
 
     name: str
@@ -201,12 +201,12 @@ class Variable:
     parent: Any = None
     chunk_records: list[dict[str, Any]] = field(default_factory=list)
     _astype: np.dtype | None = field(default=None, init=False, repr=False)
-    id: VariableID = field(init=False, repr=False)
+    id: DataVariableID = field(init=False, repr=False)
 
     def __post_init__(self):
         if self.dtype is not None:
             self.dtype = np.dtype(self.dtype)
-        self.id = VariableID(self)
+        self.id = DataVariableID(self)
         if self.parent is None:
             self.parent = self.file
 
@@ -235,7 +235,7 @@ class Variable:
     def __array__(self):
         data = self.id.get_data(())
         if data is None:
-            raise TypeError("Variable has no data loader configured")
+            raise TypeError("DataVariable has no data loader configured")
         return np.asarray(data)
 
     def __len__(self):

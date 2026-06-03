@@ -1,16 +1,90 @@
+CF_CONVENTIONS = "CF-1.13"
+
+N_INT_HDR = 45
+N_REAL_HDR = 19
+N_HDR = N_INT_HDR + N_REAL_HDR
+
+(INDEX_LBYR,
+INDEX_LBMON,
+INDEX_LBDAT,
+INDEX_LBHR,
+INDEX_LBMIN,
+INDEX_LBDAY,
+INDEX_LBYRD,
+INDEX_LBMOND,
+INDEX_LBDATD,
+INDEX_LBHRD,
+INDEX_LBMIND,
+INDEX_LBDAYD,
+INDEX_LBTIM,
+INDEX_LBFT,
+INDEX_LBLREC,
+INDEX_LBCODE,
+INDEX_LBHEM,
+INDEX_LBROW,
+INDEX_LBNPT,
+INDEX_LBEXT,
+INDEX_LBPACK,
+INDEX_LBREL,
+INDEX_LBFC,
+INDEX_LBCFC,
+INDEX_LBPROC,
+INDEX_LBVC,
+INDEX_LBRVC,
+INDEX_LBEXP,
+INDEX_LBEGIN,
+INDEX_LBNREC,
+INDEX_LBPROJ,
+INDEX_LBTYP,
+INDEX_LBLEV,
+INDEX_LBRSVD1,
+INDEX_LBRSVD2,
+INDEX_LBRSVD3,
+INDEX_LBRSVD4,
+INDEX_LBSRCE,
+INDEX_LBUSER1,
+INDEX_LBUSER2,
+INDEX_LBUSER3,
+INDEX_LBUSER4,
+INDEX_LBUSER5,
+INDEX_LBUSER6,
+INDEX_LBUSER7) = tuple(range(45))
+
+(INDEX_BRSVD1,
+ INDEX_BRSVD2,
+ INDEX_BRSVD3 ,
+ INDEX_BRSVD4 ,
+ INDEX_BDATUM ,
+ INDEX_BACC  ,
+ INDEX_BLEV ,
+ INDEX_BRLEV,
+ INDEX_BHLEV,
+ INDEX_BHRLEV,
+ INDEX_BPLAT ,
+ INDEX_BPLON ,
+ INDEX_BGOR ,
+ INDEX_BZY ,
+ INDEX_BDY ,
+ INDEX_BZX ,
+ INDEX_BDX ,
+ INDEX_BMDI,
+INDEX_BMKS) = tuple(range(19))
+
+INT_MISSING_DATA = -32768
+
 # PP missing data indicator
-_pp_rmdi = -1.0e30
+PP_RMDI = -1.0e30
 
 # No no-missing-data value of BMDI (as described in UMDP F3 v805)
-_BMDI_no_missing_data_value = -1.0e30
+BMDI_no_missing_data_value = -1.0e30
 
 # Reference surface pressure in Pascals
-_pstar = 1.0e5
+PSTAR = 1.0e5
 
 # --------------------------------------------------------------------
 # Characters used in decoding LBEXP into a runid
 # --------------------------------------------------------------------
-_characters = (
+_runid_characters = (
     "a",
     "b",
     "c",
@@ -49,7 +123,7 @@ _characters = (
     "9",
 )
 
-_n_characters = len(_characters)
+_n_runid_characters = len(_runid_characters)
 
 # --------------------------------------------------------------------
 # Names of PP integer and real header items
