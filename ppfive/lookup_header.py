@@ -1,3 +1,5 @@
+from sys import float_info
+
 CF_CONVENTIONS = "CF-1.13"
 
 N_INT_HDR = 45
@@ -80,6 +82,10 @@ BMDI_no_missing_data_value = -1.0e30
 
 # Reference surface pressure in Pascals
 PSTAR = 1.0e5
+
+ATOL = float_info.epsilon
+RTOL = ATOL
+
 
 # --------------------------------------------------------------------
 # Characters used in decoding LBEXP into a runid

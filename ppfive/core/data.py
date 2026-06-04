@@ -11,6 +11,7 @@ from ..wgdos import unpack_wgdos
 
 
 def _endian_prefix(byte_ordering: str) -> str:
+    """TODO"""
     if byte_ordering == "little_endian":
         return "<"
 
@@ -21,6 +22,7 @@ def _endian_prefix(byte_ordering: str) -> str:
 
 
 def _dtype_for_record(rec: RecordInfo, word_size: int, byte_ordering: str) -> np.dtype:
+    """TODO"""
     data_type, _ = get_type_and_num_words(rec.int_hdr, word_size)
     prefix = _endian_prefix(byte_ordering)
     if data_type == "integer":
@@ -30,6 +32,7 @@ def _dtype_for_record(rec: RecordInfo, word_size: int, byte_ordering: str) -> np
 
 
 def _unpack_cray32(raw: bytes, nwords: int, byte_ordering: str, word_size: int) -> np.ndarray:
+    """TODO"""
     prefix = _endian_prefix(byte_ordering)
     packed = np.frombuffer(raw[: nwords * 4], dtype=np.dtype(f"{prefix}f4"), count=nwords)
     if word_size == 4:
@@ -39,6 +42,7 @@ def _unpack_cray32(raw: bytes, nwords: int, byte_ordering: str, word_size: int) 
 
 
 def _unpack_run_length(raw: bytes, nwords: int, byte_ordering: str, word_size: int, mdi: float) -> np.ndarray:
+    """TODO"""
     prefix = _endian_prefix(byte_ordering)
     dtype = np.dtype(f"{prefix}f{word_size}")
     packed = np.frombuffer(raw, dtype=dtype)
@@ -55,40 +59,52 @@ def _unpack_run_length(raw: bytes, nwords: int, byte_ordering: str, word_size: i
             continue
 
         if src >= packed.size:
-            raise ValueError("Malformed run-length packed data: truncated repeat count")
+            raise ValueError(
+                "Malformed run-length packed data: truncated repeat count"
+            )
 
         repeat = int(0.5 + float(packed[src]))
         src += 1
         if repeat < 0:
-            raise ValueError("Malformed run-length packed data: negative repeat count")
+            raise ValueError(
+                "Malformed run-length packed data: negative repeat count"
+            )
 
         end = dst + repeat
         if end > nwords:
-            raise ValueError("Malformed run-length packed data: repeat exceeds output size")
+            raise ValueError(
+                "Malformed run-length packed data: repeat exceeds output size"
+            )
 
         out[dst:end] = mdi
         dst = end
 
     if dst != nwords:
-        raise ValueError("Malformed run-length packed data: output size mismatch")
+        raise ValueError(
+            "Malformed run-length packed data: output size mismatch"
+        )
 
     return out
 
 
 def get_record_packed_nbytes(rec: RecordInfo, word_size: int) -> int:
+    """TODO"""
     extra_bytes = get_extra_data_length(rec.int_hdr, word_size)
     return rec.disk_length - extra_bytes
 
 
 def read_record_raw(reader: ByteReader, rec: RecordInfo, word_size: int) -> bytes:
+    """TODO"""
     packed_bytes = get_record_packed_nbytes(rec, word_size)
     raw = reader.read_at(rec.data_offset, packed_bytes)
     if len(raw) < packed_bytes:
         raise ValueError("Short read while loading raw record bytes")
+    
     return raw
 
 
 def decode_record_array_from_raw(raw: bytes, rec: RecordInfo, word_size: int, byte_ordering: str) -> np.ndarray:
+    """TODO"""
     pack = int(rec.int_hdr[INDEX_LBPACK]) % 10
     _, nwords = get_type_and_num_words(rec.int_hdr, word_size)
 

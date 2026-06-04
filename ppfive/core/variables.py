@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
 from datetime import datetime
 from typing import Any
+from functools import cmp_to_key
 
 import numpy as np
 
@@ -20,14 +21,12 @@ from .constants import (
     INDEX_BPLON,
     INDEX_BZX,
     INDEX_BZY,
-    INDEX_LBCODE,
     INDEX_LBDAT,
     INDEX_LBDATD,
     INDEX_LBDAY,
     INDEX_LBDAYD,
     INDEX_LBFT,
-    INDEX_LBFC,
-    INDEX_LBHEM,
+    INDEX_LBHEM,INDEX_LBCODE,
     INDEX_LBHR,
     INDEX_LBHRD,
     INDEX_LBREL,
@@ -187,6 +186,9 @@ def build_variable_index(
     for rec in ordered:
         grouped[_between_var_key(rec)].append(rec)
 
+    grouped = split_groups_by_extra_data(grouped)
+#    print('GROUPED=',grouped)
+    
     variable_index: dict[str, dict[str, Any]] = {}
 
     # Assign an integer code to each data variable. This is used as
@@ -331,4 +333,57 @@ def build_variable_index(
 
             int_code += 1
 
+    print(variable_index)
+            
     return variable_index
+
+
+def split_groups_by_extra_data(grouped):
+    """TODO"""
+    new_grouped = {}
+    
+    for key, recs in grouped.items():
+        split = False
+
+        rec0 = recs[0]
+        for rec1 in recs[1:]:
+            if not equal_extra_data(rec0, rec1):
+                split = True
+                break
+
+        if split:
+            # This group doesn't form a complete nz x nt matrix,
+            # so split it up into 1 x 1 groups.
+            for i, rec in enumerate(recs):
+                new_grouped[key + (f"extra_data_{i}")] = [rec]
+        else:
+            new_grouped[key] = recs
+            
+    return new_grouped
+
+def equal_extra_data(rec0, rec1, atol=0.0001, rtol=0.00001):
+    """TODO"""
+    extra0 = rec0.extra_data
+    extra1 = rec0.extra_data
+
+    if extra0 is None:
+        if extra1 is None:
+            return True
+
+        return False
+    
+    if extra1 is None:
+        return False
+
+    if sorted(extra0.keys()) != sorted(extra1.keys()):
+        return False
+    
+    for key, value0 in extra0.items():
+        value1 = extra1[key]
+        if value0.dtype.kind in "SUT" and not np.array_equal(value0, value1):
+            return False
+
+        if not np.allclose(value0, value1, atol=atol, rtol=rtol):
+            return False
+
+    return True

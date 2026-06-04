@@ -5,7 +5,6 @@ from collections.abc import Iterator, Mapping
 from pathlib import Path
 import posixpath
 from typing import Any
-from sys import float_info
 
 import numpy as np
 
@@ -87,6 +86,7 @@ INDEX_LBUSER6,
     INDEX_BMKS,
     PP_RMDI,
     PSTAR ,
+    ATOL,RTOL,
 )
 
 from .lookup_header import (
@@ -100,7 +100,8 @@ from .lookup_header import (
     _true_latitude_longitude_lbcodes,
     _rotated_latitude_longitude_lbcodes,
     _coord_standard_name,
-    _runid_characters, _n_runid_characters
+    _runid_characters,
+    _n_runid_characters
 )
 
 logger = logging.getLogger(__name__)
@@ -251,9 +252,6 @@ class _Variable(Mixin):
     def __getitem__(self, key):
         return self._data[key]
 
-_ATOL = float_info.epsilon
-_RTOL = _ATOL
-
 
 class File(Mapping[str, DataVariable]):
     """A pyfive-style file handle exposing variables as a Mapping."""
@@ -341,6 +339,8 @@ class File(Mapping[str, DataVariable]):
         self.groups: dict[str, Any] = {}
         self.dimensions: dict[str, Any] = {}
 
+        cache = {}
+        
         if variable_index is None:
             file_type = detect_file_type(self._reader)
             self.fmt = file_type.fmt
@@ -373,7 +373,8 @@ class File(Mapping[str, DataVariable]):
                 },
             )
 
-            # Default policy: local POSIX readers choose 1/2/4 by chunk count.
+            # Default policy: local POSIX readers choose 1/2/4 by
+            # chunk count.
             if isinstance(self._reader, LocalPosixReader):
                 auto_threads = self._local_default_thread_count_from_variable_index(variable_index)
                 if auto_threads != self._thread_count:
@@ -393,32 +394,22 @@ class File(Mapping[str, DataVariable]):
             self.byte_ordering = None
             self.word_size = None
 
-        # Dictionary of all dataset variables, keyed by their dataset
-        # names
-        variables = {}
+        self.variables = self._build_variables(variable_index, cache)
 
-        cache = {}
-        for int_code, meta in tuple(variable_index.items()):
-            data_variable = _DataVariableMetadata(
-                meta, variables, self, cache
-            )
-                        
-            # Add a variables entry for athe 'DataVariable'
-            # representing the data variable
-            name = data_variable.name
-            variables[name] = DataVariable(
-                name=name,
-                attrs=_PyfiveAttrs(data_variable.attrs),
-                shape=tuple(meta.get("shape", ())),
-                dtype=meta.get("dtype"),
-                chunk_shape=meta.get("chunk_shape"),
-                data_loader=meta.get("data_loader"),
-                file=self,
-                parent=self,
-                chunk_records=list(meta.get("chunk_records", [])),
-            )
-
-        self.variables = variables
+        # Link in domain ancillaries to formula_terms
+        for XY, orog in cache['orog'].items():
+            if len(orog) != 1:
+                continue
+            
+            for v in cache['atmosphere_hybrid_height'].get(XY, ()):
+                self.update_formula_terms(v, f"orog: {orog[0]}")
+                
+        for XY, pstar in cache['pstar'].items():
+            if len(pstar) != 1:
+                continue
+            
+            for v in cache['amosphere_hybrid_sigma_pressure'].get(XY, ()):
+                self.update_formula_terms(v, f"ps: {pstar[0]}")
                 
     def _build_variables(self, variable_index, cache):
         """TODO"""
@@ -431,9 +422,11 @@ class File(Mapping[str, DataVariable]):
                 meta, variables, self, cache
             )
                         
-            # Add a variables entry for athe 'DataVariable' representing
-            # the data variable
+            # Add a 'variables' entry for this data variable
             name = data_variable.name
+            if name is None:
+                continue
+            
             variables[name] = DataVariable(
                 name=name,
                 attrs=_PyfiveAttrs(data_variable.attrs),
@@ -445,9 +438,6 @@ class File(Mapping[str, DataVariable]):
                 parent=self,
                 chunk_records=list(meta.get("chunk_records", [])),
             )
-
-            # Remove the original variables entry for 'meta'
-            variables.pop(int_code)
             
         return variables
 
@@ -459,6 +449,14 @@ class File(Mapping[str, DataVariable]):
     def consolidated_metadata(self) -> bool | None:
         return None
 
+    def update_formula_terms(name, term):
+        v = self.variables[name]
+        formula_terms = v.attrs.get('formula_terms')
+        if formula_terms is not None:
+             formula_terms += f" {term}"
+             v.attrs['formula_terms'] = formula_terms
+             
+    
     def get_lazy_view(self, key: str) -> DataVariable:
         # UM guidance says this cannot be fully implemented yet.
         logger.info("get_lazy_view is not supported; returning normal variable view")
@@ -473,6 +471,7 @@ class File(Mapping[str, DataVariable]):
         """Configure experimental chunk/record read parallelism."""
         if thread_count is None:
             thread_count = 0
+            
         thread_count = int(thread_count)
         if thread_count < 0:
             raise ValueError("thread_count must be >= 0")
@@ -491,10 +490,9 @@ class File(Mapping[str, DataVariable]):
                     "cat_range_allowed": self._cat_range_allowed,
                 },
             )
-#            self._pyfive_dimension_scales = {}
-#            self._grid_mapping_vars = {}
-            self._variables = self._build_variables(variable_index)
-#            self._refresh_variable_views()
+            self.variables = self._build_variables(
+                variable_index, cache
+            )
 
     def __getitem__(self, key: str) -> DataVariable:
         if not isinstance(key, str):
@@ -563,6 +561,9 @@ class _DataVariableMetadata:
 
         # Data variable name                
         self.name = None
+
+        self.orog = []
+        self.pstar = []
         
         self.variables = variables
         
@@ -571,19 +572,15 @@ class _DataVariableMetadata:
         um_version =  file_obj._um_version
         
         self._cache = cache
-#        print(data_variable_meta)
 
         chunk_recs = data_variable_meta['chunk_records']
         self._chunk_recs = chunk_recs
-#        self._recs = [chunk_rec['record'] for chunk_rec in chunk_recs]
 
         rec0 = chunk_recs[0]['record']
         int_hdr = rec0.int_hdr
         real_hdr = rec0.real_hdr
         self._int_hdr_dtype = int_hdr.dtype
         self._real_hdr_dtype = real_hdr.dtype
-#        int_hdr = int_hdr.tolist()
-#        real_hdr = rec0.real_hdr.tolist()
 
         self._int_hdr = int_hdr
         self._real_hdr = real_hdr
@@ -604,32 +601,29 @@ class _DataVariableMetadata:
         submodel = int_hdr[INDEX_LBUSER7]
         BPLAT = real_hdr[INDEX_BPLAT]
         BPLON = real_hdr[INDEX_BPLON]
-#        BDX = real_hdr[INDEX_BDX]
-#        BDY = real_hdr[INDEX_BDY]
 
         self._lbnpt = LBNPT
         self._lbrow = LBROW
         self._lbtim = LBTIM
         self._lbproc = LBPROC
-#        self._bdx = BDX
-#        self._bdy = BDY
 
         if not LBROW or not LBNPT:
             logger.warn(
                 f"WARNING: Skipping STASH code {stash} with LBROW={LBROW}, "
-                f"LBNPT={LBNPT}, LBPACK={int_hdr[INDEX_LBPACK]} " # TODO
+                f"LBNPT={LBNPT}, LBPACK={int_hdr[INDEX_LBPACK]} "
                 "(possibly runlength encoded)"
             )  # pragma: no cover
-            self.field = (None,)
             return
 
         if stash:
             section, item = divmod(stash, 1000)
-            um_stash_source = "m%02ds%02di%03d" % (submodel, section, item)
+            um_stash_source = f"m{submodel:02d}s{section:02d}i{item:03d}"
         else:
             um_stash_source = None
 
-        header_um_version, source = divmod(int_hdr[INDEX_LBSRCE], 10000)
+        header_um_version, source = divmod(
+            int_hdr[INDEX_LBSRCE], 10000
+        )
 
         if header_um_version > 0 and int(um_version) == um_version:
             # Use version derived from from header
@@ -688,7 +682,7 @@ class _DataVariableMetadata:
         else:
             self._ix = None
             self._iy = None
-        print('lbvc=',LBVC, LBCODE)
+
         self._iz = _lbvc_to_axiscode.get(LBVC)
 
         # Set _it from the calendar type
@@ -769,11 +763,11 @@ class _DataVariableMetadata:
             z_recs, t_recs = t_recs, z_rec
         
         # The 'Z' headers might be in the wrong order (i.e. not in the
-        # order that we wan the coordinate arrays to be), so let's get
-        # them in correct order.
+        # order that we want the coordinate arrays to be), so let's
+        # get them in correct order.
         z_recs = sorted(z_recs, key=lambda x: x['chunk_coords'])
-        z_recs = [chunk_rec['record'] for chunk_rec in z_recs]
-        
+
+        z_recs = [chunk_rec['record'] for chunk_rec in z_recs]        
         t_recs = [chunk_rec['record'] for chunk_rec in t_recs]
         
         self._z_recs = z_recs
@@ -783,8 +777,7 @@ class _DataVariableMetadata:
         self._axis = {}
         
         LBUSER5 = rec0.int_hdr[INDEX_LBUSER5]
-        print(rec0)
-        print(data_variable_meta['shape'])
+
         self._z_axis = "z"
         
         cf_properties["runid"] = self.runid()
@@ -925,7 +918,7 @@ class _DataVariableMetadata:
         if LBUSER5 != 0:
             self.pseudolevel_coordinate(LBUSER5)
 
-        # Set cell methods
+        # Set the cell_methods attribute
         self.cell_methods()
 
         # Set packing attributes
@@ -934,13 +927,41 @@ class _DataVariableMetadata:
         # Set missing value attributes
         self.missing_value()
 
+        # ------------------------------------------------------------
+        # Register if the data variable is an orogrpahy or surface
+        # pressure.
+        # ------------------------------------------------------------
+        cache.setdefault('orog', {})
+        cache.setdefault('pstar', {})
+        cache.setdefault('atmosphere_hybrid_height', {})
+        cache.setdefault('atmosphere_hybrid_sigma_pressure', {})
+
+        # Key defining the XY grid
+        self._XY = (
+            real_hdr[INDEX_BDX],
+            real_hdr[INDEX_BZX],
+            LBNPT,
+            real_hdr[INDEX_BDY],
+            real_hdr[INDEX_BZY],
+            real_hdr[INDEX_BGOR],
+            LBROW,
+            LBHEM,
+            LBCODE,
+            LBUSER7,
+        )
+
+        if self.attrs.get('standard_name') == "surface_altitude":            
+            cache['orog'].setdefault(XY, []).append(identity)
+        
+        if self.attrs.get('standard_name') == "air_pressure_at_surface":
+            cache['pstar'].setdefault(XY, []).append(identity)
+        
         # Set the axis names in the data variable's attributes
         if z_first:
             axis_order = 'ptyx'
         else:
             axis_order = 'tzyx'
 
-        print(self._axis)
         dim_names = []
         um_dummy_dim =  'um_dummy_dim' 
         for axis in axis_order:
@@ -1182,7 +1203,13 @@ class _DataVariableMetadata:
             
         else:
             self._axis['z'] = dim_ncvar
-            
+
+        # Register the data variable as having an
+        # atmosphere_hybrid_height vertical coordinate
+        self._atmosphere_hybrid_height = True                       
+        cache['atmosphere_hybrid_height'].setdefault(self._XY, [])        
+        cache['atmosphere_hybrid_height'][self._XY].append(dim_ncvar)
+
         self.add_to_coordinates(dim_ncvar)
         return dim_ncvar
 
@@ -1321,7 +1348,13 @@ class _DataVariableMetadata:
 
         else:
             self._axis['z'] = dim_ncvar
-    
+            
+        # Register the data variable as having an
+        # atmosphere_hybrid_sigma_pressure vertical coordinate
+        self._atmosphere_hybrid_sigma_pressure = True)
+        cache['atmosphere_hybrid_sigma_pressure'].setdefault(self._XY, [])
+        cache['atmosphere_hybrid_sigma_pressure'][self._XY].append(dim_ncvar)
+            
         self.add_to_coordinates(dim_ncvar)
         return dim_ncvar
 
@@ -1389,7 +1422,6 @@ class _DataVariableMetadata:
         """
         cell_methods = []
         LBPROC = self._lbproc
-        print('LBPROC=',LBPROC)
         LBTIM_IB = self._lbtim_ib
         tmean_proc = 0
 
@@ -1400,12 +1432,10 @@ class _DataVariableMetadata:
             cell_methods.append("realization: mean")
             LBPROC -= 131072
 
-        print('LBPROC=',LBPROC, LBTIM_IB )
         if LBTIM_IB in (2, 3) and LBPROC in (128, 192, 2176, 4224, 8320):
             tmean_proc = 128
             LBPROC -= 128
 
-        print('LBPROC=',LBPROC)
         # ------------------------------------------------------------
         # Area cell methods
         # ------------------------------------------------------------
@@ -1830,8 +1860,8 @@ class _DataVariableMetadata:
 
             # Check pole location in case of incorrect LBCODE
             if (
-                abs(BPLAT - 90.0) <= _ATOL + _RTOL * 90.0
-                and abs(BPLON) <= _ATOL
+                abs(BPLAT - 90.0) <= ATOL + RTOL * 90.0
+                and abs(BPLON) <= ATOL
             ):
                 return True
 
@@ -1841,8 +1871,8 @@ class _DataVariableMetadata:
 
             # Check pole location in case of incorrect LBCODE
             if not (
-                abs(BPLAT - 90.0) <= _ATOL + _RTOL * 90.0
-                and abs(BPLON) <= _ATOL
+                abs(BPLAT - 90.0) <= ATOL + RTOL * 90.0
+                and abs(BPLON) <= ATOL
             ):
                 return True
 
@@ -2318,7 +2348,7 @@ class _DataVariableMetadata:
         dim_ncvar = self._cache.get(key)
         if dim_ncvar is None:
             name = None
-            if abs(delta) > _ATOL:
+            if abs(delta) > ATOL:
                 # Create regular coordinates from header items
                 if axiscode == 11 or axiscode == -11:
                     origin -= divmod(origin + delta * size, 360.0)[0] * 360

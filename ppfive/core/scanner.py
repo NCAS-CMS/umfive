@@ -6,7 +6,7 @@ from .constants import INDEX_LBBEGIN, N_HDR
 from .header import decode_header_from_bytes
 from .interpret import get_ff_disk_length, get_extra_data_offset_and_length
 from .models import FileTypeInfo, RecordInfo
-from .extra_data import ExtraDataUnpacker
+#from .extra_data import ExtraDataUnpacker
 
 def _read_word(reader: ByteReader, word_index: int, word_size: int, byte_ordering: str) -> int:
     offset = word_index * word_size
@@ -75,15 +75,19 @@ def scan_pp_headers(reader: ByteReader, file_type: FileTypeInfo) -> list[RecordI
         data_record_len, after_data = data
         data_offset = after_header + word_size
 
+        # Read any extra data and parse it into a dictionary
         extra_data_offset, extra_data_length = (
             get_extra_data_offset_and_length(
                 int_hdr, data_offset, data_record_len, word_size
             )
         )
-
-        extra_data = read_extra_data(reader, 
-            extra_data_offset, extra_data_length, word_size, byte_ordering
-        )
+        if extra_data_length:        
+            extra_data = read_extra_data(
+                reader, 
+                extra_data_offset, extra_data_length, word_size, byte_ordering
+            )
+        else:
+            extra_data = None
         
         recs.append(
             RecordInfo(
@@ -153,6 +157,20 @@ def scan_ff_headers(reader: ByteReader, file_type: FileTypeInfo) -> list[RecordI
         data_offset = data_offset_specified if data_offset_specified != 0 else data_offset_calculated
         data_offset_calculated += disk_length
 
+        # Read any extra data and parse it into a dictionary
+        extra_data_offset, extra_data_length = (
+            get_extra_data_offset_and_length(
+                int_hdr, data_offset, data_record_len, word_size
+            )
+        )
+        if extra_data_length:        
+            extra_data = read_extra_data(
+                reader, 
+                extra_data_offset, extra_data_length, word_size, byte_ordering
+            )
+        else:
+            extra_data = None
+        
         recs.append(
             RecordInfo(
                 int_hdr=int_hdr,
@@ -160,6 +178,7 @@ def scan_ff_headers(reader: ByteReader, file_type: FileTypeInfo) -> list[RecordI
                 header_offset=header_offset,
                 data_offset=data_offset,
                 disk_length=disk_length,
+                extra_data=extra_data
             )
         )
 
@@ -168,7 +187,7 @@ def scan_ff_headers(reader: ByteReader, file_type: FileTypeInfo) -> list[RecordI
 def read_extra_data(
         reader, extra_data_offset,  extra_data_length, word_size, byte_ordering
 ):
-    
+    """TODO"""
     raw_extra_data = reader.read_at(extra_data_offset,  extra_data_length)
-    extra = ExtraDataUnpacker(raw_extra_data , word_size, byte_ordering)
+    extra = ExtraDataUnpacker(raw_extra_data, word_size, byte_ordering)
     return extra.get_data()
