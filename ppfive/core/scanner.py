@@ -6,7 +6,7 @@ from .constants import INDEX_LBBEGIN, N_HDR
 from .header import decode_header_from_bytes
 from .interpret import get_ff_disk_length, get_extra_data_offset_and_length
 from .models import FileTypeInfo, RecordInfo
-#from .extra_data import ExtraDataUnpacker
+from .extra_data import ExtraDataUnpacker
 
 def _read_word(reader: ByteReader, word_index: int, word_size: int, byte_ordering: str) -> int:
     offset = word_index * word_size

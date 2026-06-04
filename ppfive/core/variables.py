@@ -200,10 +200,10 @@ def build_variable_index(
             first = recs_split[0]
 
             z_keys_set = {_z_key(r) for r in recs_split}
+            # Don't reverse pseudolevels and depth and model_level_numberlevels
             has_pseudo = any(zk[0] is not None for zk in z_keys_set)
-            depth = first.int_hdr[INDEX_LBVC] == 2
-            # Don't reverse pseudolevels and depth levels
-            z_levels = sorted(z_keys_set, reverse=not has_pseudo and not depth)
+            reverse = not (has_pseudo or first.int_hdr[INDEX_LBVC] in (2, 6))
+            z_levels = sorted(z_keys_set, reverse=reverse)
             t_steps = sorted({_t_key(r) for r in recs_split})
             z_index = {k: i for i, k in enumerate(z_levels)}
             t_index = {k: i for i, k in enumerate(t_steps)}

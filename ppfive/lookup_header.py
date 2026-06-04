@@ -391,7 +391,7 @@ _lbvc_to_axiscode = {
     2: 4,  # depth (Depth)
     3: None,  # (Geopotential (= g*height))
     4: None,  # (ICAO height)
-    6: 4,  # model_level_number  # Changed from 5 !!!
+    6: 5,  # model_level_number  # Changed from 5 !!!
     7: None,  # (Exner pressure)
     8: 1,  # air_pressure  (Pressure)
     9: 3,  # atmosphere_hybrid_sigma_pressure_coordinate (Hybrid pressure)

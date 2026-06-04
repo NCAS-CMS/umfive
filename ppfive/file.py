@@ -395,21 +395,24 @@ class File(Mapping[str, DataVariable]):
             self.word_size = None
 
         self.variables = self._build_variables(variable_index, cache)
-
-        # Link in domain ancillaries to formula_terms
-        for XY, orog in cache['orog'].items():
-            if len(orog) != 1:
-                continue
-            
-            for v in cache['atmosphere_hybrid_height'].get(XY, ()):
-                self.update_formula_terms(v, f"orog: {orog[0]}")
-                
-        for XY, pstar in cache['pstar'].items():
-            if len(pstar) != 1:
-                continue
-            
-            for v in cache['amosphere_hybrid_sigma_pressure'].get(XY, ()):
-                self.update_formula_terms(v, f"ps: {pstar[0]}")
+        print(self.variables)
+        print(list(self.variables))
+        print(self.variables['um_dummy_dim'])
+#        # Link in domain ancillaries to formula_terms
+#        for XY, orog in cache['orog'].items():
+#            if len(orog) != 1:
+#                continue
+#            
+#            for v in cache['atmosphere_hybrid_height'].get(XY, ()):
+#                self.update_formula_terms(v, f"orog: {orog[0]}")
+#                
+#        for XY, pstar in cache['pstar'].items():
+#            if len(pstar) != 1:
+#                continue
+#            
+#            for v in cache['atmosphere_hybrid_sigma_pressure'].get(XY, ()):
+#                print(v)
+#                self.update_formula_terms(v, f"ps: {pstar[0]}")
                 
     def _build_variables(self, variable_index, cache):
         """TODO"""
@@ -449,13 +452,16 @@ class File(Mapping[str, DataVariable]):
     def consolidated_metadata(self) -> bool | None:
         return None
 
-    def update_formula_terms(name, term):
-        v = self.variables[name]
-        formula_terms = v.attrs.get('formula_terms')
-        if formula_terms is not None:
-             formula_terms += f" {term}"
-             v.attrs['formula_terms'] = formula_terms
-             
+    def update_formula_terms(self, name, terms):
+        """TODO"""
+        var = self.variables[name]            
+        formula_terms = var.attrs.get('formula_terms')
+        if formula_terms is None:
+            formula_terms = terms
+        else:
+            formula_terms += f" {terms}"
+
+        var.attrs['formula_terms'] = formula_terms             
     
     def get_lazy_view(self, key: str) -> DataVariable:
         # UM guidance says this cannot be fully implemented yet.
@@ -562,8 +568,8 @@ class _DataVariableMetadata:
         # Data variable name                
         self.name = None
 
-        self.orog = []
-        self.pstar = []
+#        self.orog = []
+#        self.pstar = []
         
         self.variables = variables
         
@@ -606,6 +612,8 @@ class _DataVariableMetadata:
         self._lbrow = LBROW
         self._lbtim = LBTIM
         self._lbproc = LBPROC
+        self._lbvc = LBVC
+        self._stash = stash
 
         if not LBROW or not LBNPT:
             logger.warn(
@@ -697,6 +705,20 @@ class _DataVariableMetadata:
         self._cf_info = {}
         print(self._it, self._iz, self._iy, self._ix)
 
+        # A key defining the XY grid
+        self._XY = (
+            LBROW,
+            LBNPT,
+            int_hdr[INDEX_LBHEM],
+            LBCODE,
+            int_hdr[INDEX_LBUSER7],
+            real_hdr[INDEX_BDX],
+            real_hdr[INDEX_BZX],
+            real_hdr[INDEX_BDY],
+            real_hdr[INDEX_BZY],
+            real_hdr[INDEX_BGOR],
+        )
+
         # The STASH code has been set in the PP header, so try to find
         # its standard_name from the conversion table
         um_condition = None
@@ -745,6 +767,7 @@ class _DataVariableMetadata:
 
         # Set the data variable name
         self.name = self.add_to_variables(identity)
+        cf_properties["identity"] = identity
             
         if long_name is None:
             cf_properties["long_name"] = identity
@@ -927,34 +950,20 @@ class _DataVariableMetadata:
         # Set missing value attributes
         self.missing_value()
 
-        # ------------------------------------------------------------
-        # Register if the data variable is an orogrpahy or surface
-        # pressure.
-        # ------------------------------------------------------------
-        cache.setdefault('orog', {})
-        cache.setdefault('pstar', {})
-        cache.setdefault('atmosphere_hybrid_height', {})
-        cache.setdefault('atmosphere_hybrid_sigma_pressure', {})
-
-        # Key defining the XY grid
-        self._XY = (
-            real_hdr[INDEX_BDX],
-            real_hdr[INDEX_BZX],
-            LBNPT,
-            real_hdr[INDEX_BDY],
-            real_hdr[INDEX_BZY],
-            real_hdr[INDEX_BGOR],
-            LBROW,
-            LBHEM,
-            LBCODE,
-            LBUSER7,
-        )
-
-        if self.attrs.get('standard_name') == "surface_altitude":            
-            cache['orog'].setdefault(XY, []).append(identity)
-        
-        if self.attrs.get('standard_name') == "air_pressure_at_surface":
-            cache['pstar'].setdefault(XY, []).append(identity)
+#        # ------------------------------------------------------------
+#        # Register if the data variable is an orogrpahy or surface
+#        # pressure.
+#        # ------------------------------------------------------------
+#        cache.setdefault('orog', {})
+#        cache.setdefault('pstar', {})
+#        cache.setdefault('atmosphere_hybrid_height', {})
+#        cache.setdefault('atmosphere_hybrid_sigma_pressure', {})
+#
+#        if self.attrs.get('standard_name') == "surface_altitude":            
+#            cache['orog'].setdefault(self._XY, []).append(identity)
+#        
+#        if self.attrs.get('standard_name') == "surface_air_pressure":
+#            cache['pstar'].setdefault(self._XY, []).append(identity)
         
         # Set the axis names in the data variable's attributes
         if z_first:
@@ -963,23 +972,20 @@ class _DataVariableMetadata:
             axis_order = 'tzyx'
 
         dim_names = []
-        um_dummy_dim =  'um_dummy_dim' 
+        um_dummy_dim =  'um_dummy_dim'
         for axis in axis_order:
             if axis in self._axis:
                 dim_names.append(self._axis[axis])
             else:
-                if um_dummy_dim in self.variables:
-                    # Use an existing size-1 dummy dimension
-                    dim_ncvar = self.variables[um_dummy_dim]
-                else:
+                if um_dummy_dim not in self.variables:
                     # Create a size-1 dummy dimension
                     d = _DimensionScale(
-                        name=um_dummy_dim, size=1, file_obj=self._file_obj
+                        name='um_dummy_dim', size=1, file_obj=self._file_obj
                     )
-                    dim_ncvar = self.add_to_variables(d)
-
-                dim_names.append(dim_ncvar)
-                           
+                    self.add_to_variables(d)
+                    
+                dim_names.append(um_dummy_dim)
+        print(self._stash, axis_order, self._axis, dim_names)
         self.attrs["DIMENSION_LIST"] = tuple((ncdim,) for ncdim in dim_names)
 
     def add_to_coordinates(self, ncvar):
@@ -1194,21 +1200,20 @@ class _DataVariableMetadata:
                 
             # Set the 'forumla terms' attriubtes on the parent coordinate
             # and coordinate bounds variables
-            dc.setattr('formula_terms',
-                       f"a: {da_a.name} b: {da_b.name}")
-            dc_bounds.setattr('formula_terms',
-                              f"a: {da_a_bounds.name} b: {da_b_bounds.name}")
-
+            self.set_formula_terms(dc, f"a: {da_a.name} b: {da_b.name}")
+            self.set_formula_terms(
+                dc_bounds, f"a: {da_a_bounds.name} b: {da_b_bounds.name}"
+            )
+            
             self._cache[key] = dim_ncvar
             
+#            # Register the data variable as having an
+#            # atmosphere_hybrid_height vertical coordinate
+#            self._atmosphere_hybrid_height = True                       
+#            self._cache['atmosphere_hybrid_height'].setdefault(self._XY, [])
+#            self._cache['atmosphere_hybrid_height'][self._XY].append(dim_ncvar)            
         else:
             self._axis['z'] = dim_ncvar
-
-        # Register the data variable as having an
-        # atmosphere_hybrid_height vertical coordinate
-        self._atmosphere_hybrid_height = True                       
-        cache['atmosphere_hybrid_height'].setdefault(self._XY, [])        
-        cache['atmosphere_hybrid_height'][self._XY].append(dim_ncvar)
 
         self.add_to_coordinates(dim_ncvar)
         return dim_ncvar
@@ -1255,9 +1260,9 @@ class _DataVariableMetadata:
             bk_bounds = []        
             
             for BLEV, BRLEV, BHLEV, BHRLEV, BULEV, BHULEV in items:
-                array.append(BLEV + BHLEV / _pstar)
+                array.append(BLEV + BHLEV / PSTAR)
                 bounds.append(
-                    [BRLEV + BHRLEV / _pstar, BULEV + BHULEV / _pstar]
+                    [BRLEV + BHRLEV / PSTAR, BULEV + BHULEV / PSTAR]
                 )
     
                 ak_array.append(BHLEV)
@@ -1275,7 +1280,7 @@ class _DataVariableMetadata:
     
             # Insert new Z axis
             dc = _DimensionScale(
-                data=array, axiscode=axicode, file_obj=self._file_obj
+                data=array, axiscode=axiscode, file_obj=self._file_obj
             )
             dim_ncvar = self.add_to_variables(dc, 'dimension_coordinate')
             self._axis['z'] = dim_ncvar
@@ -1321,7 +1326,7 @@ class _DataVariableMetadata:
                     "long_name": "atmosphere_hybrid_sigma_pressure_coordinate_bk",
                     "units": "1"
                 },
-                DIMENSION_LIST=((_axis["z"],),)
+                DIMENSION_LIST=((self._axis["z"],),)
             )
             ncvar = self.add_to_variables(da_b)
             
@@ -1339,21 +1344,22 @@ class _DataVariableMetadata:
                 
             # Set the 'forumla terms' attriubtes on the parent coordinate
             # and coordinate bounds variables
-            dc.setattr('formula_terms',
-                       f"a: {da_a.name} b: {da_b.name}")
-            dc_bounds.setattr('formula_terms',
-                              f"a: {da_a_bounds.name} b: {da_b_bounds.name}")
+            self.set_formula_terms(dc, f"a: {da_a.name} b: {da_b.name}")
+            self.set_formula_terms(
+                dc_bounds, f"a: {da_a_bounds.name} b: {da_b_bounds.name}"
+            )
     
             self._cache[key] = dim_ncvar
 
+#            # Register the data variable as having an
+#            # atmosphere_hybrid_sigma_pressure vertical coordinate
+#            self._atmosphere_hybrid_sigma_pressure = True
+#            self._cache['atmosphere_hybrid_sigma_pressure'].setdefault(self._XY, [])
+#            self._cache['atmosphere_hybrid_sigma_pressure'][self._XY].append(dim_ncvar)
+            
+
         else:
             self._axis['z'] = dim_ncvar
-            
-        # Register the data variable as having an
-        # atmosphere_hybrid_sigma_pressure vertical coordinate
-        self._atmosphere_hybrid_sigma_pressure = True)
-        cache['atmosphere_hybrid_sigma_pressure'].setdefault(self._XY, [])
-        cache['atmosphere_hybrid_sigma_pressure'][self._XY].append(dim_ncvar)
             
         self.add_to_coordinates(dim_ncvar)
         return dim_ncvar
@@ -1677,7 +1683,7 @@ class _DataVariableMetadata:
                 ac = _Variable(
                     data=array,
                     axiscode=axiscode,
-                    DIMESNION_LIST=((self._axis["z"],),)
+                    DIMENSION_LIST=((self._axis["z"],),)
                 )
                 ncvar = self.add_to_variables(ac, 'auxiliary_coordinate')
             else:
@@ -2445,6 +2451,7 @@ class _DataVariableMetadata:
         bounds1 = tuple(rec.real_hdr[INDEX_BRSVD1] for rec in z_recs)
         
         key  = ('z_coordinate', array, bounds0, bounds1)
+        print(self._stash, self._lbvc, axiscode, key)
         dim_ncvar = self._cache.get(key)
         if dim_ncvar is None:
             if _coord_positive.get(axiscode) == "down":
@@ -2489,3 +2496,8 @@ class _DataVariableMetadata:
             
         self.add_to_coordinates(dim_ncvar)
         return dim_ncvar
+
+    def set_formula_terms(self, var, terms):
+        """TODO"""
+        var.attrs['formula_terms'] = terms             
+    
