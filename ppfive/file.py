@@ -397,7 +397,7 @@ class File(Mapping[str, DataVariable]):
         self.variables = self._build_variables(variable_index, cache)
         print(self.variables)
         print(list(self.variables))
-        print(self.variables['um_dummy_dim'])
+
 #        # Link in domain ancillaries to formula_terms
 #        for XY, orog in cache['orog'].items():
 #            if len(orog) != 1:
@@ -429,7 +429,7 @@ class File(Mapping[str, DataVariable]):
             name = data_variable.name
             if name is None:
                 continue
-            
+            print(tuple(meta.get("shape", ())),)
             variables[name] = DataVariable(
                 name=name,
                 attrs=_PyfiveAttrs(data_variable.attrs),
@@ -844,6 +844,7 @@ class _DataVariableMetadata:
         # Create the 'Z' dimension coordinate
         # --------------------------------------------------------
         axiscode = self._iz
+        print('Z axiscode', axiscode, self._lbvc)
         if axiscode is not None:
             dim_ncvar = None
             
@@ -976,15 +977,15 @@ class _DataVariableMetadata:
         for axis in axis_order:
             if axis in self._axis:
                 dim_names.append(self._axis[axis])
-            else:
-                if um_dummy_dim not in self.variables:
-                    # Create a size-1 dummy dimension
-                    d = _DimensionScale(
-                        name='um_dummy_dim', size=1, file_obj=self._file_obj
-                    )
-                    self.add_to_variables(d)
-                    
-                dim_names.append(um_dummy_dim)
+            #else:
+            #    if um_dummy_dim not in self.variables:
+            #        # Create a size-1 dummy dimension
+            #        d = _DimensionScale(
+            #            name='um_dummy_dim', size=1, file_obj=self._file_obj
+            #        )
+            #        self.add_to_variables(d)
+            #        
+            #    dim_names.append(um_dummy_dim)
         print(self._stash, axis_order, self._axis, dim_names)
         self.attrs["DIMENSION_LIST"] = tuple((ncdim,) for ncdim in dim_names)
 
@@ -1668,6 +1669,7 @@ class _DataVariableMetadata:
         """
         array = tuple(rec.int_hdr[INDEX_LBLEV] for rec in self._z_recs)
         key = ('model_level_number_coordinate', aux, array)
+        print ('MODEL LEV NUM', key)
         ncvar = self._cache.get(key)
         if ncvar is None:
             # Still here?
@@ -2451,7 +2453,7 @@ class _DataVariableMetadata:
         bounds1 = tuple(rec.real_hdr[INDEX_BRSVD1] for rec in z_recs)
         
         key  = ('z_coordinate', array, bounds0, bounds1)
-        print(self._stash, self._lbvc, axiscode, key)
+        print('ZZZZZZ', self._stash, self._lbvc, axiscode, key)
         dim_ncvar = self._cache.get(key)
         if dim_ncvar is None:
             if _coord_positive.get(axiscode) == "down":

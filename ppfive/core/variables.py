@@ -202,7 +202,10 @@ def build_variable_index(
             z_keys_set = {_z_key(r) for r in recs_split}
             # Don't reverse pseudolevels and depth and model_level_numberlevels
             has_pseudo = any(zk[0] is not None for zk in z_keys_set)
-            reverse = not (has_pseudo or first.int_hdr[INDEX_LBVC] in (2, 6))
+            reverse = False
+            if first.int_hdr[INDEX_LBVC]  in (8,):
+                reverse = True
+                
             z_levels = sorted(z_keys_set, reverse=reverse)
             t_steps = sorted({_t_key(r) for r in recs_split})
             z_index = {k: i for i, k in enumerate(z_levels)}
@@ -212,6 +215,10 @@ def build_variable_index(
             nx = int(first.int_hdr[INDEX_LBNPT])
             nz = len(z_levels)
             nt = len(t_steps)
+
+            no_z_axis = nz == 1 and first.int_hdr[INDEX_LBVC] in (129, 275)
+            
+            print('_____',  first.int_hdr[41] ,first.int_hdr[INDEX_LBVC], no_z_axis, reverse, z_keys_set , 'Z_LEVELS',z_levels)
             dtype = np.dtype(_dtype_name(first, word_size))
             packing_modes = sorted({int(rec.int_hdr[INDEX_LBPACK]) % 10 for rec in recs_split})
             compression_modes = sorted({(int(rec.int_hdr[INDEX_LBPACK]) // 10) % 10 for rec in recs_split})
@@ -221,7 +228,13 @@ def build_variable_index(
             for rec in recs_split:
                 ti = t_index[_t_key(rec)]
                 zi = z_index[_z_key(rec)]
-                chunk_coords = (zi, ti, 0, 0) if z_first else (ti, zi, 0, 0)
+                if no_z_axis:
+                    chunk_coords = (ti, 0, 0)
+                elif z_first:
+                    chunk_coords = (zi, ti, 0, 0)
+                else:
+                    chunk_coords = (ti, zi, 0, 0)
+                        
                 chunk_records.append(
                     {
                         "record": rec,
@@ -230,13 +243,13 @@ def build_variable_index(
                 )
 
             def _make_loader(group_recs, _nt, _nz, _ny, _nx, _dtype,
-                             _t_index, _z_index, _z_first):
+                             _t_index, _z_index, _z_first, _no_z_axis):
                 def _load():
                     if _z_first:                        
                         out_shape = (_nz, _nt, _ny, _nx)
                     else:
                         out_shape = (_nt, _nz, _ny, _nx)
-                        
+
                     out = np.empty(out_shape, dtype=_dtype)
                     out.fill(np.nan if _dtype.kind == "f" else 0)
 
@@ -305,16 +318,37 @@ def build_variable_index(
                             out[zi, ti, :, :] = values.reshape((_ny, _nx))
                         else:
                             out[ti, zi, :, :] = values.reshape((_ny, _nx))
+
+                    if _no_z_axis:
+                        # Remove a non-existent Z axis
+                        if _z_first:
+                            z_axis = 0
+                        else:
+                            z_axis = 1
+
+                        out = np.squeeze(out, axis=z_axis)
                             
                     return out
 
                 return _load
 
+            if no_z_axis:
+                shape = (nt, ny, nx)
+            elif z_first:
+                shape = (nz, nt, ny, nx)
+            else:
+                shape = (nt, nz, ny, nx)
+
+            if no_z_axis:                
+                chunk_shape = (1, ny, nx)
+            else:
+                chunk_shape = (1, 1, ny, nx)
+                
             variable_index[int_code] = {
                 "attrs": {},
-                "shape": (nz, nt, ny, nx) if z_first else (nt, nz, ny, nx),
+                "shape": shape,
                 "dtype": _dtype_name(first, word_size),
-                "chunk_shape": (1, 1, ny, nx),
+                "chunk_shape": chunk_shape,
                 "records": recs_split,
                 "chunk_records": chunk_records,
                 "data_loader": _make_loader(
@@ -327,13 +361,14 @@ def build_variable_index(
                     t_index,
                     z_index,
                     z_first,
+                    no_z_axis                    
                 ),
                 "z_first": z_first
             }
 
             int_code += 1
 
-    print(variable_index)
+#    print(variable_index)
             
     return variable_index
 
