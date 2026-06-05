@@ -238,6 +238,12 @@ class DimensionScale(Mixin):
         return data[key]
 
     def __repr__(self):
+        if self._data is None:            
+            return (
+                f"<ppfive.{self.__class__.__name__}: "
+                f"{self.name}, size={self.shape[0]}>"
+        )
+    
         return (
             f"<ppfive.{self.__class__.__name__}: "
             f"{self.name}, shape={self.shape}>"
@@ -270,7 +276,10 @@ class Variable(Mixin):
         if attrs:
             self.attrs.update(attrs)
                 
-        if DIMENSION_LIST:
+        if DIMENSION_LIST is not None:
+            if len(DIMENSION_LIST) != len(self.shape):
+                raise ValueError("TODO")
+            
             self.attrs['DIMENSION_LIST'] = DIMENSION_LIST
             
     def __getitem__(self, key):
@@ -492,6 +501,7 @@ class File(Mapping[str, DataVariable]):
                 file=self,
                 parent=self,
                 chunk_records=list(meta.get("chunk_records", [])),
+                DIMENSION_LIST=data_variable.DIMENSION_LIST,
             )
             
         return variables
@@ -1032,20 +1042,20 @@ class _DataVariableMetadata:
             if axis in self._axis:
                 dim_names.append(self._axis[axis])
             else:
-                # Coordinates were not created for this axis, use an
-                # approrpiately sized dimension
+                # Coordinates were not created for this axis, so use
+                # an appropriately sized dimension.
                 dim = f"dimension{size}"
                 if dim not in self.variables:
                     # Create the dimension
                     d = DimensionScale(
                         name=dim, size=size, file_obj=self._file_obj,
-                    Netcdf4Dimid=self._Netcdf4Dimid
+                        Netcdf4Dimid=self._Netcdf4Dimid
                     )
                     self.add_to_variables(d)
                     
                 dim_names.append(dim)
                 
-        self.attrs["DIMENSION_LIST"] = tuple((ncdim,) for ncdim in dim_names)
+        self.DIMENSION_LIST = tuple((ncdim,) for ncdim in dim_names)
 
     def add_to_coordinates(self, ncvar):
         """TODO"""

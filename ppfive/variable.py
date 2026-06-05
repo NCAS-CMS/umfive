@@ -10,7 +10,6 @@ from .core.data import read_record_raw
 from .core.interpret import get_extra_data_length
 from .core.models import StoreInfo
 from .io.chunk_read import ChunkReadMixin
-from .lookup_header import CF_CONVENTIONS
 
 class AstypeContext:
     """Context manager to cast reads from a variable."""
@@ -202,14 +201,24 @@ class DataVariable:
     chunk_records: list[dict[str, Any]] = field(default_factory=list)
     _astype: np.dtype | None = field(default=None, init=False, repr=False)
     id: DataVariableID = field(init=False, repr=False)
+    DIMENSION_LIST: Any = None
 
     def __post_init__(self):
         if self.dtype is not None:
             self.dtype = np.dtype(self.dtype)
+            
         self.id = DataVariableID(self)
+
         if self.parent is None:
             self.parent = self.file
 
+        DIMENSION_LIST = self.DIMENSION_LIST
+        if DIMENSION_LIST is not None:
+            if len(DIMENSION_LIST) != len(self.shape):
+                raise ValueError("TODO")
+            
+            self.attrs['DIMENSION_LIST'] = DIMENSION_LIST
+            
     def __repr__(self):
         dimensions = self.dimensions
         if dimensions is None:
