@@ -11,7 +11,7 @@ import numpy as np
 from ppfive.io.fsspec_reader import FsspecReader
 from ppfive.io.local import LocalPosixReader
 
-from .constants import (
+from ..constants import (
     INDEX_BDX,
     INDEX_BDY,
     INDEX_BGOR,
@@ -180,16 +180,17 @@ def build_variable_index(
         parallel_config = {"thread_count": 0, "cat_range_allowed": True}
 
     filtered = [r for r in records if not _record_is_skippable(r)]
-    ordered = sorted(filtered, key=lambda r: (_between_var_key(r), _within_var_key(r)))
+    ordered = sorted(
+        filtered, key=lambda r: (_between_var_key(r), _within_var_key(r))
+    )
 
-    grouped: dict[tuple[Any, ...], list[RecordInfo]] = defaultdict(list)
+    grouped = defaultdict(list)
     for rec in ordered:
         grouped[_between_var_key(rec)].append(rec)
 
     grouped = split_groups_by_extra_data(grouped)
-#    print('GROUPED=',grouped)
-    
-    variable_index: dict[str, dict[str, Any]] = {}
+
+    variable_index = {}
 
     # Assign an integer code to each data variable. This is used as
     # the key in 'variable_index'.
@@ -199,14 +200,33 @@ def build_variable_index(
         for recs_split in _split_on_duplicate_tz_pairs(recs):
             first = recs_split[0]
 
+            # Selected LBVC codes
+            # -------------------
+            #   0  Unspecified
+            #   8  Pressure
+            # 126  Max C.A.T. level
+            # 127  Sea bed level
+            # 128  Mean sea level
+            # 129  Surface
+            # 130  Tropopause level
+            # 131  Maximum wind level
+            # 132  Freezing level
+            # 133  Top of atmosphere
+            # 134  -20 deg.C level
+            # 135  Upper level (height)
+            # 136  Lower level (height)
+            # 137  Upper level (pressure)
+            # 138  Lower level (pressure)
+            # 139  Wet bulb freezing level height (asl) m
+            LBVC = first.int_hdr[INDEX_LBVC]
+
             z_keys_set = {_z_key(r) for r in recs_split}
-            # Don't reverse pseudolevels and depth and model_level_numberlevels
-            has_pseudo = any(zk[0] is not None for zk in z_keys_set)
-            reverse = False
-            if first.int_hdr[INDEX_LBVC]  in (8,):
-                reverse = True
-                
+
+            # Reverse air_pressure axis
+            reverse = LBVC == 8
+
             z_levels = sorted(z_keys_set, reverse=reverse)
+            
             t_steps = sorted({_t_key(r) for r in recs_split})
             z_index = {k: i for i, k in enumerate(z_levels)}
             t_index = {k: i for i, k in enumerate(t_steps)}
@@ -216,47 +236,57 @@ def build_variable_index(
             nz = len(z_levels)
             nt = len(t_steps)
 
-            no_z_axis = nz == 1 and first.int_hdr[INDEX_LBVC] in (129, 275)
-            
-            print('_____',  first.int_hdr[41] ,first.int_hdr[INDEX_LBVC], no_z_axis, reverse, z_keys_set , 'Z_LEVELS',z_levels)
-            dtype = np.dtype(_dtype_name(first, word_size))
-            packing_modes = sorted({int(rec.int_hdr[INDEX_LBPACK]) % 10 for rec in recs_split})
-            compression_modes = sorted({(int(rec.int_hdr[INDEX_LBPACK]) // 10) % 10 for rec in recs_split})
-            z_first = has_pseudo and nt > 1 and nz > 1
-            chunk_records = []
+            is_single_level_surface = (
+                nz == 1 
+                and 126 <= LBVC <= 139
+                or (LBVC == 0
+                    and first.int_hdr[INDEX_LBLEV] in (8888, 9999)
+                    and first.int_hdr[INDEX_LBUSER5] == 0)
+            )
+            has_z_axis = not is_single_level_surface
 
+            dtype = np.dtype(_dtype_name(first, word_size))
+            packing_modes = sorted(
+                {int(rec.int_hdr[INDEX_LBPACK]) % 10 for rec in recs_split}
+            )
+            
+            compression_modes = sorted(
+                {
+                    (int(rec.int_hdr[INDEX_LBPACK]) // 10) % 10
+                    for rec in recs_split
+                }
+            )
+
+            chunk_records = []
             for rec in recs_split:
                 ti = t_index[_t_key(rec)]
                 zi = z_index[_z_key(rec)]
-                if no_z_axis:
-                    chunk_coords = (ti, 0, 0)
-                elif z_first:
-                    chunk_coords = (zi, ti, 0, 0)
-                else:
-                    chunk_coords = (ti, zi, 0, 0)
-                        
-                chunk_records.append(
-                    {
-                        "record": rec,
-                        "chunk_coords": chunk_coords,
-                    }
-                )
 
+                if has_z_axis:
+                    chunk_coords = (ti, zi, 0, 0)
+                else:                        
+                    chunk_coords = (ti, 0, 0)
+                    
+                chunk_records.append(
+                    {"record": rec,
+                     "chunk_coords": chunk_coords}
+                )
+                
             def _make_loader(group_recs, _nt, _nz, _ny, _nx, _dtype,
-                             _t_index, _z_index, _z_first, _no_z_axis):
+                             _t_index, _z_index, _has_z_axis):
                 def _load():
-                    if _z_first:                        
-                        out_shape = (_nz, _nt, _ny, _nx)
-                    else:
-                        out_shape = (_nt, _nz, _ny, _nx)
+                    out_shape = (_nt, _nz, _ny, _nx)
 
                     out = np.empty(out_shape, dtype=_dtype)
                     out.fill(np.nan if _dtype.kind == "f" else 0)
 
                     thread_count = int(parallel_config.get("thread_count", 0) or 0)
-                    cat_range_allowed = bool(parallel_config.get("cat_range_allowed", True))
+                    cat_range_allowed = bool(
+                        parallel_config.get("cat_range_allowed", True)
+                    )
 
-                    # Strategy A: fsspec bulk range reads for unpacked records.
+                    # Strategy A: fsspec bulk range reads for unpacked
+                    # records.
                     if thread_count != 0 and cat_range_allowed and isinstance(reader, FsspecReader):
                         fh = getattr(reader, "_fh", None)
                         actual_fh = getattr(fh, "fh", fh)
@@ -279,20 +309,19 @@ def build_variable_index(
                                 with ThreadPoolExecutor(max_workers=thread_count) as executor:
                                     decoded = executor.map(_decode_one, items)
                                     for ti, zi, values in decoded:
-                                        if _z_first:
-                                            out[zi, ti, :, :] = values.reshape((_ny, _nx))
-                                        else:
-                                            out[ti, zi, :, :] = values.reshape((_ny, _nx))
+                                        out[ti, zi, :, :] = values.reshape((_ny, _nx))
                             else:
                                 for ti, zi, values in map(_decode_one, items):
-                                    if _z_first:
-                                        out[zi, ti, :, :] = values.reshape((_ny, _nx))
-                                    else:
-                                        out[ti, zi, :, :] = values.reshape((_ny, _nx))
+                                    out[ti, zi, :, :] = values.reshape((_ny, _nx))
 
+                            if not _has_z_axis:
+                                # Remove a non-existent Z axis
+                                out = np.squeeze(out, axis=1)
+                                
                             return out
 
-                    # Strategy B: local threaded reads using os.pread-backed reader.
+                    # Strategy B: local threaded reads using
+                    # os.pread-backed reader.
                     if thread_count != 0 and isinstance(reader, LocalPosixReader):
                         def _read_one(rec):
                             ti = _t_index[_t_key(rec)]
@@ -302,48 +331,40 @@ def build_variable_index(
 
                         with ThreadPoolExecutor(max_workers=thread_count) as executor:
                             for ti, zi, values in executor.map(_read_one, group_recs):
-                                if _z_first:
-                                    out[zi, ti, :, :] = values.reshape((_ny, _nx))
-                                else:
-                                    out[ti, zi, :, :] = values.reshape((_ny, _nx))
-                                    
+                                out[ti, zi, :, :] = values.reshape((_ny, _nx))
+                                  
+                        if not _has_z_axis:
+                            # Remove a non-existent Z axis
+                            out = np.squeeze(out, axis=1)
+                              
                         return out
 
                     # Strategy C: serial fallback.
                     for rec in group_recs:
                         ti = _t_index[_t_key(rec)]
                         zi = _z_index[_z_key(rec)]
-                        values = read_record_array(reader, rec, word_size, byte_ordering)
-                        if _z_first:
-                            out[zi, ti, :, :] = values.reshape((_ny, _nx))
-                        else:
-                            out[ti, zi, :, :] = values.reshape((_ny, _nx))
+                        values = read_record_array(
+                            reader, rec, word_size, byte_ordering
+                        )
+                        out[ti, zi, :, :] = values.reshape((_ny, _nx))
 
-                    if _no_z_axis:
+                    if not _has_z_axis:
                         # Remove a non-existent Z axis
-                        if _z_first:
-                            z_axis = 0
-                        else:
-                            z_axis = 1
-
-                        out = np.squeeze(out, axis=z_axis)
+                        out = np.squeeze(out, axis=1)
                             
                     return out
 
                 return _load
 
-            if no_z_axis:
-                shape = (nt, ny, nx)
-            elif z_first:
-                shape = (nz, nt, ny, nx)
-            else:
+            if has_z_axis:
+                axis_order = "tzyx"
                 shape = (nt, nz, ny, nx)
-
-            if no_z_axis:                
-                chunk_shape = (1, ny, nx)
-            else:
                 chunk_shape = (1, 1, ny, nx)
-                
+            else:
+                axis_order = "tyx"
+                shape = (nt, ny, nx)
+                chunk_shape = (1, ny, nx)
+
             variable_index[int_code] = {
                 "attrs": {},
                 "shape": shape,
@@ -351,6 +372,7 @@ def build_variable_index(
                 "chunk_shape": chunk_shape,
                 "records": recs_split,
                 "chunk_records": chunk_records,
+                "axis_order": axis_order,
                 "data_loader": _make_loader(
                     recs_split,
                     nt,
@@ -360,16 +382,12 @@ def build_variable_index(
                     dtype,
                     t_index,
                     z_index,
-                    z_first,
-                    no_z_axis                    
+                    has_z_axis                    
                 ),
-                "z_first": z_first
             }
 
             int_code += 1
 
-#    print(variable_index)
-            
     return variable_index
 
 
@@ -396,7 +414,7 @@ def split_groups_by_extra_data(grouped):
             
     return new_grouped
 
-def equal_extra_data(rec0, rec1, atol=0.0001, rtol=0.00001):
+def equal_extra_data(rec0, rec1):
     """TODO"""
     extra0 = rec0.extra_data
     extra1 = rec0.extra_data
@@ -415,10 +433,20 @@ def equal_extra_data(rec0, rec1, atol=0.0001, rtol=0.00001):
     
     for key, value0 in extra0.items():
         value1 = extra1[key]
-        if value0.dtype.kind in "SUT" and not np.array_equal(value0, value1):
-            return False
 
-        if not np.allclose(value0, value1, atol=atol, rtol=rtol):
-            return False
+        kind = value0.dtype.kind
+        if kind == 'f':
+            itemsize = value0.dtype.itemsize
+            if itemsize == 4:
+                rtol = 1e-5
+            elif itemsize == 8:
+                rtol = 1e-13
+                
+            if not np.allclose(value0, value1, atol=0, rtol=rtol):
+                return False
+            
+        elif kind in "iSUT":
+            if not np.array_equal(value0, value1):
+                return False
 
     return True

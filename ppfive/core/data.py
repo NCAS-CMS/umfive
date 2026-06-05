@@ -4,7 +4,7 @@ import numpy as np
 
 from ppfive.io.base import ByteReader
 
-from .constants import INDEX_BMDI, INDEX_LBPACK
+from ..constants import INDEX_BMDI, INDEX_LBPACK
 from .interpret import get_extra_data_length, get_type_and_num_words
 from .models import RecordInfo
 from ..wgdos import unpack_wgdos

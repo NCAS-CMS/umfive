@@ -1,5 +1,6 @@
-from .file import File, _DimensionScale, _Variable
+from .dataset import File, DimensionScale, Variable
 from .variable import DataVariable
+from .stash_table import stash_table, load_stash_table, stash_records
 
 try:
     import pyfive
@@ -11,7 +12,5 @@ if pyfive is not None:
     # files as pyfive-like file handles.
     pyfive.File.register(File)
     pyfive.Dataset.register(DataVariable)
-    pyfive.Dataset.register(_DimensionScale)
-    pyfive.Dataset.register(_Variable)
-
-__all__ = ["File", "Variable"]
+    pyfive.Dataset.register(DimensionScale)
+    pyfive.Dataset.register(Variable)

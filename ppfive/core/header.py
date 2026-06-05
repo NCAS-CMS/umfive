@@ -4,7 +4,7 @@ import numpy as np
 
 from ppfive.io.base import ByteReader
 
-from .constants import N_HDR, N_INT_HDR, N_REAL_HDR
+from ..constants import N_HDR, N_INT_HDR, N_REAL_HDR
 
 
 def _endian_prefix(byte_ordering: str) -> str:

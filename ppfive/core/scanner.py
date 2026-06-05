@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from ppfive.io.base import ByteReader
 
-from .constants import INDEX_LBBEGIN, N_HDR
+from ..constants import INDEX_LBEGIN, N_HDR
+
 from .header import decode_header_from_bytes
 from .interpret import get_ff_disk_length, get_extra_data_offset_and_length
 from .models import FileTypeInfo, RecordInfo
@@ -87,7 +88,7 @@ def scan_pp_headers(reader: ByteReader, file_type: FileTypeInfo) -> list[RecordI
                 extra_data_offset, extra_data_length, word_size, byte_ordering
             )
         else:
-            extra_data = None
+            extra_data = {}
         
         recs.append(
             RecordInfo(
@@ -128,7 +129,7 @@ def scan_ff_headers(reader: ByteReader, file_type: FileTypeInfo) -> list[RecordI
 
     valid: list[bool] = []
     for i in range(n_raw_rec):
-        lbbegin_offset = hdr_start + (i * hdr_size) + (INDEX_LBBEGIN * word_size)
+        lbbegin_offset = hdr_start + (i * hdr_size) + (INDEX_LBEGIN * word_size)
         raw = reader.read_at(lbbegin_offset, word_size)
         if len(raw) != word_size:
             raise ValueError("Short read while checking FF valid record markers")
@@ -153,7 +154,7 @@ def scan_ff_headers(reader: ByteReader, file_type: FileTypeInfo) -> list[RecordI
         )
 
         disk_length = get_ff_disk_length(int_hdr, word_size)
-        data_offset_specified = int(int_hdr[INDEX_LBBEGIN]) * word_size
+        data_offset_specified = int(int_hdr[INDEX_LBEGIN]) * word_size
         data_offset = data_offset_specified if data_offset_specified != 0 else data_offset_calculated
         data_offset_calculated += disk_length
 

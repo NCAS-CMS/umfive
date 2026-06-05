@@ -3,11 +3,6 @@ import sys
 import numpy as np
 
 
-def cmp(a, b):
-    """Workaround to get a Python-2-like `cmp` function in Python 3."""
-    return (a > b) - (a < b)
-
-
 _codes = {
     1: ("x", float),
     2: ("y", float),
@@ -26,73 +21,6 @@ _codes = {
 }
 
 
-class ExtraData(dict):
-    """Extends dictionary class with a comparison method between extra
-    data for different records."""
-
-    _key_to_type = dict([(key, typ) for key, typ in _codes.values()])
-
-    def sorted_keys(self):
-        k = self.keys()
-        k.sort()
-        return k
-
-    _tolerances = {np.dtype(np.float32): 1e-5, np.dtype(np.float64): 1e-13}
-
-    def _cmp_floats(self, a, b, tolerance):
-        if a == b:
-            return 0
-
-        delta = abs(b * tolerance)
-        if a < b - delta:
-            return -1
-
-        if a > b + delta:
-            return 1
-
-        return 0
-
-    def _cmp_float_arrays(self, avals, bvals):
-        n = len(avals)
-        c = cmp(n, len(bvals))
-        if c != 0:
-            return c
-
-        tolerance = self._tolerances[avals.dtype]
-        for i in range(n):
-            c = self._cmp_floats(avals[i], bvals[i], tolerance)
-            if c != 0:
-                return c
-
-        return 0
-
-    def __cmp__(self, other):
-        """Compare two extra data dictionaries returned by unpacker."""
-        if other is None:
-            return 1
-        ka = self.sorted_keys()
-        kb = other.sorted_keys()
-        c = cmp(ka, kb)
-        if c != 0:
-            return c
-
-        for key in ka:
-            valsa = self[key]
-            valsb = other[key]
-            typ = self._key_to_type[key]
-            if typ == float:
-                c = self._cmp_float_arrays(valsa, valsb)
-            elif type == str:
-                c = cmp(valsa, valsb)
-            else:
-                assert False
-
-            if c != 0:
-                return c
-
-        return 0
-
-
 class ExtraDataUnpacker:
     _int_types = {4: np.int32, 8: np.int64}
     _float_types = {4: np.float32, 8: np.float64}
@@ -104,7 +32,6 @@ class ExtraDataUnpacker:
         self.ftype = self._float_types[word_size]
         # byte_ordering is 'little_endian' or 'big_endian'
         # sys.byteorder is 'little' or 'big'
-        print(byte_ordering, sys.byteorder)
         self.is_swapped = not byte_ordering.startswith(sys.byteorder)
 
     def next_words(self, n):
@@ -114,7 +41,6 @@ class ExtraDataUnpacker:
         is_swapped = self.is_swapped
         rdata = self.rdata
         pos = n * ws
-#        rv = self.rdata[:pos]
         rv = b""
         for i in range(n):
             x = rdata[i*ws:(i+1)*ws]
@@ -181,4 +107,4 @@ class ExtraDataUnpacker:
             else:
                 d[key] = np.append(d[key], vals)
 
-        return ExtraData(d)
+        return d

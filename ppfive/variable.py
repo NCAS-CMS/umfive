@@ -210,6 +210,19 @@ class DataVariable:
         if self.parent is None:
             self.parent = self.file
 
+    def __repr__(self):
+        dimensions = self.dimensions
+        if dimensions is None:
+            dimensions = ""
+        else:
+            dims = ', '.join(dim for dim in dimensions)
+            dimensions = f", dimensions=({dims})"
+                       
+        return (
+            f"<ppfive.{self.__class__.__name__}: "
+            f"{self.name}, shape={self.shape}{dimensions}>"
+        )
+
     @property
     def ndim(self) -> int:
         return len(self.shape)
@@ -224,6 +237,14 @@ class DataVariable:
     def value(self):
         return self[()]
 
+    @property
+    def dimensions(self):
+        DIMENSION_LIST = self.attrs.get('DIMENSION_LIST')
+        if DIMENSION_LIST is None:
+            return None
+
+        return tuple(dim[0] for dim in DIMENSION_LIST)
+        
     def __getitem__(self, key):
         data = self.id.get_data(key, self.fillvalue)
         if data is None:
@@ -243,9 +264,6 @@ class DataVariable:
 
     def len(self):
         return len(self)
-
-    def __repr__(self) -> str:
-        return f'<PP variable "{self.name}": shape {self.shape}, type "{self.dtype}">'
 
     def read_direct(self, array: np.ndarray, source_sel=None, dest_sel=None) -> None:
         if source_sel is None:

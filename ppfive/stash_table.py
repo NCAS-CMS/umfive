@@ -20,6 +20,7 @@ _STANDARD_NAME = 6
 _CF_EXTRA = 7
 _PP_EXTRA = 8
 
+# The STASH table
 _stash_table = {}
 
 def _parse_version(value: str):
@@ -176,12 +177,19 @@ def stash_table():
     .. seealso:: `load_stash_table`, `stash_table_record`
 
     """
+    if not _stash_table:
+        load_stash_table()
+        
     return _stash_table.copy()
 
 
 
-def stash_record(submodel=None, stash_code=None):
-    """TODO"""
+def stash_records(submodel=None, stash_code=None):
+    """Return STASH records.
+
+    
+    
+    """
     if not _stash_table:
         load_stash_table()
         
