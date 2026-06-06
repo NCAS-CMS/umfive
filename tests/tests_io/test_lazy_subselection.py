@@ -10,7 +10,8 @@ def _first_data_variable_name(f: File) -> str:
     return next(
         name
         for name, variable in f.variables.items()
-        if variable.attrs.get("CLASS") not in (b"DIMENSION_SCALE", b"AUXILIARY_COORDINATE")
+        if variable.attrs.get("CLASS")
+        not in (b"DIMENSION_SCALE", b"AUXILIARY_COORDINATE")
         and "grid_mapping_name" not in variable.attrs
     )
 
@@ -29,7 +30,9 @@ def test_subselection_reads_only_intersecting_chunks(monkeypatch):
             calls.append(int(rec.data_offset))
             return original(reader, rec, word_size, byte_ordering)
 
-        monkeypatch.setattr(chunk_read_module, "read_record_array", _counting_read)
+        monkeypatch.setattr(
+            chunk_read_module, "read_record_array", _counting_read
+        )
 
         sub_one = np.asarray(v[0, 0, :, :])
         assert sub_one.shape == (110, 106)

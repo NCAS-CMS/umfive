@@ -12,7 +12,8 @@ def _data_variable_names(f: File) -> list[str]:
     return [
         name
         for name, variable in f.variables.items()
-        if variable.attrs.get("CLASS") not in (b"DIMENSION_SCALE", b"AUXILIARY_COORDINATE")
+        if variable.attrs.get("CLASS")
+        not in (b"DIMENSION_SCALE", b"AUXILIARY_COORDINATE")
         and "grid_mapping_name" not in variable.attrs
     ]
 
@@ -40,7 +41,9 @@ def test_file_can_parse_via_fsspec_reader():
     assert arr.dtype == np.dtype("float32")
 
 
-def _read_all_variables(path: Path, *, use_fsspec: bool) -> dict[str, np.ndarray]:
+def _read_all_variables(
+    path: Path, *, use_fsspec: bool
+) -> dict[str, np.ndarray]:
     if use_fsspec:
         fs = fsspec.filesystem("file")
         with FsspecReader(fs, str(path)) as reader:
@@ -56,8 +59,8 @@ def _read_all_variables(path: Path, *, use_fsspec: bool) -> dict[str, np.ndarray
 @pytest.mark.parametrize(
     "fixture_name",
     [
-        "test2.pp",    # PP format fixture
-        "cl_umfile",   # Fields File (FF) fixture
+        "test2.pp",  # PP format fixture
+        "cl_umfile",  # Fields File (FF) fixture
     ],
 )
 def test_full_read_parity_local_vs_fsspec(fixture_name: str):
@@ -73,4 +76,6 @@ def test_full_read_parity_local_vs_fsspec(fixture_name: str):
         rhs = local[name]
         assert lhs.shape == rhs.shape
         assert lhs.dtype == rhs.dtype
-        assert np.array_equal(lhs, rhs), f"fsspec mismatch for {fixture_name} variable {name}"
+        assert np.array_equal(lhs, rhs), (
+            f"fsspec mismatch for {fixture_name} variable {name}"
+        )

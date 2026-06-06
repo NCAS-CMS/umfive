@@ -43,12 +43,12 @@ class ExtraDataUnpacker:
         pos = n * ws
         rv = b""
         for i in range(n):
-            x = rdata[i*ws:(i+1)*ws]
+            x = rdata[i * ws : (i + 1) * ws]
             if is_swapped:
                 x = x[::-1]
-                
+
             rv += x
-        
+
         assert len(rv) == pos
         self.rdata = rdata[pos:]
         return rv
@@ -92,7 +92,7 @@ class ExtraDataUnpacker:
             i = np.frombuffer(self.next_words(1), self.itype)[0]
             if i == 0:
                 break
-            
+
             ia, ib = divmod(i, 1000)
             key, etype = _codes[ib]
 

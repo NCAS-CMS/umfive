@@ -4,12 +4,13 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 import numpy as np
-from pyfive.indexing import OrthogonalIndexer, ZarrArrayStub, replace_ellipsis
+from pyfive.indexing import OrthogonalIndexer, ZarrArrayStub
 
 from .core.data import read_record_raw
 from .core.interpret import get_extra_data_length
 from .core.models import StoreInfo
 from .io.chunk_read import ChunkReadMixin
+
 
 class AstypeContext:
     """Context manager to cast reads from a variable."""
@@ -40,7 +41,11 @@ class DataVariableID(ChunkReadMixin):
 
     @property
     def dtype(self):
-        return np.dtype(self._variable.dtype) if self._variable.dtype is not None else None
+        return (
+            np.dtype(self._variable.dtype)
+            if self._variable.dtype is not None
+            else None
+        )
 
     @property
     def chunks(self):
@@ -59,7 +64,10 @@ class DataVariableID(ChunkReadMixin):
         return self._index_cache
 
     def __chunk_init_check(self):
-        if self._variable.chunk_shape is None or not self._variable.chunk_records:
+        if (
+            self._variable.chunk_shape is None
+            or not self._variable.chunk_records
+        ):
             return False
 
         if self._index_cache is None:
@@ -74,7 +82,9 @@ class DataVariableID(ChunkReadMixin):
                     byte_offset=int(rec.data_offset),
                     size=int(
                         rec.disk_length
-                        - get_extra_data_length(rec.int_hdr, self._variable.file.word_size)
+                        - get_extra_data_length(
+                            rec.int_hdr, self._variable.file.word_size
+                        )
                     ),
                 )
                 index[chunk_offset] = info
@@ -120,7 +130,9 @@ class DataVariableID(ChunkReadMixin):
             if axis < len(sel) and isinstance(sel[axis], slice):
                 start, stop, step = sel[axis].indices(size)
                 if step != 1:
-                    raise NotImplementedError("iter_chunks only supports step=1 slices")
+                    raise NotImplementedError(
+                        "iter_chunks only supports step=1 slices"
+                    )
             else:
                 start, stop = 0, size
             normalized.append((start, stop, chunks[axis]))
@@ -201,12 +213,12 @@ class DataVariable:
     chunk_records: list[dict[str, Any]] = field(default_factory=list)
     _astype: np.dtype | None = field(default=None, init=False, repr=False)
     id: DataVariableID = field(init=False, repr=False)
-    DIMENSION_LIST: Any = None
+    DIMENSION_LIST: tuple[tuple, ...] | None = None
 
     def __post_init__(self):
         if self.dtype is not None:
             self.dtype = np.dtype(self.dtype)
-            
+
         self.id = DataVariableID(self)
 
         if self.parent is None:
@@ -216,17 +228,17 @@ class DataVariable:
         if DIMENSION_LIST is not None:
             if len(DIMENSION_LIST) != len(self.shape):
                 raise ValueError("TODO")
-            
-            self.attrs['DIMENSION_LIST'] = DIMENSION_LIST
-            
+
+            self.attrs["DIMENSION_LIST"] = DIMENSION_LIST
+
     def __repr__(self):
         dimensions = self.dimensions
         if dimensions is None:
             dimensions = ""
         else:
-            dims = ', '.join(dim for dim in dimensions)
+            dims = ", ".join(dim for dim in dimensions)
             dimensions = f", dimensions=({dims})"
-                       
+
         return (
             f"<ppfive.{self.__class__.__name__}: "
             f"{self.name}, shape={self.shape}{dimensions}>"
@@ -248,12 +260,12 @@ class DataVariable:
 
     @property
     def dimensions(self):
-        DIMENSION_LIST = self.attrs.get('DIMENSION_LIST')
+        DIMENSION_LIST = self.attrs.get("DIMENSION_LIST")
         if DIMENSION_LIST is None:
             return None
 
         return tuple(dim[0] for dim in DIMENSION_LIST)
-        
+
     def __getitem__(self, key):
         data = self.id.get_data(key, self.fillvalue)
         if data is None:
@@ -274,7 +286,9 @@ class DataVariable:
     def len(self):
         return len(self)
 
-    def read_direct(self, array: np.ndarray, source_sel=None, dest_sel=None) -> None:
+    def read_direct(
+        self, array: np.ndarray, source_sel=None, dest_sel=None
+    ) -> None:
         if source_sel is None:
             source_sel = slice(None)
         if dest_sel is None:
@@ -316,8 +330,12 @@ class DataVariable:
             "name": self.name,
             "path": getattr(self.file, "filename", None),
             "shape": list(self.shape),
-            "dtype": np.dtype(self.dtype).str if self.dtype is not None else None,
-            "chunk_shape": list(self.chunk_shape) if self.chunk_shape is not None else None,
+            "dtype": np.dtype(self.dtype).str
+            if self.dtype is not None
+            else None,
+            "chunk_shape": list(self.chunk_shape)
+            if self.chunk_shape is not None
+            else None,
             "word_size": getattr(self.file, "word_size", None),
             "byte_ordering": getattr(self.file, "byte_ordering", None),
             "refs": refs,

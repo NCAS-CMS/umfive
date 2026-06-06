@@ -1,14 +1,26 @@
 import numpy as np
 
-from ppfive.core.constants import INDEX_LBBEGIN, INDEX_LBLREC, INDEX_LBPACK, N_INT_HDR, N_REAL_HDR
+from ppfive.core.constants import (
+    INDEX_LBBEGIN,
+    INDEX_LBLREC,
+    INDEX_LBPACK,
+    N_INT_HDR,
+    N_REAL_HDR,
+)
 from ppfive.core.models import FileTypeInfo
 from ppfive.core.scanner import scan_ff_headers, scan_pp_headers
 from ppfive.io.local import LocalPosixReader
 
 
-def _fortran_record(payload: bytes, word_size: int = 4, endian: str = "little") -> bytes:
+def _fortran_record(
+    payload: bytes, word_size: int = 4, endian: str = "little"
+) -> bytes:
     n = len(payload)
-    return n.to_bytes(word_size, byteorder=endian, signed=True) + payload + n.to_bytes(word_size, byteorder=endian, signed=True)
+    return (
+        n.to_bytes(word_size, byteorder=endian, signed=True)
+        + payload
+        + n.to_bytes(word_size, byteorder=endian, signed=True)
+    )
 
 
 def test_scan_pp_headers_single_record(tmp_path):
@@ -43,8 +55,8 @@ def test_scan_ff_headers_single_lookup(tmp_path):
     word_size = 4
     fixed = np.zeros(300, dtype="<i4")
     fixed[149] = 161  # start_lookup (1-based)
-    fixed[150] = 64   # nlookup1
-    fixed[151] = 1    # nlookup2
+    fixed[150] = 64  # nlookup1
+    fixed[151] = 1  # nlookup2
     fixed[159] = 225  # start_data (1-based)
 
     int_hdr = np.zeros(N_INT_HDR, dtype="<i4")

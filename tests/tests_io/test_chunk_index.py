@@ -69,7 +69,9 @@ def test_unpacked_chunk_index_can_back_a_kerchunk_like_reconstruction():
         block = np.frombuffer(raw, dtype=dtype).reshape(chunk_shape)
         selection = tuple(
             slice(offset, min(offset + csize, full), 1)
-            for offset, csize, full in zip(ref["chunk_offset"], chunk_shape, shape)
+            for offset, csize, full in zip(
+                ref["chunk_offset"], chunk_shape, shape
+            )
         )
         rebuilt[selection] = block
 

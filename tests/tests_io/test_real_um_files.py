@@ -16,12 +16,15 @@ def _data_variable_names(f: File) -> list[str]:
     return [
         name
         for name, variable in f.variables.items()
-        if variable.attrs.get("CLASS") not in (b"DIMENSION_SCALE", b"AUXILIARY_COORDINATE")
+        if variable.attrs.get("CLASS")
+        not in (b"DIMENSION_SCALE", b"AUXILIARY_COORDINATE")
         and "grid_mapping_name" not in variable.attrs
     ]
 
 
-def _matches_cf_with_optional_z_flip(arr: np.ndarray, baseline: np.ndarray) -> bool:
+def _matches_cf_with_optional_z_flip(
+    arr: np.ndarray, baseline: np.ndarray
+) -> bool:
     squeezed = np.squeeze(arr)
     if squeezed.shape != baseline.shape:
         return False
@@ -37,7 +40,9 @@ def _matches_cf_with_optional_z_flip(arr: np.ndarray, baseline: np.ndarray) -> b
     if np.allclose(squeezed, baseline, rtol=rtol, atol=atol):
         return True
 
-    if squeezed.ndim >= 2 and np.allclose(squeezed[:, ::-1, ...], baseline, rtol=rtol, atol=atol):
+    if squeezed.ndim >= 2 and np.allclose(
+        squeezed[:, ::-1, ...], baseline, rtol=rtol, atol=atol
+    ):
         return True
 
     return False
@@ -54,7 +59,9 @@ def _fixture_params() -> list[object]:
             params.append(
                 pytest.param(
                     path,
-                    marks=pytest.mark.xfail(reason=KNOWN_XFAILS[path.name], strict=True),
+                    marks=pytest.mark.xfail(
+                        reason=KNOWN_XFAILS[path.name], strict=True
+                    ),
                     id=path.name,
                 )
             )

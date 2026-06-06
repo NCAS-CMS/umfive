@@ -1,7 +1,7 @@
 # ppfive
 
 A PP and Fields file reader that mimics relevant parts of the `pyfive` high-level API,
-with support for lazy metadata loading and parallel data loading when necessary. 
+with support for lazy metadata loading and parallel data loading when necessary.
 
 This is NOT an alternative to pyfive, it is a package which makes pp and fields files
 look like and taste ("quack like") chunked HDF5 files written by a NetCDF library.
@@ -54,7 +54,7 @@ Like pyfive, ppfive is Read-only:
 - ppfive-specific extension API:
 	- `File.set_parallelism(thread_count=..., cat_range_allowed=...)`
 		is provided by ppfive and is not part of pyfive.
-        
+
 
 ### Practical expectation
 

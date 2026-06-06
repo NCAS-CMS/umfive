@@ -24,7 +24,8 @@ def _data_variable_names(f: File) -> list[str]:
     return [
         name
         for name, variable in f.variables.items()
-        if variable.attrs.get("CLASS") not in (b"DIMENSION_SCALE", b"AUXILIARY_COORDINATE")
+        if variable.attrs.get("CLASS")
+        not in (b"DIMENSION_SCALE", b"AUXILIARY_COORDINATE")
         and "grid_mapping_name" not in variable.attrs
     ]
 
@@ -32,6 +33,7 @@ def _data_variable_names(f: File) -> list[str]:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 class _MinimalFileObj:
     """Bare-minimum seekable/readable wrapper around an in-memory buffer."""
@@ -51,6 +53,7 @@ class _MinimalFileObj:
 # ---------------------------------------------------------------------------
 # Tests: plain file-like objects
 # ---------------------------------------------------------------------------
+
 
 def test_file_accepts_raw_open_builtin():
     """ppfive.File should accept a built-in open() handle (has .read and .seek)."""
@@ -86,6 +89,7 @@ def test_file_accepts_minimal_fileobj():
 
 def test_file_rejects_object_without_seek():
     """An object with .read but no .seek should raise ValueError."""
+
     class _NoSeek:
         def read(self, n=-1):
             return b""
@@ -97,6 +101,7 @@ def test_file_rejects_object_without_seek():
 # ---------------------------------------------------------------------------
 # Tests: fsspec file handles passed directly (the primary use-case)
 # ---------------------------------------------------------------------------
+
 
 def test_file_accepts_fsspec_local_handle():
     """ppfive.File should accept an fsspec local-filesystem open handle directly,
@@ -116,14 +121,16 @@ def test_fileobj_parity_with_path():
     """Reading via a raw fsspec handle should return identical data to path-based open."""
     with File(PP_PATH) as f_path:
         expected = {
-            name: np.asarray(f_path[name][:]) for name in _data_variable_names(f_path)
+            name: np.asarray(f_path[name][:])
+            for name in _data_variable_names(f_path)
         }
 
     fs = fsspec.filesystem("file")
     with fs.open(str(PP_PATH), "rb") as fh:
         f_fh = File(fh)
         result = {
-            name: np.asarray(f_fh[name][:]) for name in _data_variable_names(f_fh)
+            name: np.asarray(f_fh[name][:])
+            for name in _data_variable_names(f_fh)
         }
 
     assert list(result) == list(expected)

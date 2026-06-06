@@ -25,9 +25,9 @@ def test_cf_reads_open_ppfive_file_and_matches_direct_pp_read():
     assert len(via_ppfive) == len(direct)
 
     for from_ppfive, from_path in zip(via_ppfive, direct):
-        assert _canonical_stash_name(from_ppfive.nc_get_variable()) == _canonical_stash_name(
-            from_path.nc_get_variable()
-        )
+        assert _canonical_stash_name(
+            from_ppfive.nc_get_variable()
+        ) == _canonical_stash_name(from_path.nc_get_variable())
         assert from_ppfive.array.shape == from_path.array.shape
         assert np.array_equal(
             np.asarray(from_ppfive.array),

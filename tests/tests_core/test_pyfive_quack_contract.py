@@ -17,7 +17,8 @@ def test_ppfive_file_exposes_pyfive_root_members():
         dim_like = [
             name
             for name, _ in f.items()
-            if name in ("time", "air_pressure", "grid_latitude", "grid_longitude")
+            if name
+            in ("time", "air_pressure", "grid_latitude", "grid_longitude")
             or name.startswith("dim_")
         ]
         assert dim_like
@@ -32,7 +33,8 @@ def test_ppfive_variable_registers_as_pyfive_dataset():
         dim_name = next(
             name
             for name in dict(f.items())
-            if name in ("time", "air_pressure", "grid_latitude", "grid_longitude")
+            if name
+            in ("time", "air_pressure", "grid_latitude", "grid_longitude")
             or name.startswith("dim_")
         )
         assert isinstance(f[dim_name], pyfive.Dataset)

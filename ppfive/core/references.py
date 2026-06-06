@@ -10,7 +10,9 @@ from .data import read_record_array
 from .models import RecordInfo
 
 
-def materialize_reference_dict(reader: ByteReader, reference: dict[str, Any]) -> np.ndarray:
+def materialize_reference_dict(
+    reader: ByteReader, reference: dict[str, Any]
+) -> np.ndarray:
     """Materialize an array from a JSON-serializable chunk reference mapping."""
 
     shape = tuple(reference["shape"])

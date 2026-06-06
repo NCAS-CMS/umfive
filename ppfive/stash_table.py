@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 import re
-from functools import lru_cache
 from importlib.resources import files
 from pathlib import PosixPath
 
@@ -23,10 +22,11 @@ _PP_EXTRA = 8
 # The STASH table
 _stash_table = {}
 
+
 def _parse_version(value: str):
     if not value:
         return None
-    
+
     try:
         return float(value)
     except ValueError:
@@ -40,7 +40,9 @@ def _parse_cf_extra(value: str) -> dict[str, object]:
 
     for token in value.split():
         if token.startswith("height="):
-            out["height"] = re.split(_NUMBER_REGEX, token, re.IGNORECASE)[1:4:2]
+            out["height"] = re.split(_NUMBER_REGEX, token, re.IGNORECASE)[
+                1:4:2
+            ]
         elif token.startswith("below_"):
             out["below"] = re.split(_NUMBER_REGEX, token, re.IGNORECASE)[1:4:2]
         elif token.startswith("where_"):
@@ -49,6 +51,7 @@ def _parse_cf_extra(value: str) -> dict[str, object]:
             out["over"] = token.replace("over_", "over ", 1)
 
     return out
+
 
 def load_stash_table(table=None, delimiter="!", merge=True):
     """Load a STASH to standard name conversion table from a file.
@@ -123,15 +126,14 @@ def load_stash_table(table=None, delimiter="!", merge=True):
     else:
         # User supplied table
         table_path = PosixPath(table)
-        
+
     stash2sn = {}
 
     with table_path.open("r", encoding="utf-8") as handle:
-        rows = list(csv.reader(
-            handle, delimiter=delimiter, skipinitialspace=True
-            )
+        rows = list(
+            csv.reader(handle, delimiter=delimiter, skipinitialspace=True)
         )
-        
+
     for row in rows:
         if not row or row[0].startswith("#"):
             continue
@@ -179,21 +181,16 @@ def stash_table():
     """
     if not _stash_table:
         load_stash_table()
-        
+
     return _stash_table.copy()
 
 
-
 def stash_records(submodel=None, stash_code=None):
-    """Return STASH records.
-
-    
-    
-    """
+    """Return STASH records."""
     if not _stash_table:
         load_stash_table()
-        
+
     if submodel is None and stash_code is None:
         return _stash_table.copy()
-    
+
     return _stash_table.get((int(submodel), int(stash_code)), ())

@@ -9,7 +9,6 @@ from ppfive.core.data import (
     decode_record_array_from_raw,
     get_record_packed_nbytes,
     read_record_array,
-    read_record_raw,
 )
 from ppfive.io.fsspec_reader import FsspecReader
 from ppfive.io.local import LocalPosixReader
@@ -24,11 +23,16 @@ class ChunkReadMixin:
         required = []
         for chunk_coords, chunk_selection, out_selection in indexer:
             chunk_offset = tuple(
-                int(coord * chunk) for coord, chunk in zip(chunk_coords, self._variable.chunk_shape)
+                int(coord * chunk)
+                for coord, chunk in zip(
+                    chunk_coords, self._variable.chunk_shape
+                )
             )
             rec = self._record_cache.get(chunk_offset)
             if rec is None:
-                raise OSError(f"Chunk coordinates not found in record index: {chunk_offset}")
+                raise OSError(
+                    f"Chunk coordinates not found in record index: {chunk_offset}"
+                )
 
             chunk_shape = tuple(
                 min(int(chunk), int(dim) - int(offset))
@@ -38,11 +42,21 @@ class ChunkReadMixin:
                     self._variable.shape,
                 )
             )
-            required.append((chunk_offset, chunk_selection, out_selection, rec, chunk_shape))
+            required.append(
+                (
+                    chunk_offset,
+                    chunk_selection,
+                    out_selection,
+                    rec,
+                    chunk_shape,
+                )
+            )
 
         return required
 
-    def _decode_chunk_buffer(self, raw: bytes, rec, chunk_shape: tuple[int, ...]) -> np.ndarray:
+    def _decode_chunk_buffer(
+        self, raw: bytes, rec, chunk_shape: tuple[int, ...]
+    ) -> np.ndarray:
         return decode_record_array_from_raw(
             raw,
             rec,
@@ -51,25 +65,42 @@ class ChunkReadMixin:
         ).reshape(chunk_shape)
 
     def _store_and_assign(self, decoded_chunks, out: np.ndarray) -> None:
-        for _chunk_offset, chunk_selection, out_selection, chunk_data in decoded_chunks:
+        for (
+            _chunk_offset,
+            chunk_selection,
+            out_selection,
+            chunk_data,
+        ) in decoded_chunks:
             out[out_selection] = chunk_data[chunk_selection]
 
     def _read_serial_chunks(self, required, out: np.ndarray) -> None:
         decoded_chunks = []
-        for chunk_offset, chunk_selection, out_selection, rec, chunk_shape in required:
+        for (
+            chunk_offset,
+            chunk_selection,
+            out_selection,
+            rec,
+            chunk_shape,
+        ) in required:
             chunk_data = read_record_array(
                 self._variable.file._reader,
                 rec,
                 self._variable.file.word_size,
                 self._variable.file.byte_ordering,
             ).reshape(chunk_shape)
-            decoded_chunks.append((chunk_offset, chunk_selection, out_selection, chunk_data))
+            decoded_chunks.append(
+                (chunk_offset, chunk_selection, out_selection, chunk_data)
+            )
 
         self._store_and_assign(decoded_chunks, out)
 
-    def _read_parallel_local_chunks(self, required, out: np.ndarray, thread_count: int) -> None:
+    def _read_parallel_local_chunks(
+        self, required, out: np.ndarray, thread_count: int
+    ) -> None:
         def _read_one(item):
-            chunk_offset, chunk_selection, out_selection, rec, chunk_shape = item
+            chunk_offset, chunk_selection, out_selection, rec, chunk_shape = (
+                item
+            )
             chunk_data = read_record_array(
                 self._variable.file._reader,
                 rec,
@@ -79,21 +110,43 @@ class ChunkReadMixin:
             return chunk_offset, chunk_selection, out_selection, chunk_data
 
         with ThreadPoolExecutor(max_workers=thread_count) as executor:
-            for _chunk_offset, chunk_selection, out_selection, chunk_data in executor.map(_read_one, required):
+            for (
+                _chunk_offset,
+                chunk_selection,
+                out_selection,
+                chunk_data,
+            ) in executor.map(_read_one, required):
                 out[out_selection] = chunk_data[chunk_selection]
 
-    def _read_bulk_fsspec_chunks(self, required, out: np.ndarray, thread_count: int) -> None:
+    def _read_bulk_fsspec_chunks(
+        self, required, out: np.ndarray, thread_count: int
+    ) -> None:
         reader = self._variable.file._reader
         fh = getattr(reader, "_fh", None)
         actual_fh = getattr(fh, "fh", fh)
         path = actual_fh.path
         starts = [rec.data_offset for _, _, _, rec, _ in required]
-        stops = [rec.data_offset + get_record_packed_nbytes(rec, self._variable.file.word_size) for _, _, _, rec, _ in required]
-        buffers = actual_fh.fs.cat_ranges([path] * len(required), starts, stops)
+        stops = [
+            rec.data_offset
+            + get_record_packed_nbytes(rec, self._variable.file.word_size)
+            for _, _, _, rec, _ in required
+        ]
+        buffers = actual_fh.fs.cat_ranges(
+            [path] * len(required), starts, stops
+        )
         items = list(zip(required, buffers))
 
         def _decode_one(item):
-            (chunk_offset, chunk_selection, out_selection, rec, chunk_shape), raw = item
+            (
+                (
+                    chunk_offset,
+                    chunk_selection,
+                    out_selection,
+                    rec,
+                    chunk_shape,
+                ),
+                raw,
+            ) = item
             chunk_data = self._decode_chunk_buffer(raw, rec, chunk_shape)
             return chunk_offset, chunk_selection, out_selection, chunk_data
 
@@ -110,19 +163,31 @@ class ChunkReadMixin:
         reader = file_obj._reader
         thread_count = int(getattr(file_obj, "_thread_count", 0) or 0)
         cat_range_allowed = bool(getattr(file_obj, "_cat_range_allowed", True))
-        cat_str = {True:'Cat ranges ON',False:'Cat ranges OFF'}[cat_range_allowed]
-        logger.info(f'[ppfive] select chunks: thread_count={thread_count}, {cat_str}')
+        cat_str = {True: "Cat ranges ON", False: "Cat ranges OFF"}[
+            cat_range_allowed
+        ]
+        logger.info(
+            f"[ppfive] select chunks: thread_count={thread_count}, {cat_str}"
+        )
 
         required = self._get_required_chunks(indexer)
-        logger.info(f'[ppfive] {len(required)} chunks required')
+        logger.info(f"[ppfive] {len(required)} chunks required")
 
         if not required:
             return
-        
-        if thread_count != 0 and cat_range_allowed and isinstance(reader, FsspecReader):
+
+        if (
+            thread_count != 0
+            and cat_range_allowed
+            and isinstance(reader, FsspecReader)
+        ):
             fh = getattr(reader, "_fh", None)
             actual_fh = getattr(fh, "fh", fh)
-            if actual_fh is not None and hasattr(actual_fh, "fs") and hasattr(actual_fh.fs, "cat_ranges"):
+            if (
+                actual_fh is not None
+                and hasattr(actual_fh, "fs")
+                and hasattr(actual_fh.fs, "cat_ranges")
+            ):
                 self._read_bulk_fsspec_chunks(required, out, thread_count)
                 return
 

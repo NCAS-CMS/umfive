@@ -12,7 +12,9 @@ from .base import ByteReader
 class LocalPosixReader(ByteReader):
     """POSIX file reader using pread-style absolute reads."""
 
-    def __init__(self, path: str | os.PathLike[str], disable_os_cache: bool = False):
+    def __init__(
+        self, path: str | os.PathLike[str], disable_os_cache: bool = False
+    ):
         self.path = str(Path(path))
         self._fd = os.open(self.path, os.O_RDONLY)
         self._disable_os_cache = disable_os_cache

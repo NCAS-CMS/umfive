@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -19,7 +19,7 @@ class RecordInfo:
     header_offset: int
     data_offset: int
     disk_length: int
-    extra_data: None
+    extra_data: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

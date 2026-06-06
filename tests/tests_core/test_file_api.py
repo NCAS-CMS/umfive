@@ -75,7 +75,10 @@ def test_variable_dataset_like_helpers():
 
 
 def test_get_lazy_view_falls_back_with_log(caplog):
-    f = File(__file__, variable_index={"x": {"data_loader": lambda: np.array([1, 2])}})
+    f = File(
+        __file__,
+        variable_index={"x": {"data_loader": lambda: np.array([1, 2])}},
+    )
 
     with caplog.at_level(logging.INFO):
         view = f.get_lazy_view("x")

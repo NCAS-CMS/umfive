@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
-from datetime import datetime
 from typing import Any
-from functools import cmp_to_key
 
 import numpy as np
 
@@ -26,10 +24,10 @@ from ..constants import (
     INDEX_LBDAY,
     INDEX_LBDAYD,
     INDEX_LBFT,
-    INDEX_LBHEM,INDEX_LBCODE,
+    INDEX_LBHEM,
+    INDEX_LBCODE,
     INDEX_LBHR,
     INDEX_LBHRD,
-    INDEX_LBREL,
     INDEX_LBLEV,
     INDEX_LBMIN,
     INDEX_LBMIND,
@@ -40,7 +38,6 @@ from ..constants import (
     INDEX_LBPROC,
     INDEX_LBROW,
     INDEX_LBTIM,
-    INDEX_LBSRCE,
     INDEX_LBUSER4,
     INDEX_LBUSER5,
     INDEX_LBUSER7,
@@ -58,11 +55,11 @@ from .interpret import get_type
 from .models import RecordInfo
 
 
-def _float_key(val: float) -> float:
+def _float_key(val) -> float:
     return round(float(val), 9)
 
 
-def _between_var_key(rec: RecordInfo) -> tuple[Any, ...]:
+def _between_var_key(rec: RecordInfo) -> tuple:
     ih = rec.int_hdr
     rh = rec.real_hdr
     return (
@@ -85,7 +82,7 @@ def _between_var_key(rec: RecordInfo) -> tuple[Any, ...]:
     )
 
 
-def _within_var_key(rec: RecordInfo) -> tuple[Any, ...]:
+def _within_var_key(rec: RecordInfo) -> tuple:
     ih = rec.int_hdr
     rh = rec.real_hdr
     lblev = int(ih[INDEX_LBLEV])
@@ -130,11 +127,11 @@ def _dtype_name(first: RecordInfo, word_size: int) -> str:
     kind = get_type(first.int_hdr)
     if kind == "integer":
         return "int32" if word_size == 4 else "int64"
-    
+
     return "float32" if word_size == 4 else "float64"
 
 
-def _z_key(rec: RecordInfo) -> tuple[Any, ...]:
+def _z_key(rec: RecordInfo) -> tuple:
     ih = rec.int_hdr
     pseudo = int(ih[INDEX_LBUSER5])
     if pseudo in (0, INT_MISSING_DATA):
@@ -144,11 +141,13 @@ def _z_key(rec: RecordInfo) -> tuple[Any, ...]:
     return (pseudo, within[13], within[14], within[15])
 
 
-def _t_key(rec: RecordInfo) -> tuple[Any, ...]:
+def _t_key(rec: RecordInfo) -> tuple:
     return _within_var_key(rec)[:13]
 
 
-def _split_on_duplicate_tz_pairs(recs: list[RecordInfo]) -> list[list[RecordInfo]]:
+def _split_on_duplicate_tz_pairs(
+    recs: list[RecordInfo],
+) -> list[list[RecordInfo]]:
     """Split a grouped variable when (t,z) coordinate pairs are duplicated.
 
     This mirrors the key behavior of the legacy disambiguation index in
@@ -175,7 +174,7 @@ def build_variable_index(
     word_size: int,
     byte_ordering: str,
     parallel_config: dict[str, Any] | None = None,
-) -> dict[str, dict[str, Any]]:
+) -> dict[int, dict[str, Any]]:
     if parallel_config is None:
         parallel_config = {"thread_count": 0, "cat_range_allowed": True}
 
@@ -195,7 +194,7 @@ def build_variable_index(
     # Assign an integer code to each data variable. This is used as
     # the key in 'variable_index'.
     int_code = 0
-    
+
     for _, recs in grouped.items():
         for recs_split in _split_on_duplicate_tz_pairs(recs):
             first = recs_split[0]
@@ -226,7 +225,7 @@ def build_variable_index(
             reverse = LBVC == 8
 
             z_levels = sorted(z_keys_set, reverse=reverse)
-            
+
             t_steps = sorted({_t_key(r) for r in recs_split})
             z_index = {k: i for i, k in enumerate(z_levels)}
             t_index = {k: i for i, k in enumerate(t_steps)}
@@ -237,11 +236,13 @@ def build_variable_index(
             nt = len(t_steps)
 
             is_single_level_surface = (
-                nz == 1 
+                nz == 1
                 and 126 <= LBVC <= 139
-                or (LBVC == 0
+                or (
+                    LBVC == 0
                     and first.int_hdr[INDEX_LBLEV] in (8888, 9999)
-                    and first.int_hdr[INDEX_LBUSER5] == 0)
+                    and first.int_hdr[INDEX_LBUSER5] == 0
+                )
             )
             has_z_axis = not is_single_level_surface
 
@@ -249,7 +250,7 @@ def build_variable_index(
             packing_modes = sorted(
                 {int(rec.int_hdr[INDEX_LBPACK]) % 10 for rec in recs_split}
             )
-            
+
             compression_modes = sorted(
                 {
                     (int(rec.int_hdr[INDEX_LBPACK]) // 10) % 10
@@ -264,37 +265,61 @@ def build_variable_index(
 
                 if has_z_axis:
                     chunk_coords = (ti, zi, 0, 0)
-                else:                        
+                else:
                     chunk_coords = (ti, 0, 0)
-                    
+
                 chunk_records.append(
-                    {"record": rec,
-                     "chunk_coords": chunk_coords}
+                    {"record": rec, "chunk_coords": chunk_coords}
                 )
-                
-            def _make_loader(group_recs, _nt, _nz, _ny, _nx, _dtype,
-                             _t_index, _z_index, _has_z_axis):
+
+            def _make_loader(
+                group_recs,
+                _nt,
+                _nz,
+                _ny,
+                _nx,
+                _dtype,
+                _t_index,
+                _z_index,
+                _has_z_axis,
+            ):
                 def _load():
                     out_shape = (_nt, _nz, _ny, _nx)
 
                     out = np.empty(out_shape, dtype=_dtype)
                     out.fill(np.nan if _dtype.kind == "f" else 0)
 
-                    thread_count = int(parallel_config.get("thread_count", 0) or 0)
+                    thread_count = int(
+                        parallel_config.get("thread_count", 0) or 0
+                    )
                     cat_range_allowed = bool(
                         parallel_config.get("cat_range_allowed", True)
                     )
 
                     # Strategy A: fsspec bulk range reads for unpacked
                     # records.
-                    if thread_count != 0 and cat_range_allowed and isinstance(reader, FsspecReader):
+                    if (
+                        thread_count != 0
+                        and cat_range_allowed
+                        and isinstance(reader, FsspecReader)
+                    ):
                         fh = getattr(reader, "_fh", None)
                         actual_fh = getattr(fh, "fh", fh)
-                        if actual_fh is not None and hasattr(actual_fh, "fs") and hasattr(actual_fh.fs, "cat_ranges"):
+                        if (
+                            actual_fh is not None
+                            and hasattr(actual_fh, "fs")
+                            and hasattr(actual_fh.fs, "cat_ranges")
+                        ):
                             path = actual_fh.path
                             starts = [rec.data_offset for rec in group_recs]
-                            stops = [rec.data_offset + get_record_packed_nbytes(rec, word_size) for rec in group_recs]
-                            buffers = actual_fh.fs.cat_ranges([path] * len(group_recs), starts, stops)
+                            stops = [
+                                rec.data_offset
+                                + get_record_packed_nbytes(rec, word_size)
+                                for rec in group_recs
+                            ]
+                            buffers = actual_fh.fs.cat_ranges(
+                                [path] * len(group_recs), starts, stops
+                            )
 
                             items = list(zip(group_recs, buffers))
 
@@ -302,41 +327,58 @@ def build_variable_index(
                                 rec, raw = item
                                 ti = _t_index[_t_key(rec)]
                                 zi = _z_index[_z_key(rec)]
-                                values = decode_record_array_from_raw(raw, rec, word_size, byte_ordering)
+                                values = decode_record_array_from_raw(
+                                    raw, rec, word_size, byte_ordering
+                                )
                                 return ti, zi, values
 
                             if thread_count > 1:
-                                with ThreadPoolExecutor(max_workers=thread_count) as executor:
+                                with ThreadPoolExecutor(
+                                    max_workers=thread_count
+                                ) as executor:
                                     decoded = executor.map(_decode_one, items)
                                     for ti, zi, values in decoded:
-                                        out[ti, zi, :, :] = values.reshape((_ny, _nx))
+                                        out[ti, zi, :, :] = values.reshape(
+                                            (_ny, _nx)
+                                        )
                             else:
                                 for ti, zi, values in map(_decode_one, items):
-                                    out[ti, zi, :, :] = values.reshape((_ny, _nx))
+                                    out[ti, zi, :, :] = values.reshape(
+                                        (_ny, _nx)
+                                    )
 
                             if not _has_z_axis:
                                 # Remove a non-existent Z axis
                                 out = np.squeeze(out, axis=1)
-                                
+
                             return out
 
                     # Strategy B: local threaded reads using
                     # os.pread-backed reader.
-                    if thread_count != 0 and isinstance(reader, LocalPosixReader):
+                    if thread_count != 0 and isinstance(
+                        reader, LocalPosixReader
+                    ):
+
                         def _read_one(rec):
                             ti = _t_index[_t_key(rec)]
                             zi = _z_index[_z_key(rec)]
-                            values = read_record_array(reader, rec, word_size, byte_ordering)
+                            values = read_record_array(
+                                reader, rec, word_size, byte_ordering
+                            )
                             return ti, zi, values
 
-                        with ThreadPoolExecutor(max_workers=thread_count) as executor:
-                            for ti, zi, values in executor.map(_read_one, group_recs):
+                        with ThreadPoolExecutor(
+                            max_workers=thread_count
+                        ) as executor:
+                            for ti, zi, values in executor.map(
+                                _read_one, group_recs
+                            ):
                                 out[ti, zi, :, :] = values.reshape((_ny, _nx))
-                                  
+
                         if not _has_z_axis:
                             # Remove a non-existent Z axis
                             out = np.squeeze(out, axis=1)
-                              
+
                         return out
 
                     # Strategy C: serial fallback.
@@ -351,7 +393,7 @@ def build_variable_index(
                     if not _has_z_axis:
                         # Remove a non-existent Z axis
                         out = np.squeeze(out, axis=1)
-                            
+
                     return out
 
                 return _load
@@ -382,7 +424,7 @@ def build_variable_index(
                     dtype,
                     t_index,
                     z_index,
-                    has_z_axis                    
+                    has_z_axis,
                 ),
             }
 
@@ -394,7 +436,7 @@ def build_variable_index(
 def split_groups_by_extra_data(grouped):
     """TODO"""
     new_grouped = {}
-    
+
     for key, recs in grouped.items():
         split = False
 
@@ -411,8 +453,9 @@ def split_groups_by_extra_data(grouped):
                 new_grouped[key + (f"extra_data_{i}")] = [rec]
         else:
             new_grouped[key] = recs
-            
+
     return new_grouped
+
 
 def equal_extra_data(rec0, rec1):
     """TODO"""
@@ -424,27 +467,27 @@ def equal_extra_data(rec0, rec1):
             return True
 
         return False
-    
+
     if extra1 is None:
         return False
 
     if sorted(extra0.keys()) != sorted(extra1.keys()):
         return False
-    
+
     for key, value0 in extra0.items():
         value1 = extra1[key]
 
         kind = value0.dtype.kind
-        if kind == 'f':
+        if kind == "f":
             itemsize = value0.dtype.itemsize
             if itemsize == 4:
                 rtol = 1e-5
             elif itemsize == 8:
                 rtol = 1e-13
-                
+
             if not np.allclose(value0, value1, atol=0, rtol=rtol):
                 return False
-            
+
         elif kind in "iSUT":
             if not np.array_equal(value0, value1):
                 return False

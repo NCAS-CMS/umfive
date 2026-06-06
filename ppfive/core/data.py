@@ -17,31 +17,39 @@ def _endian_prefix(byte_ordering: str) -> str:
 
     if byte_ordering == "big_endian":
         return ">"
-    
+
     raise ValueError(f"Unsupported byte_ordering: {byte_ordering!r}")
 
 
-def _dtype_for_record(rec: RecordInfo, word_size: int, byte_ordering: str) -> np.dtype:
+def _dtype_for_record(
+    rec: RecordInfo, word_size: int, byte_ordering: str
+) -> np.dtype:
     """TODO"""
     data_type, _ = get_type_and_num_words(rec.int_hdr, word_size)
     prefix = _endian_prefix(byte_ordering)
     if data_type == "integer":
         return np.dtype(f"{prefix}i{word_size}")
-    
+
     return np.dtype(f"{prefix}f{word_size}")
 
 
-def _unpack_cray32(raw: bytes, nwords: int, byte_ordering: str, word_size: int) -> np.ndarray:
+def _unpack_cray32(
+    raw: bytes, nwords: int, byte_ordering: str, word_size: int
+) -> np.ndarray:
     """TODO"""
     prefix = _endian_prefix(byte_ordering)
-    packed = np.frombuffer(raw[: nwords * 4], dtype=np.dtype(f"{prefix}f4"), count=nwords)
+    packed = np.frombuffer(
+        raw[: nwords * 4], dtype=np.dtype(f"{prefix}f4"), count=nwords
+    )
     if word_size == 4:
         return packed.astype(np.float32, copy=True)
-    
+
     return packed.astype(np.float64, copy=True)
 
 
-def _unpack_run_length(raw: bytes, nwords: int, byte_ordering: str, word_size: int, mdi: float) -> np.ndarray:
+def _unpack_run_length(
+    raw: bytes, nwords: int, byte_ordering: str, word_size: int, mdi: float
+) -> np.ndarray:
     """TODO"""
     prefix = _endian_prefix(byte_ordering)
     dtype = np.dtype(f"{prefix}f{word_size}")
@@ -93,17 +101,21 @@ def get_record_packed_nbytes(rec: RecordInfo, word_size: int) -> int:
     return rec.disk_length - extra_bytes
 
 
-def read_record_raw(reader: ByteReader, rec: RecordInfo, word_size: int) -> bytes:
+def read_record_raw(
+    reader: ByteReader, rec: RecordInfo, word_size: int
+) -> bytes:
     """TODO"""
     packed_bytes = get_record_packed_nbytes(rec, word_size)
     raw = reader.read_at(rec.data_offset, packed_bytes)
     if len(raw) < packed_bytes:
         raise ValueError("Short read while loading raw record bytes")
-    
+
     return raw
 
 
-def decode_record_array_from_raw(raw: bytes, rec: RecordInfo, word_size: int, byte_ordering: str) -> np.ndarray:
+def decode_record_array_from_raw(
+    raw: bytes, rec: RecordInfo, word_size: int, byte_ordering: str
+) -> np.ndarray:
     """TODO"""
     pack = int(rec.int_hdr[INDEX_LBPACK]) % 10
     _, nwords = get_type_and_num_words(rec.int_hdr, word_size)
@@ -127,9 +139,13 @@ def decode_record_array_from_raw(raw: bytes, rec: RecordInfo, word_size: int, by
     if pack == 3:
         raise NotImplementedError("GRIB packed data is not supported")
 
-    raise NotImplementedError(f"Packed data mode {pack} is not implemented yet")
+    raise NotImplementedError(
+        f"Packed data mode {pack} is not implemented yet"
+    )
 
 
-def read_record_array(reader: ByteReader, rec: RecordInfo, word_size: int, byte_ordering: str) -> np.ndarray:
+def read_record_array(
+    reader: ByteReader, rec: RecordInfo, word_size: int, byte_ordering: str
+) -> np.ndarray:
     raw = read_record_raw(reader, rec, word_size)
     return decode_record_array_from_raw(raw, rec, word_size, byte_ordering)
