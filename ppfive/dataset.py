@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 
 from .core import detect_file_type, scan_ff_headers, scan_pp_headers
-from .stash_table import stash_records
+from .stash import stash_records
 from .core.variables import build_variable_index
 from .io.base import ByteReader
 from .io.fileobj import FileObjReader
@@ -106,7 +106,7 @@ class _PyfiveAttrs(dict):
             yield key, self._coerce_for_items(value)
 
 
-class Mixin:
+class _Mixin:
     """Mixin class for `DimensionScale` and `Variable`."""
 
     def setattr(self, name, value):
@@ -146,7 +146,7 @@ class Mixin:
             attrs["units"] = np.bytes_(units)
 
 
-class DimensionScale(Mixin):
+class DimensionScale(_Mixin):
     """Internal pyfive-like dimension-scale dataset for cfdm bridging."""
 
     def __init__(
@@ -237,8 +237,19 @@ class DimensionScale(Mixin):
         return (name,)
 
 
-class Variable(Mixin):
-    """TODO"""
+class Variable(_Mixin):
+    """A metadata variable in the dataset.
+
+    Any variable that is not a dimension coordinate variable nor a
+    data variable is represented by a `Variable` instance. This
+    includes coordinate bounds, auxilary coordinate, domain ancillary,
+    and grid mapping variables.
+
+    A dimension coordinate variable is represented by a
+    `DimensionScale` instance, and a data variable is represented by a
+    `DataVariable` instance.
+
+    """
 
     def __init__(
         self,
@@ -261,11 +272,16 @@ class Variable(Mixin):
         if attrs:
             self.attrs.update(attrs)
 
-        if DIMENSION_LIST is not None:
-            if len(DIMENSION_LIST) != len(self.shape):
-                raise ValueError("TODO")
-
-            self.attrs["DIMENSION_LIST"] = DIMENSION_LIST
+        if DIMENSION_LIST is None:
+            raise ValueError(
+                "Must provide DIMENSION_LIST when instantiating a "
+                "Variable instance"
+            )
+            
+        if len(DIMENSION_LIST) != len(self.shape):
+            raise ValueError("TODO")
+        
+        self.attrs["DIMENSION_LIST"] = DIMENSION_LIST
 
     def __getitem__(self, key):
         return self._data[key]

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import csv
 import re
 from importlib.resources import files
@@ -23,7 +21,30 @@ _PP_EXTRA = 8
 _stash_table = {}
 
 
-def _parse_version(value: str):
+def _parse_version(value):
+    """Parse UM versions from the STASH table source.
+
+    
+    :Parameters:
+
+        value: `str`
+            The UM version from the STASH table source.    
+    
+    :Returns:
+    
+        `float` or `None`
+            The parsed version, which will a `float`, or `None` of the
+            input *value* cannot be converted to a `float`.
+
+    **Examples**
+
+    >>> _parse_version('503')
+    503.0
+
+    >>> print(_parse_version(''))
+    None
+
+    """
     if not value:
         return None
 
@@ -33,8 +54,29 @@ def _parse_version(value: str):
         return None
 
 
-def _parse_cf_extra(value: str) -> dict[str, object]:
-    out: dict[str, object] = {}
+def _parse_cf_extra(value):
+    """Parse CF extra information from the STASH table source.
+
+    :Parameters:
+
+        value: `str`
+            The CF extra information from the STASH table source.
+    
+    :Returns:
+    
+        `dict`
+            A dictionary containing the extra inormation.
+
+    **Examples**
+
+    >>> _parse_cf_extra('height=1.5m')
+    {'height': ['1.5', 'm']}
+
+    >>> _parse_cf_extra('where_sea_ice')
+    {'where': 'where sea_ice'}
+
+    """
+    out = {}
     if not value:
         return out
 
@@ -81,6 +123,8 @@ def load_stash_table(table=None, delimiter="!", merge=True):
 
     If the "Valid from" and "Valid to" entries are omitted then the
     stash mapping is assumed to apply to all UM versions.
+
+    .. seealso:: `stash_records`, `stash_table`
 
     :Parameters:
 
@@ -176,8 +220,13 @@ def stash_table():
     """Return a copy of the loaded STASH to standard name conversion
     table.
 
-    .. seealso:: `load_stash_table`, `stash_table_record`
+    .. seealso:: `load_stash_table`, `stash_record`
 
+    :Returns:
+
+        `dict`
+            The currently loaded STASH table.
+    
     """
     if not _stash_table:
         load_stash_table()
@@ -185,12 +234,36 @@ def stash_table():
     return _stash_table.copy()
 
 
-def stash_records(submodel=None, stash_code=None):
-    """Return STASH records."""
+def stash_records(submodel, stash_code):
+    """Return the STASH records for a particular stash code.
+
+    .. seealso:: `load_stash_table`, `stash_table`
+
+    :Parameters:
+
+        submodel: `int`
+            The submodel of the STASH code (e.g. ``2``).
+    
+        stash: `int`
+            The STASH code (e.g. ``101``).
+    
+    :Returns:
+
+        `tuple`
+            The STASH records from the currently loaded STASH table
+            for the given *submodel* and *stash_code*.
+
+    **Examples**
+
+    >>> ppfive.stash_records(2, 101)
+    (('POTENTIAL TEMPERATURE (OCEAN)  DEG.C', 'K @ 273.15',  None,  900.0, 'sea_water_potential_temperature', {}, ''),)
+
+    >>> ppfive.stash_records(1, 5)
+    (('THETAL IN THE EXTERNAL DUMP         ', 'K', None, 407.0, None, {}, ''),
+     ('OROGRAPHIC GRADIENT  X COMPONENT    ', None, 606.0, None, None, {}, ''))
+
+    """
     if not _stash_table:
         load_stash_table()
-
-    if submodel is None and stash_code is None:
-        return _stash_table.copy()
 
     return _stash_table.get((int(submodel), int(stash_code)), ())

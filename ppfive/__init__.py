@@ -1,6 +1,6 @@
 from .dataset import File, DimensionScale, Variable
 from .variable import DataVariable
-from .stash_table import stash_table, load_stash_table, stash_records
+from .stash import load_stash_table, stash_records, stash_table
 
 try:
     import pyfive
