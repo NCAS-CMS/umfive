@@ -1708,7 +1708,13 @@ class _DataVariableMetadata:
         return time
 
     def grid_mapping(self, BPLAT, BPLON):
-        """TODO"""
+        """Add add_offset and scale_factor attributes to a variable. TODO
+
+        :Returns:
+
+            `None`
+
+        """
         key = ("grid_mapping", BPLAT, BPLON)
         gm_name = self._cache.get(key)
         if gm_name is None:
