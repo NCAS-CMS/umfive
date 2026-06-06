@@ -548,7 +548,9 @@ class File(Mapping):
             # demand after close.
 
     def set_parallelism(
-        self, thread_count: int = 5, cat_range_allowed: bool = True
+            self,
+            cache, Netcdf4Dimid,
+            thread_count: int = 5, cat_range_allowed: bool = True,
     ):
         """Configure experimental chunk/record read parallelism."""
         if thread_count is None:
@@ -572,7 +574,9 @@ class File(Mapping):
                     "cat_range_allowed": self._cat_range_allowed,
                 },
             )
-            self.variables = self._build_variables(variable_index, cache)
+            self.variables = self._build_variables(
+                variable_index, cache, Netcdf4Dimid
+            )
 
     def __getitem__(self, key: str) -> DataVariable:
         if not isinstance(key, str):
@@ -929,9 +933,7 @@ class _DataVariableMetadata:
                 # Create the height coordinate from the information
                 # given in the STASH to standard_name conversion table
                 height, units = self._cf_info["height"]
-                dim_ncvar = self.size_1_height_coordinate(
-                    axiscode, height, units
-                )
+                dim_ncvar = self.size_1_height_coordinate(height, units)
             elif axiscode == 14:
                 dim_ncvar = self.atmosphere_hybrid_height_coordinate(axiscode)
             else:
@@ -1045,7 +1047,9 @@ class _DataVariableMetadata:
         #        if self.attrs.get('standard_name') == "surface_air_pressure":
         #            cache['pstar'].setdefault(self._XY, []).append(identity)
 
-        # Set the axis names in the data variable's attributes
+        # ------------------------------------------------------------
+        # Set the dimension names in the data variable's attributes
+        # ------------------------------------------------------------
         dim_names = []
         for axis, size in zip(axis_order, shape):
             if axis in self._axis:
@@ -1068,19 +1072,51 @@ class _DataVariableMetadata:
 
         self.DIMENSION_LIST = tuple((ncdim,) for ncdim in dim_names)
 
-    def add_to_coordinates(self, ncvar):
-        """TODO"""
+    def add_to_coordinates(self, name):
+        """Add a variable name the data variable's "coordinates" attribute.
+
+        :Parameters:
+
+            name: `str`
+                The variable name to add.
+        
+        :Returns:
+
+            `None`
+
+        """
         attrs = self.attrs
         coordinates = attrs.get("coordinates")
         if coordinates:
-            coordinates += f" {ncvar}"
+            coordinates += f" {name}"
         else:
-            coordinates = ncvar
+            coordinates = name
 
         attrs["coordinates"] = coordinates
 
     def add_to_variables(self, name, default="variable"):
-        """TODO"""
+        """Add a variable to the `variables` dictionary.
+
+        The key is defined by *name*, and may have a suffx added to it
+        to ensure uniqueness.
+
+        :Parameters:
+
+            name: 
+                The name of the variable to add. Either a string, or a
+                a variable instance that has its name stored in its
+                `!name` attribute, or `None`.
+        
+            default: `str`, optional
+                The variable name to add if no string-valued name is
+                available.
+        
+        :Returns:
+
+            `str`
+                The added, unique name.
+
+        """
         if not (name is None or isinstance(name, str)):
             # 'name' is some sort of variable instance
             var = name
@@ -1148,18 +1184,18 @@ class _DataVariableMetadata:
 
         :Returns:
 
-            `DimensionCoordinate` or `None`
+            `str`
+                The name dimension coordinate variable.
 
         """
         z_recs = self._z_recs
-        array = tuple(rec.real_hdr[INDEX_BLEV] for rec in z_recs)  # Zsea
 
-        bounds0_a = (
-            tuple(rec.real_hdr[INDEX_BRLEV] for rec in z_recs),
-        )  # Zsea lower
-        bounds1_a = tuple(
-            rec.real_hdr[INDEX_BRSVD1] for rec in z_recs
-        )  # Zsea upper
+        # Zsea
+        array_a = tuple(rec.real_hdr[INDEX_BLEV] for rec in z_recs)
+        # Zsea lower
+        bounds0_a = (tuple(rec.real_hdr[INDEX_BRLEV] for rec in z_recs))
+        # Zsea upper
+        bounds1_a = tuple(rec.real_hdr[INDEX_BRSVD1] for rec in z_recs)
 
         array_b = tuple(rec.real_hdr[INDEX_BHLEV] for rec in z_recs)
         bounds0_b = tuple(rec.real_hdr[INDEX_BHRLEV] for rec in z_recs)
@@ -1298,8 +1334,8 @@ class _DataVariableMetadata:
 
             # Set the 'forumla terms' attriubtes on the parent coordinate
             # and coordinate bounds variables
-            self.set_formula_terms(dc, f"a: {da_a.name} b: {da_b.name}")
-            self.set_formula_terms(
+            self.formula_terms(dc, f"a: {da_a.name} b: {da_b.name}")
+            self.formula_terms(
                 dc_bounds, f"a: {da_a_bounds.name} b: {da_b_bounds.name}"
             )
 
@@ -1343,7 +1379,8 @@ class _DataVariableMetadata:
 
         :Returns:
 
-            `DimensionCoordinate`
+            `str`
+                The name dimension coordinate variable.
 
         """
         items = tuple(self.header_bz(rec) for rec in self._z_recs)
@@ -1447,8 +1484,8 @@ class _DataVariableMetadata:
 
             # Set the 'forumla terms' attriubtes on the parent coordinate
             # and coordinate bounds variables
-            self.set_formula_terms(dc, f"a: {da_a.name} b: {da_b.name}")
-            self.set_formula_terms(
+            self.formula_terms(dc, f"a: {da_a.name} b: {da_b.name}")
+            self.formula_terms(
                 dc_bounds, f"a: {da_a_bounds.name} b: {da_b_bounds.name}"
             )
 
@@ -1487,6 +1524,7 @@ class _DataVariableMetadata:
         :Returns:
 
             `numpy.ndarray`
+                The bounds array.
 
         """
         bounds = np.empty((bounds0.size, 2), dtype=bounds0.dtype)
@@ -1495,9 +1533,7 @@ class _DataVariableMetadata:
         return bounds
 
     def cell_methods(self):
-        """Create the cell methods.
-
-        **UMDP F3**
+        """Create a cell methods attribute.
 
         LBPROC Processing code. This indicates what processing has
         been done to the basic ﬁeld. It should be 0 if no processing
@@ -1625,7 +1661,7 @@ class _DataVariableMetadata:
 
         ctime = cftime.date2num(ctime, refunits, calendar)
 
-        _cache__date2num[key] = ctime
+        _cache_date2num[key] = ctime
         return ctime
 
     def dtime(self, rec):
@@ -1873,27 +1909,16 @@ class _DataVariableMetadata:
         return dim_ncvar
 
     def runid(self):
-        """Decode the integer value of LBEXP in the PP header into a
-        runid.
-
-        If this value has already been decoded, then it will be returned
-        from the cache, otherwise the value will be decoded and then added
-        to the cache.
+        """Decode LBEXP in the lookup header as a runid.
 
         :Returns:
 
             `str`
-               A string derived from LBEXP. If LBEXP is a negative integer
-               then that number is returned as a string.
+               The runid (e.g. ``'aaa5u'``). If LBEXP is a negative
+               integer then that number is returned as a string
+               (e.g. ``'-34'``).
 
-        **Examples**
-
-        >>> self.runid()
-        'aaa5u'
-        >>> self.runid()
-        '-34'
-
-        """
+        """        
         LBEXP = self._int_hdr[INDEX_LBEXP]
 
         runid = _cache_runid.get(LBEXP)
@@ -1923,11 +1948,28 @@ class _DataVariableMetadata:
         _cache_runid[LBEXP] = runid
         return runid
 
-    def size_1_height_coordinate(self, axiscode, height, units):
-        """Create and return the size-one height coordinate."""
+    def size_1_height_coordinate(self, height, units):
+        """Create a size-one height coordinate.
+        
+        :Parameters:
+
+            height: `float`
+                The height. E.g. ``1.5``.
+
+            units: `str`
+                The height units. E.g. ``'m'``.
+         
+        :Returns:
+
+            `str`
+                The name of the dimension coordinate variable.
+
+        """
+        axiscode = 2
+        
         # Create the height coordinate from the information given in
         # the STASH to standard_name conversion table
-        key = ("size_1_height_coordinate", axiscode, height, units)
+        key = ("size_1_height_coordinate", height, units)
         dim_ncvar = self._cache.get(key)
         if dim_ncvar is None:
             array = np.array((height,), dtype=float)
@@ -1948,28 +1990,32 @@ class _DataVariableMetadata:
         return dim_ncvar
 
     def test_um_condition(self, um_condition, LBCODE, BPLAT, BPLON):
-        """Return `True` if a field satisfies the condition specified
-        for a STASH code to standard name conversion.
+        """Return `True` if the lookup header satisfies a UM
+        condition.
 
         :Parameters:
 
             um_condition: `str`
-
+                A UM condition found from a record in the STASH
+                table. E.g. ``'true_latitude_longitude'``,
+                ``'rotated_latitude_longitude'``.
+        
             LBCODE: `int`
+                The lookup header's LBCODE Grid code.
 
             BPLAT: `float`
+                The lookup header's BPLAT real latitude of ‘pseudo’ N
+                pole.
 
             BPLON: `float`
-
+                 Thelookup header's BPLON real longitude of ‘pseudo’ N
+                 pole.
+        
         :Returns:
 
             `bool`
                 `True` if a field satisfies the condition specified,
                 `False` otherwise.
-
-        **Examples**
-
-        >>> ok = u.test_um_condition('true_latitude_longitude', ...)
 
         """
         if um_condition == "true_latitude_longitude":
@@ -1997,35 +2043,30 @@ class _DataVariableMetadata:
             )
 
         # Still here? Then the condition has not been satisfied.
-        return
+        return False
 
     def test_um_version(self, valid_from, valid_to, um_version):
-        """Return `True` if the UM version applicable to this field is
-        within the given range.
-
-        If possible, the UM version is derived from the PP header and
-        stored in the metadata object. Otherwise it is taken from the
-        *um_version* parameter.
+        """Return `True` if a UM version is within the given range.
 
         :Parameters:
 
-            valid_from: `int`, `float` or `None`
-
-            valid_to: `int`, `float` or `None`
-
+            valid_from: `int` or `float` or `None`     
+                The "valid from" version. Set to `None` if there is no
+                lower limit. E.g. `401`, `606.3`.
+        
+            valid_to: `int or  `float` or `None` 
+                The "valid to" version. Set to `None` if there is no
+                upper limit. E.g. `401`, `606.3`.
+           
             um_version: `int` or `float`
+                The UM version to test against the *valid_from* and
+                *valid_to* range. E.g. `405`, `606.1`.
 
         :Returns:
 
             `bool`
-                `True` if the UM version applicable to this field
-                construct is within the range, `False` otherwise.
-
-        **Examples**
-
-        >>> ok = u.test_um_version(401, 505, 1001)
-        >>> ok = u.test_um_version(401, None, 606.3)
-        >>> ok = u.test_um_version(None, 405, 401)
+                `True` if the UM version is within the range, `False`
+                otherwise.
 
         """
         if valid_to is None:
@@ -2034,9 +2075,11 @@ class _DataVariableMetadata:
 
             if valid_from <= um_version:
                 return True
+            
         elif valid_from is None:
             if um_version <= valid_to:
                 return True
+            
         elif valid_from <= um_version <= valid_to:
             return True
 
@@ -2051,7 +2094,8 @@ class _DataVariableMetadata:
 
         :Returns:
 
-            `DimensionCoordinate`
+            `str`
+                The name dimension coordinate variable.
 
         """
         t_recs = self._t_recs
@@ -2126,11 +2170,26 @@ class _DataVariableMetadata:
         return dim_ncvar
 
     def bounds_dim(self, bounds):
+        """Get the name for the trailing bounds dimension.
+
+        :Parameters:
+
+            bounds: `nump.ndarray`
+                The bounds array.
+        
+        :Returns:
+
+            `str`
+                The bounds dimension name.
+        
+        """
         size = bounds.shape[-1]
         name = f"bounds{size}"
         if name in self.variables:
+            # Dimension name already exists
             return name
 
+        # Create a new bounds dimension
         b = DimensionScale(
             name=name,
             size=size,
@@ -2141,7 +2200,13 @@ class _DataVariableMetadata:
         return name
 
     def missing_value(self):
-        """TODO"""
+        """Add missing_value and _FillValue attributes to a variable.
+
+        :Returns:
+
+            `None`
+
+        """
         int_hdr = self._int_hdr
         real_hdr = self._real_hdr
 
@@ -2155,7 +2220,13 @@ class _DataVariableMetadata:
             self.attrs["missing_value"] = missing_value
 
     def packing(self):
-        """TODO"""
+        """Add add_offset and scale_factor attributes to a variable.
+
+        :Returns:
+
+            `None`
+
+        """
         # Treat BMKS as a scale_factor if it is neither 0 nor 1
         int_hdr = self._int_hdr
         real_hdr = self._real_hdr
@@ -2176,6 +2247,25 @@ class _DataVariableMetadata:
                 add_offset = add_offset.astype(int_hdr.dtype)
 
             self.attrs["add_offset"] = add_offset
+
+    def formula_terms(self, var, formula_terms):
+        """Add a formula_terms attribute to a varable.
+
+        :Parameters:
+
+            var: 
+                The variable.
+
+            formula_terms: `str`
+                The formula terms to set as the variable's
+                "formula_terms" attribute.
+        
+        :Returns:
+
+            `None`
+
+        """
+        var.attrs["formula_terms"] = formula_terms
 
     def time_coordinate_from_extra_data(self, axiscode, axis):
         """Create the time coordinate from extra data and return it.
@@ -2620,51 +2710,3 @@ class _DataVariableMetadata:
 
         self.add_to_coordinates(dim_ncvar)
         return dim_ncvar
-
-    def set_formula_terms(self, var, terms):
-        """TODO"""
-        var.attrs["formula_terms"] = terms
-
-    def fdr(self):
-        """Return a the contents of PP field headers as strings.
-
-        This is a bit like printfdr in the UKMO IDL PP library.
-
-        :Returns:
-
-            `list`
-
-        """
-        recs = [chunk_rec["record"] for chunk_rec in self._chunk_rec]
-
-        out2 = []
-        for i, rec in enumerate(self.recs):
-            out = [f"Field {i}:"]
-
-            x = [
-                f"{name}::{value}"
-                for name, value in zip(
-                    _header_names, self.int_hdr + self.real_hdr
-                )
-            ]
-
-            x = textwrap.fill(" ".join(x), width=79)
-            out.append(x.replace("::", ": "))
-
-            extra_data = rec.extra_data
-            if self.extra_data:
-                out.append("EXTRA DATA:")
-                for key, value in sorted(rec.extra_data):
-                    out.append(f"{key}: {str(value)}")
-
-            out.append("file: " + self.filename)
-            out.append(
-                f"fmt, byte order, word size: {self.fmt}, "
-                f"{self.byte_ordering}, {self.word_size}"
-            )
-
-            out.append("")
-
-            out2.append("\n".join(out))
-
-        return out2
