@@ -211,6 +211,14 @@ class DataVariableID(ChunkReadMixin):
 class _Mixin:
     """Mixin class for dataset variables."""
 
+    def __len__(self):
+        """Return len(self)."""
+        shape = self.shape
+        if not shape:
+            raise TypeError(f"len() of unsized object: {self!r}")
+
+        return shape[0]
+
     def __repr__(self):
         """Return repr(self)."""
         dimensions = self.dimensions
@@ -446,38 +454,6 @@ class Variable(_Mixin):
         """Return self[key]."""
         return self._data[key]
 
-#    def __repr__(self):
-#        """Return repr(self)."""
-#        dimensions = self.dimensions
-#        if dimensions is None:
-#            dimensions = ""
-#        else:
-#            dims = ", ".join(dim for dim in dimensions)
-#            dimensions = f", dimensions=({dims})"
-#
-#        return (
-#            f"<ppfive.{self.__class__.__name__}: "
-#            f"{self.name}, shape={self.shape}{dimensions}>"
-#        )
-#
-#    @property
-#    def dimensions(self):
-#        DIMENSION_LIST = self.attrs.get("DIMENSION_LIST")
-#        if DIMENSION_LIST is None:
-#            return None
-#
-#        return tuple(dim[0] for dim in DIMENSION_LIST)
-#
-#    @property
-#    def ndim(self):
-#        """The array's number of dimensions."""
-#        return len(self.shape)
-#
-#    @property
-#    def size(self):
-#        """Number of elements in the array"""
-#        return prod(self.shape)
-
 
 @dataclass
 class DataVariable(_Mixin):
@@ -520,40 +496,9 @@ class DataVariable(_Mixin):
         
         self.setattr("DIMENSION_LIST", DIMENSION_LIST)
 
-#    def __repr__(self):
-#        dimensions = self.dimensions
-#        if dimensions is None:
-#            dimensions = ""
-#        else:
-#            dims = ", ".join(dim for dim in dimensions)
-#            dimensions = f", dimensions=({dims})"
-#
-#        return (
-#            f"<ppfive.{self.__class__.__name__}: "
-#            f"{self.name}, shape={self.shape}{dimensions}>"
-#        )
-#
-#    @property
-#    def ndim(self):
-#        """The array's number of dimensions."""
-#        return len(self.shape)
-#
-#    @property
-#    def size(self):
-#        """Number of elements in the array"""
-#        return prod(self.shape)
-
     @property
     def value(self):
         return self[()]
-
-#    @property
-#    def dimensions(self):
-#        DIMENSION_LIST = self.attrs.get("DIMENSION_LIST")
-#        if DIMENSION_LIST is None:
-#            return None
-#
-#        return tuple(dim[0] for dim in DIMENSION_LIST)
 
     def __getitem__(self, key):
         data = self.id.get_data(key, self.fillvalue)
@@ -572,11 +517,8 @@ class DataVariable(_Mixin):
         
         return np.asarray(data)
 
-    def __len__(self):
-        return self.shape[0]
-
-    def len(self):
-        return len(self)
+#    def len(self):
+#        return len(self)
 
     def read_direct(
         self, array: np.ndarray, source_sel=None, dest_sel=None
