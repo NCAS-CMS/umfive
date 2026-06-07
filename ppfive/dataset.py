@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator, Mapping
+from math import prod
 from pathlib import Path
 import posixpath
 from typing import Any
@@ -15,7 +16,7 @@ from .io.base import ByteReader
 from .io.fileobj import FileObjReader
 from .io.fsspec_reader import FsspecReader
 from .io.local import LocalPosixReader
-from .variable import DataVariable
+from .variable import DataVariable, DimensionScale, Variable
 
 from .constants import (
     BMDI_no_missing_data_value,
@@ -64,13 +65,13 @@ from .constants import (
 )
 
 from .constants import (
-    _coord_long_name,
-    _axiscode_to_units,
-    _coord_axis,
+#    _coord_long_name,
+#    _axiscode_to_units,
+#    _coord_axis,
     _coord_positive,
     _lbvc_to_axiscode,
     _lbsrce_model_codes,
-    _coord_standard_name,
+#    _coord_standard_name,
     _runid_characters,
     _n_runid_characters,
 )
@@ -84,36 +85,34 @@ _cache_runid = {}
 _cache_date2num = {}
 
 
-class _PyfiveAttrs(dict):
-    """Attribute mapping tuned for cfdm/p5netcdf compatibility.
-
-    Keep normal Python `str` values for direct user access, but expose
-    those strings as byte scalars when iterating `.items()` so cfdm's
-    p5netcdf adapter formats them as scalar text instead of character
-    arrays.
-
-    """
-
-    @staticmethod
-    def _coerce_for_items(value: Any) -> Any:
-        if isinstance(value, str):
-            return np.bytes_(value)
-
-        return value
-
-    def items(self):
-        for key, value in super().items():
-            yield key, self._coerce_for_items(value)
+#class _PyfiveAttrs(dict):
+#    """Attribute mapping tuned for cfdm/p5netcdf compatibility.
+#
+#    Keep normal Python `str` values for direct user access, but expose
+#    those strings as byte scalars when iterating `.items()` so cfdm's
+#    p5netcdf adapter formats them as scalar text instead of character
+#    arrays.
+#
+#    """
+#
+#    @classmethod
+#    def _coerce_for_items(value):
+#        if isinstance(value, str):
+#            return np.bytes_(value)
+#
+#        return value
+#
+#    def items(self):
+#        """D.items() -> a set-like object providing a view on D's items"""
+#        for key, value in super().items():
+#            yield key, self._coerce_for_items(value)
 
 
 class _Mixin:
     """Mixin class for `DimensionScale` and `Variable`."""
 
     def setattr(self, name, value):
-        """TODO"""
-        if isinstance(value, str):
-            value = np.bytes_(value)
-
+        """Set an attribute."""
         self.attrs[name] = value
 
     def setattrs_from_axiscode(self, axiscode):
@@ -125,28 +124,28 @@ class _Mixin:
 
         name = _coord_standard_name.get(axiscode)
         if name is not None:
-            attrs["standard_name"] = np.bytes_(name)
+            attrs["standard_name"] = name
             if self.name is None:
                 self.name = name
         else:
             name = _coord_long_name.get(axiscode)
             if name is not None:
-                attrs["long_name"] = np.bytes_(name)
+                attrs["long_name"] = name
 
         axis = _coord_axis.get(axiscode)
         if axis is not None:
-            attrs["axis"] = np.bytes_(axis)
+            attrs["axis"] = axis
 
         positive = _coord_positive.get(axiscode)
         if positive is not None:
-            attrs["positive"] = np.bytes_(positive)
+            attrs["positive"] = positive
 
         units = _axiscode_to_units.get(axiscode)
         if units:
-            attrs["units"] = np.bytes_(units)
+            attrs["units"] = units
 
 
-class DimensionScale(_Mixin):
+class OLD_DimensionScale(_Mixin):
     """Internal pyfive-like dimension-scale dataset for cfdm bridging."""
 
     def __init__(
@@ -163,7 +162,7 @@ class DimensionScale(_Mixin):
         self.file = file_obj
 
         if data is not None:
-            arr = np.asarray(data)
+            arr = np.asanyarray(data)
             if arr.ndim != 1:
                 raise ValueError("Dimension scale data must be 1-D")
 
@@ -237,7 +236,7 @@ class DimensionScale(_Mixin):
         return (name,)
 
 
-class Variable(_Mixin):
+class OLD_Variable(_Mixin):
     """A metadata variable in the dataset.
 
     Any variable that is not a dimension coordinate variable nor a
@@ -272,21 +271,26 @@ class Variable(_Mixin):
         if attrs:
             self.attrs.update(attrs)
 
+        if DIMENSION_LIST is None and data is not None and not self.shape:
+            DIMENSION_LIST = ()
+            
         if DIMENSION_LIST is None:
             raise ValueError(
                 "Must provide DIMENSION_LIST when instantiating a "
-                "Variable instance"
+                f"non-scalar Variable instance: {name}({self.shape})"
             )
             
         if len(DIMENSION_LIST) != len(self.shape):
             raise ValueError("TODO")
         
-        self.attrs["DIMENSION_LIST"] = DIMENSION_LIST
+        self.setattr("DIMENSION_LIST", DIMENSION_LIST)
 
     def __getitem__(self, key):
+        """Return self[key]."""
         return self._data[key]
 
     def __repr__(self):
+        """Return repr(self)."""
         dimensions = self.dimensions
         if dimensions is None:
             dimensions = ""
@@ -306,6 +310,16 @@ class Variable(_Mixin):
             return None
 
         return tuple(dim[0] for dim in DIMENSION_LIST)
+
+    @property
+    def ndim(self):
+        """The array's number of dimensions."""
+        return len(self.shape)
+
+    @property
+    def size(self):
+        """Number of elements in the array"""
+        return prod(self.shape)
 
 
 class File(Mapping):
@@ -408,7 +422,7 @@ class File(Mapping):
         self.parent = None
         self.name = "/"
         self.path = "/"
-        self.attrs = {"Conventions": np.bytes_(CF_CONVENTIONS)}
+        self.attrs = {"Conventions": CF_CONVENTIONS}
         self.groups = {}
         self.dimensions = {}
 
@@ -507,7 +521,7 @@ class File(Mapping):
         variables = {}
 
         for int_code, meta in tuple(variable_index.items()):
-            data_variable = _DataVariableMetadata(
+            data_variable = DataVariableMetadata(
                 meta, variables, self, cache, Netcdf4Dimid
             )
 
@@ -518,7 +532,7 @@ class File(Mapping):
 
             variables[name] = DataVariable(
                 name=name,
-                attrs=_PyfiveAttrs(data_variable.attrs),
+                attrs=data_variable.attrs, #_PyfiveAttrs(data_variable.attrs),
                 shape=tuple(meta.get("shape", ())),
                 dtype=meta.get("dtype"),
                 chunk_shape=meta.get("chunk_shape"),
@@ -539,16 +553,16 @@ class File(Mapping):
     def consolidated_metadata(self) -> bool | None:
         return None
 
-    def update_formula_terms(self, name, terms):
-        """TODO"""
-        var = self.variables[name]
-        formula_terms = var.attrs.get("formula_terms")
-        if formula_terms is None:
-            formula_terms = terms
-        else:
-            formula_terms += f" {terms}"
-
-        var.attrs["formula_terms"] = formula_terms
+#    def update_formula_terms(self, name, terms):
+#        """TODO"""
+#        var = self.variables[name]
+#        formula_terms = var.attrs.get("formula_terms")
+#        if formula_terms is None:
+#            formula_terms = terms
+#        else:
+#            formula_terms += f" {terms}"
+#
+#        var.setattr("formula_terms", formula_terms)
 
     def get_lazy_view(self, key) -> DataVariable:
         # UM guidance says this cannot be fully implemented yet.
@@ -642,7 +656,7 @@ class File(Mapping):
         }
 
 
-class _DataVariableMetadata:
+class DataVariableMetadata:
     """TODO"""
 
     def __init__(
@@ -2287,7 +2301,7 @@ class _DataVariableMetadata:
             `None`
 
         """
-        var.attrs["formula_terms"] = formula_terms
+        var.setattr("formula_terms", formula_terms)
 
     def time_coordinate_from_extra_data(self, axiscode, axis):
         """Create the time coordinate from extra data and return it.

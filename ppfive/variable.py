@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from math import prod
 from typing import Any, Callable
 
 import numpy as np
@@ -10,6 +11,15 @@ from .core.data import read_record_raw
 from .core.interpret import get_extra_data_length
 from .core.models import StoreInfo
 from .io.chunk_read import ChunkReadMixin
+
+
+from .constants import (
+    _coord_long_name,
+    _axiscode_to_units,
+    _coord_axis,
+    _coord_positive,
+    _coord_standard_name,
+)
 
 
 class AstypeContext:
@@ -198,8 +208,279 @@ class DataVariableID(ChunkReadMixin):
         return 0, raw
 
 
+class _Mixin:
+    """Mixin class for dataset variables."""
+
+    def __repr__(self):
+        """Return repr(self)."""
+        dimensions = self.dimensions
+        if dimensions is None:
+            dimensions = ""
+        else:
+            dims = ", ".join(dim for dim in dimensions)
+            dimensions = f", dimensions=({dims})"
+
+        return (
+            f"<ppfive.{self.__class__.__name__}: "
+            f"{self.name}, shape={self.shape}{dimensions}>"
+        )
+
+    @property
+    def dimensions(self):
+        DIMENSION_LIST = self.attrs.get("DIMENSION_LIST")
+        if DIMENSION_LIST is None:
+            return None
+
+        return tuple(dim[0] for dim in DIMENSION_LIST)
+
+    @property
+    def ndim(self):
+        """The array's number of dimensions."""
+        return len(self.shape)
+
+    @property
+    def size(self):
+        """Number of elements in the array"""
+        return prod(self.shape)
+
+    def _setattrs_from_axiscode(self, axiscode):
+        """Set attributes according to a PP axis code.
+
+        :Parameters:
+
+            axiscode: `int` or `None`
+                The integer PP axis code, or `None` if there isn't
+                one, in which case no attributes are set.
+
+        :Returns:
+
+            `None`
+
+        """
+        if axiscode is None:
+            return
+
+        attrs = self.attrs
+
+        name = _coord_standard_name.get(axiscode)
+        if name is not None:
+            attrs["standard_name"] = name
+            if self.name is None:
+                self.name = name
+        else:
+            name = _coord_long_name.get(axiscode)
+            if name is not None:
+                attrs["long_name"] = name
+
+        axis = _coord_axis.get(axiscode)
+        if axis is not None:
+            attrs["axis"] = axis
+
+        positive = _coord_positive.get(axiscode)
+        if positive is not None:
+            attrs["positive"] = positive
+
+        units = _axiscode_to_units.get(axiscode)
+        if units:
+            attrs["units"] = units
+
+    def setattr(self, name, value):
+        """Set an attribute.
+        
+        :Parameters:
+
+            name: `str`
+                The name of the attribute.
+
+            value:
+                The attribute value.
+        
+        :Returns:
+
+            `None`
+
+        """
+        self.attrs[name] = value
+        
+class DimensionScale(_Mixin):
+    """Internal pyfive-like dimension-scale dataset for cfdm bridging."""
+
+    def __init__(
+        self,
+        name: str | None = None,
+        data=None,
+        size: int | None = None,
+        axiscode: int | None = None,
+        attrs: dict | None = None,
+        file_obj=None,
+        Netcdf4Dimid: list | None = None,
+    ):
+        self.name = name
+        self.file = file_obj
+
+        if data is not None:
+            arr = np.asanyarray(data)
+            if arr.ndim != 1:
+                raise ValueError("Dimension scale data must be 1-D")
+
+            self._data = arr
+            self.shape = (int(arr.size),)
+            self.dtype = arr.dtype
+        else:
+            self._data = None
+            self.shape = (int(size),)
+            self.dtype = None
+
+        self.maxshape = self.shape
+        self.chunks = None
+
+        self.attrs = {}
+        self._setattrs_from_axiscode(axiscode)
+        if attrs:
+            self.attrs.update(attrs)
+
+        if Netcdf4Dimid is None:
+            Netcdf4Dimid = [np.int32(0)]
+
+        if data is None:
+            self.attrs.update(
+                {
+                    "CLASS": b"DIMENSION_SCALE",
+                    "NAME": (
+                        b"This is a netCDF dimension "
+                        b"but not a netCDF variable."
+                    ),
+                    "_Netcdf4Dimid": Netcdf4Dimid[0],
+                }
+            )
+        else:
+            self.attrs.update(
+                {
+                    "CLASS": b"DIMENSION_SCALE",
+                    "NAME": b"netCDF dimension coordinate variable",
+                    "_Netcdf4Dimid": Netcdf4Dimid[0],
+                }
+            )
+
+        # Increment Netcdf4Dimid in-place
+        Netcdf4Dimid[0] += 1
+
+    def __getitem__(self, key):
+        data = self._data
+        if data is None:
+            raise ValueError(
+                "Can't index a DimensionScale that is a netCDF dimension "
+                "but not a netCDF variable."
+            )
+
+        return data[key]
+
+    def __repr__(self):
+        out = f"<ppfive.{self.__class__.__name__}: {self.name}, "
+        if self._data is None:
+            out += f"size={self.shape[0]}>"
+        else:
+            out += f"shape={self.shape}>"
+
+        return out
+
+    @property
+    def dimensions(self):
+        name = self.name
+        if name is None:
+            return None
+
+        return (name,)
+
+
+class Variable(_Mixin):
+    """A metadata variable in the dataset.
+
+    Any variable that is not a dimension coordinate variable nor a
+    data variable is represented by a `Variable` instance. This
+    includes coordinate bounds, auxilary coordinate, domain ancillary,
+    and grid mapping variables.
+
+    A dimension coordinate variable is represented by a
+    `DimensionScale` instance, and a data variable is represented by a
+    `DataVariable` instance.
+
+    """
+
+    def __init__(
+        self,
+        name: str | None = None,
+        data=None,
+        axiscode: int | None = None,
+        attrs: dict | None = None,
+        DIMENSION_LIST: tuple | None = None,
+    ):
+        """TODO"""
+        self.name = name
+        self._data = data
+        self.shape = data.shape
+        self.dtype = data.dtype
+        self.maxshape = data.shape
+        self.chunks = None
+
+        self.attrs = {}
+        self._setattrs_from_axiscode(axiscode)
+        if attrs:
+            self.attrs.update(attrs)
+
+        if DIMENSION_LIST is None and data is not None and not self.shape:
+            DIMENSION_LIST = ()
+            
+        if DIMENSION_LIST is None:
+            raise ValueError(
+                "Must provide DIMENSION_LIST when instantiating a "
+                f"non-scalar Variable instance: {name}({self.shape})"
+            )
+            
+        if len(DIMENSION_LIST) != len(self.shape):
+            raise ValueError("TODO")
+        
+        self.setattr("DIMENSION_LIST", DIMENSION_LIST)
+
+    def __getitem__(self, key):
+        """Return self[key]."""
+        return self._data[key]
+
+#    def __repr__(self):
+#        """Return repr(self)."""
+#        dimensions = self.dimensions
+#        if dimensions is None:
+#            dimensions = ""
+#        else:
+#            dims = ", ".join(dim for dim in dimensions)
+#            dimensions = f", dimensions=({dims})"
+#
+#        return (
+#            f"<ppfive.{self.__class__.__name__}: "
+#            f"{self.name}, shape={self.shape}{dimensions}>"
+#        )
+#
+#    @property
+#    def dimensions(self):
+#        DIMENSION_LIST = self.attrs.get("DIMENSION_LIST")
+#        if DIMENSION_LIST is None:
+#            return None
+#
+#        return tuple(dim[0] for dim in DIMENSION_LIST)
+#
+#    @property
+#    def ndim(self):
+#        """The array's number of dimensions."""
+#        return len(self.shape)
+#
+#    @property
+#    def size(self):
+#        """Number of elements in the array"""
+#        return prod(self.shape)
+
+
 @dataclass
-class DataVariable:
+class DataVariable(_Mixin):
     """Minimal pyfive-like variable surface for PP/Fields data."""
 
     name: str
@@ -225,59 +506,70 @@ class DataVariable:
             self.parent = self.file
 
         DIMENSION_LIST = self.DIMENSION_LIST
-        if DIMENSION_LIST is not None:
-            if len(DIMENSION_LIST) != len(self.shape):
-                raise ValueError("TODO")
+        if DIMENSION_LIST is None and data is not None and not shape:
+            DIMENSION_LIST = ()
+            
+        if DIMENSION_LIST is None:
+            raise ValueError(
+                "Must provide DIMENSION_LIST when instantiating a "
+                f"non-scalar DataVariable instance: {name}({self.shape})"
+            )
+        
+        if len(DIMENSION_LIST) != len(self.shape):
+            raise ValueError("TODO")
+        
+        self.setattr("DIMENSION_LIST", DIMENSION_LIST)
 
-            self.attrs["DIMENSION_LIST"] = DIMENSION_LIST
-
-    def __repr__(self):
-        dimensions = self.dimensions
-        if dimensions is None:
-            dimensions = ""
-        else:
-            dims = ", ".join(dim for dim in dimensions)
-            dimensions = f", dimensions=({dims})"
-
-        return (
-            f"<ppfive.{self.__class__.__name__}: "
-            f"{self.name}, shape={self.shape}{dimensions}>"
-        )
-
-    @property
-    def ndim(self) -> int:
-        return len(self.shape)
-
-    @property
-    def size(self) -> int:
-        if not self.shape:
-            return 0
-        return int(np.prod(self.shape))
+#    def __repr__(self):
+#        dimensions = self.dimensions
+#        if dimensions is None:
+#            dimensions = ""
+#        else:
+#            dims = ", ".join(dim for dim in dimensions)
+#            dimensions = f", dimensions=({dims})"
+#
+#        return (
+#            f"<ppfive.{self.__class__.__name__}: "
+#            f"{self.name}, shape={self.shape}{dimensions}>"
+#        )
+#
+#    @property
+#    def ndim(self):
+#        """The array's number of dimensions."""
+#        return len(self.shape)
+#
+#    @property
+#    def size(self):
+#        """Number of elements in the array"""
+#        return prod(self.shape)
 
     @property
     def value(self):
         return self[()]
 
-    @property
-    def dimensions(self):
-        DIMENSION_LIST = self.attrs.get("DIMENSION_LIST")
-        if DIMENSION_LIST is None:
-            return None
-
-        return tuple(dim[0] for dim in DIMENSION_LIST)
+#    @property
+#    def dimensions(self):
+#        DIMENSION_LIST = self.attrs.get("DIMENSION_LIST")
+#        if DIMENSION_LIST is None:
+#            return None
+#
+#        return tuple(dim[0] for dim in DIMENSION_LIST)
 
     def __getitem__(self, key):
         data = self.id.get_data(key, self.fillvalue)
         if data is None:
             return None
+        
         if self._astype is None:
             return data
+        
         return np.asarray(data).astype(self._astype)
 
     def __array__(self):
         data = self.id.get_data(())
         if data is None:
             raise TypeError("DataVariable has no data loader configured")
+        
         return np.asarray(data)
 
     def __len__(self):
@@ -291,8 +583,10 @@ class DataVariable:
     ) -> None:
         if source_sel is None:
             source_sel = slice(None)
+            
         if dest_sel is None:
             dest_sel = slice(None)
+            
         array[dest_sel] = self[source_sel]
 
     def astype(self, dtype: str | np.dtype) -> AstypeContext:

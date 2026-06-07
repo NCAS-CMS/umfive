@@ -1,5 +1,5 @@
-from .dataset import File, DimensionScale, Variable
-from .variable import DataVariable
+from .dataset import File
+from .variable import DataVariable, DimensionScale, Variable
 from .stash import load_stash_table, stash_records, stash_table
 
 try:

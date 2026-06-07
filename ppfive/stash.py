@@ -17,7 +17,10 @@ _STANDARD_NAME = 6
 _CF_EXTRA = 7
 _PP_EXTRA = 8
 
-# The STASH table
+# The default STASH table
+_default_stash_table = {}
+
+# The current STASH table
 _stash_table = {}
 
 
@@ -151,8 +154,7 @@ def load_stash_table(table=None, delimiter="!", merge=True):
 
     :Returns:
 
-        `dict`
-            The new STASH to standard name conversion table.
+        `None`
 
     **Examples**
 
@@ -164,11 +166,17 @@ def load_stash_table(table=None, delimiter="!", merge=True):
 
     """
     if table is None:
-        # Use default conversion table
+        # Use the default STASH table
+        if _default_stash_table:
+            # The default STASH table has already been loaded
+            return
+        
+        default = True
         merge = False
         table_path = files("ppfive").joinpath("data/STASH_to_CF.txt")
     else:
         # User supplied table
+        default = False
         table_path = PosixPath(table)
 
     stash2sn = {}
@@ -210,6 +218,10 @@ def load_stash_table(table=None, delimiter="!", merge=True):
         else:
             stash2sn[key] = (entry,)
 
+    if default:
+        # Store the default STASH table
+        _default_stash_table.update(stash2sn)
+            
     if not merge:
         _stash_table.clear()
 
