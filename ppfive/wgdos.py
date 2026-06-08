@@ -13,6 +13,7 @@ except (
 def unpack_wgdos(
     data: bytes, nout: int, mdi: float, word_size: int
 ) -> np.ndarray:
+    """TODO."""
     if _wgdos is None:
         raise NotImplementedError("WGDOS extension is not available")
 

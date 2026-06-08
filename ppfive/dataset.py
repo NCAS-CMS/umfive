@@ -2,79 +2,70 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator, Mapping
-from math import prod
 from pathlib import Path
-import posixpath
 from typing import Any
 
 import numpy as np
 
-from .core import detect_file_type, scan_ff_headers, scan_pp_headers
-from .stash import stash_records
-from .core.variables import build_variable_index
-from .io.base import ByteReader
-from .io.fileobj import FileObjReader
-from .io.fsspec_reader import FsspecReader
-from .io.local import LocalPosixReader
-from .variable import DataVariable, DimensionScale, Variable
-
 from .constants import (
-    BMDI_no_missing_data_value,
+    ATOL,
     CF_CONVENTIONS,
-    INDEX_LBYR,
-    INDEX_LBMIN,
-    INDEX_LBYRD,
-    INDEX_LBMIND,
-    INDEX_LBTIM,
+    INDEX_BDATUM,
+    INDEX_BDX,
+    INDEX_BDY,
+    INDEX_BGOR,
+    INDEX_BHLEV,
+    INDEX_BHRLEV,
+    INDEX_BLEV,
+    INDEX_BMDI,
+    INDEX_BMKS,
+    INDEX_BPLAT,
+    INDEX_BPLON,
+    INDEX_BRLEV,
+    INDEX_BRSVD1,
+    INDEX_BRSVD2,
+    INDEX_BZX,
+    INDEX_BZY,
     INDEX_LBCODE,
+    INDEX_LBEXP,
+    INDEX_LBFC,
     INDEX_LBHEM,
-    INDEX_LBROW,
+    INDEX_LBLEV,
+    INDEX_LBMIN,
+    INDEX_LBMIND,
     INDEX_LBNPT,
     INDEX_LBPACK,
-    INDEX_LBFC,
     INDEX_LBPROC,
-    INDEX_LBVC,
-    INDEX_LBEXP,
-    INDEX_LBLEV,
+    INDEX_LBROW,
     INDEX_LBSRCE,
+    INDEX_LBTIM,
     INDEX_LBUSER1,
     INDEX_LBUSER3,
     INDEX_LBUSER4,
     INDEX_LBUSER5,
     INDEX_LBUSER7,
-    INDEX_BRSVD1,
-    INDEX_BRSVD2,
-    INDEX_BDATUM,
-    INDEX_BLEV,
-    INDEX_BRLEV,
-    INDEX_BHLEV,
-    INDEX_BHRLEV,
-    INDEX_BPLAT,
-    INDEX_BPLON,
-    INDEX_BGOR,
-    INDEX_BZY,
-    INDEX_BDY,
-    INDEX_BZX,
-    INDEX_BDX,
-    INDEX_BMDI,
-    INDEX_BMKS,
+    INDEX_LBVC,
+    INDEX_LBYR,
+    INDEX_LBYRD,
     PP_RMDI,
     PSTAR,
-    ATOL,
     RTOL,
-)
-
-from .constants import (
-#    _coord_long_name,
-#    _axiscode_to_units,
-#    _coord_axis,
+    BMDI_no_missing_data_value,
+    _coord_long_name,
     _coord_positive,
-    _lbvc_to_axiscode,
     _lbsrce_model_codes,
-#    _coord_standard_name,
-    _runid_characters,
+    _lbvc_to_axiscode,
     _n_runid_characters,
+    _runid_characters,
 )
+from .core import detect_file_type, scan_ff_headers, scan_pp_headers
+from .core.variables import build_data_variable_index
+from .io.base import ByteReader
+from .io.fileobj import FileObjReader
+from .io.fsspec_reader import FsspecReader
+from .io.local import LocalPosixReader
+from .stash import stash_records
+from .variable import DataVariable, DimensionScale, Variable
 
 logger = logging.getLogger(__name__)
 
@@ -85,278 +76,387 @@ _cache_runid = {}
 _cache_date2num = {}
 
 
-#class _PyfiveAttrs(dict):
-#    """Attribute mapping tuned for cfdm/p5netcdf compatibility.
-#
-#    Keep normal Python `str` values for direct user access, but expose
-#    those strings as byte scalars when iterating `.items()` so cfdm's
-#    p5netcdf adapter formats them as scalar text instead of character
-#    arrays.
-#
-#    """
-#
-#    @classmethod
-#    def _coerce_for_items(value):
-#        if isinstance(value, str):
-#            return np.bytes_(value)
-#
-#        return value
-#
-#    def items(self):
-#        """D.items() -> a set-like object providing a view on D's items"""
-#        for key, value in super().items():
-#            yield key, self._coerce_for_items(value)
-
-
-class _Mixin:
-    """Mixin class for `DimensionScale` and `Variable`."""
-
-    def setattr(self, name, value):
-        """Set an attribute."""
-        self.attrs[name] = value
-
-    def setattrs_from_axiscode(self, axiscode):
-        """TODO"""
-        if axiscode is None:
-            return
-
-        attrs = self.attrs
-
-        name = _coord_standard_name.get(axiscode)
-        if name is not None:
-            attrs["standard_name"] = name
-            if self.name is None:
-                self.name = name
-        else:
-            name = _coord_long_name.get(axiscode)
-            if name is not None:
-                attrs["long_name"] = name
-
-        axis = _coord_axis.get(axiscode)
-        if axis is not None:
-            attrs["axis"] = axis
-
-        positive = _coord_positive.get(axiscode)
-        if positive is not None:
-            attrs["positive"] = positive
-
-        units = _axiscode_to_units.get(axiscode)
-        if units:
-            attrs["units"] = units
-
-
-class OLD_DimensionScale(_Mixin):
-    """Internal pyfive-like dimension-scale dataset for cfdm bridging."""
-
-    def __init__(
-        self,
-        name: str | None = None,
-        data=None,
-        size: int | None = None,
-        axiscode: int | None = None,
-        attrs: dict | None = None,
-        file_obj=None,
-        Netcdf4Dimid: list | None = None,
-    ):
-        self.name = name
-        self.file = file_obj
-
-        if data is not None:
-            arr = np.asanyarray(data)
-            if arr.ndim != 1:
-                raise ValueError("Dimension scale data must be 1-D")
-
-            self._data = arr
-            self.shape = (int(arr.size),)
-            self.dtype = arr.dtype
-        else:
-            self._data = None
-            self.shape = (int(size),)
-            self.dtype = None
-
-        self.maxshape = self.shape
-        self.chunks = None
-
-        self.attrs = {}
-        self.setattrs_from_axiscode(axiscode)
-        if attrs:
-            self.attrs.update(attrs)
-
-        if Netcdf4Dimid is None:
-            Netcdf4Dimid = [np.int32(0)]
-
-        if data is None:
-            self.attrs.update(
-                {
-                    "CLASS": b"DIMENSION_SCALE",
-                    "NAME": (
-                        b"This is a netCDF dimension "
-                        b"but not a netCDF variable."
-                    ),
-                    "_Netcdf4Dimid": Netcdf4Dimid[0],
-                }
-            )
-        else:
-            self.attrs.update(
-                {
-                    "CLASS": b"DIMENSION_SCALE",
-                    "NAME": b"netCDF dimension coordinate variable",
-                    "_Netcdf4Dimid": Netcdf4Dimid[0],
-                }
-            )
-
-        # Increment Netcdf4Dimid in-place
-        Netcdf4Dimid[0] += 1
-
-    def __getitem__(self, key):
-        data = self._data
-        if data is None:
-            raise ValueError(
-                "Can't index a DimensionScale that is not a netCDF "
-                "dimension but not a netCDF variable."
-            )
-
-        return data[key]
-
-    def __repr__(self):
-        out = f"<ppfive.{self.__class__.__name__}: {self.name}, "
-        if self._data is None:
-            out += f"size={self.shape[0]}>"
-        else:
-            out += f"shape={self.shape}>"
-
-        return out
-
-    @property
-    def dimensions(self):
-        name = self.name
-        if name is None:
-            return None
-
-        return (name,)
-
-
-class OLD_Variable(_Mixin):
-    """A metadata variable in the dataset.
-
-    Any variable that is not a dimension coordinate variable nor a
-    data variable is represented by a `Variable` instance. This
-    includes coordinate bounds, auxilary coordinate, domain ancillary,
-    and grid mapping variables.
-
-    A dimension coordinate variable is represented by a
-    `DimensionScale` instance, and a data variable is represented by a
-    `DataVariable` instance.
-
-    """
-
-    def __init__(
-        self,
-        name: str | None = None,
-        data=None,
-        axiscode: int | None = None,
-        attrs: dict | None = None,
-        DIMENSION_LIST: tuple | None = None,
-    ):
-        """TODO"""
-        self.name = name
-        self._data = data
-        self.shape = data.shape
-        self.dtype = data.dtype
-        self.maxshape = data.shape
-        self.chunks = None
-
-        self.attrs = {}
-        self.setattrs_from_axiscode(axiscode)
-        if attrs:
-            self.attrs.update(attrs)
-
-        if DIMENSION_LIST is None and data is not None and not self.shape:
-            DIMENSION_LIST = ()
-            
-        if DIMENSION_LIST is None:
-            raise ValueError(
-                "Must provide DIMENSION_LIST when instantiating a "
-                f"non-scalar Variable instance: {name}({self.shape})"
-            )
-            
-        if len(DIMENSION_LIST) != len(self.shape):
-            raise ValueError("TODO")
-        
-        self.setattr("DIMENSION_LIST", DIMENSION_LIST)
-
-    def __getitem__(self, key):
-        """Return self[key]."""
-        return self._data[key]
-
-    def __repr__(self):
-        """Return repr(self)."""
-        dimensions = self.dimensions
-        if dimensions is None:
-            dimensions = ""
-        else:
-            dims = ", ".join(dim for dim in dimensions)
-            dimensions = f", dimensions=({dims})"
-
-        return (
-            f"<ppfive.{self.__class__.__name__}: "
-            f"{self.name}, shape={self.shape}{dimensions}>"
-        )
-
-    @property
-    def dimensions(self):
-        DIMENSION_LIST = self.attrs.get("DIMENSION_LIST")
-        if DIMENSION_LIST is None:
-            return None
-
-        return tuple(dim[0] for dim in DIMENSION_LIST)
-
-    @property
-    def ndim(self):
-        """The array's number of dimensions."""
-        return len(self.shape)
-
-    @property
-    def size(self):
-        """Number of elements in the array"""
-        return prod(self.shape)
-
-
 class File(Mapping):
     """A pyfive-style file handle exposing variables as a Mapping."""
 
-    @staticmethod
-    def _local_default_thread_count_from_variable_index(
-        variable_index: Mapping[str, Mapping[str, Any]],
-    ) -> int:
+    def __init__(
+        self,
+        filename,
+        mode: str = "r",
+        thread_count: int | None = None,
+        um_version: str | None = None,
+        height_at_top_of_model=None,
+        local_os_cache: bool = True,
+        *,
+        _data_variable_index: list | None = None,
+    ):
+        """**Initialisation**
+
+        :Parameters:
+
+            filename:
+                The definition of the PP or UM dataset to be
+                read. Must either be a string-like (such as `str` or
+                `pathlib.Path`) or a file-like (such as
+                `io.BufferedReader`, the result of an `fsspec` file
+                system open, or a subclass of `ppfive.ByteReader`).
+
+                Set to `None` if *_data_variable_index* has also been
+                provided.
+
+            mode: `str`
+                The data access mode. Only ``'r'`` (read-only) is
+                allowed.
+
+            thread_count: `int` or `None`, optional
+                The number of concurrent worker threads to use for
+                reading data chunks. If ``0`` or ``1``, the reading of
+                data chunks runs sequentially in the main thread. If
+                `None` (the default) then the following defaults are
+                used:
+
+                * ``1``, ``2``, or ``4`` for a dataset accessed on a
+                  local POSIX file system, depending on how many
+                  chunks each variable has (more chunks generally
+                  results in more threads).
+
+                * ``4`` for a dataset on a remote file system.
+
+                * ``4`` for all other cases.
+
+            um_version: `str` or `None, optional
+                The UM version to be used when decoding the
+                header. Valid versions are, for example, ``'4.2'``,
+                ``'6.6.3'`` and ``'8.2'``. If the UM version can be
+                derived fron LBSRCE in the lookup headers (which is
+                usually the case for files created by the UM at
+                versions 5.3 and later) then *um_version* parameter is
+                ignored.
+
+                If the UM version can't be derived fron the lookup
+                headers (which is usually the case for files created
+                by the UM at versions ealier than 5.3) then the given
+                UM version is used, and if *um_version* is `None` the
+                UM version 4.5 is assumed.
+
+                When the UM version has a third element (such as the 3
+                in 6.6.3), this is a special case for which the UM
+                veriosn must be provided with the *um_version*
+                parameter, and any UM version encoded in the lookup
+                header is ignored.
+
+            height_at_top_of_model: `float` or `None`, optional
+                The height in metres of the upper bound of the top
+                model level. If `None` (the default) the height at top
+                model is taken from the top level's upper bound
+                defined by BRSVD1 in the lookup headers. If the height
+                can't be determined from the header, or the given
+                height is less than or equal to 0, then a coordinate
+                reference system will still be created that contains
+                the 'a' and 'b' formula term values, but without an
+                atmosphere hybrid height dimension coordinate
+                construct.
+
+                .. note:: A current limitation is that if pseudolevels
+                          and atmosphere hybrid height coordinates are
+                          defined by same the lookup headers then the
+                          height **can't be determined
+                          automatically**. In this case the height may
+                          be found after reading as the maximum value
+                          of the bounds of the domain ancillary
+                          construct containing the 'a' formula
+                          term. The file can then be re-read with this
+                          height as the *height_at_top_of_model*
+                          parameter.
+
+            local_os_cache: `bool`, optional
+                 If True (the default) then use the local operating
+                 system cache for local POSIX dataset access when
+                 *filename* is a string-like. If False then this
+                 caching is disabled in this case.
+
+            _data_variable_index: `list` or `None`, optional
+                 The dictionary representations of the data
+                 variables. By default this is derived internally from
+                 *fileaname*, so when *_data_variable_index* is
+                 provided, *filename* must be `None`. See the code for
+                 details.
+
+        """
+        if mode != "r":
+            raise ValueError(
+                "ppfive.File currently supports read-only mode='r'"
+            )
+
+        if isinstance(filename, ByteReader):
+            self._reader = filename
+            self._owns_reader = False
+            filename = getattr(self._reader, "path", "<byte-reader>")
+        elif hasattr(filename, "read") and hasattr(filename, "seek"):
+            self._reader = FileObjReader(filename)
+            self._owns_reader = False
+            filename = getattr(self._reader, "name", "<fileobj>")
+        elif filename is None:
+            if _data_variable_index is None:
+                raise ValueError(
+                    "_data_variable_index must not be None when "
+                    "filename is None"
+                )
+        else:
+            if _data_variable_index is not None:
+                raise ValueError(
+                    "_data_variable_index must be None when "
+                    "filename is not None"
+                )
+
+            # Initialise the reader - it'll get set to an actual
+            # reader later.
+            self._reader = None
+
+        self.filename = str(Path(filename))
+        self.mode = mode
+
+        self.local_os_cache = bool(local_os_cache)
+        if self._reader is None:
+            self._reader = LocalPosixReader(
+                self.filename,
+                local_os_cache=self.local_os_cache,
+            )
+            self._owns_reader = True
+
+        self.parent = None
+        self.name = "/"
+        self.path = "/"
+        self.attrs = {"Conventions": CF_CONVENTIONS}
+        self.groups = {}
+        self.dimensions = {}
+
+        # Default parallelism
+        if thread_count is None:
+            thread_count = 4
+
+        # Default policy: remote readers use 4 threads.
+        if isinstance(self._reader, FsspecReader):
+            thread_count = 4
+
+        self._thread_count = thread_count
+        self._cat_range_allowed = True
+
+        # UM configuration
+        if um_version is None:
+            # None -> 405
+            um_version = 405
+        else:
+            # '4.5' -> 405
+            # '6.6.3' -> 606.3
+            um_version = str(um_version).replace(".", "0", 1)
+            if "." in um_version:
+                um_version = float(um_version)
+            else:
+                um_version = int(um_version)
+
+        self._um_version = um_version
+        self._height_at_top_of_model = height_at_top_of_model
+
+        # Create the variable index
+        if _data_variable_index is None:
+            file_type = detect_file_type(self._reader)
+            self.fmt = file_type.fmt
+            self.byte_ordering = file_type.byte_ordering
+            self.word_size = file_type.word_size
+            if file_type.fmt == "PP":
+                records = scan_pp_headers(self._reader, file_type)
+            else:
+                records = scan_ff_headers(self._reader, file_type)
+
+            if not records:
+                raise ValueError(
+                    f"No valid records found in {self.fmt} file "
+                    f"{self.filename}. "
+                    f"The file may be corrupted or empty."
+                )
+
+            _data_variable_index = build_data_variable_index(
+                records,
+                self._reader,
+                self.word_size,
+                self.byte_ordering,
+                parallel_config={
+                    "thread_count": self._thread_count,
+                    "cat_range_allowed": self._cat_range_allowed,
+                },
+            )
+
+        else:
+            self.fmt = None
+            self.byte_ordering = None
+            self.word_size = None
+
+        # Initialise the dictionary of all (i.e. data and metadata)
+        # variables
+        all_variables = {}
+
+        # Initialise the list of data variable names
+        data_variables = []
+
+        # Create the cache of metadata `Variable` and `DimensionScale`
+        # instance names for the entire dataset. The dictionary keys
+        # are typically derived from lookup header values.
+        cache: dict[Any, str] = {}
+
+        # Initialise the _Netcdf4Dimid attribute of DimensionScale
+        # instances. This list get updated in-place during each
+        # DimensionScale initialisation.
+        Netcdf4Dimid = [np.int32(0)]
+
+        # Populate the 'all_variables' dictionary
+        for meta in _data_variable_index:
+            # Add any new metadata variable entries required by this
+            # data variable
+            data_variable = DataVariableMetadata(
+                meta, all_variables, self, cache, Netcdf4Dimid
+            )
+
+            name = data_variable.name
+            if name is None:
+                continue
+
+            # Add a new entry for this data variable
+            all_variables[name] = DataVariable(
+                name=name,
+                attrs=data_variable.attrs,
+                shape=tuple(meta.get("shape", ())),
+                dtype=meta.get("dtype"),
+                chunk_shape=meta.get("chunk_shape"),
+                data_loader=meta.get("data_loader"),
+                data_loader_options=meta.get("data_loader_options"),
+                file=self,
+                chunk_records=list(meta.get("chunk_records")),
+                DIMENSION_LIST=data_variable.DIMENSION_LIST,
+            )
+            data_variables.append(name)
+
+        self.data_variables = data_variables
+        self.variables = all_variables
+
+        # Default policy: local POSIX readers choose 1/2/4 by chunk
+        # count.
+        if isinstance(self._reader, LocalPosixReader):
+            auto_threads = self._auto_thread_count()  # _data_variable_index)
+            if auto_threads != self._thread_count:
+                self.set_parallelism(
+                    thread_count=auto_threads,
+                    cat_range_allowed=self._cat_range_allowed,
+                )
+
+    def __enter__(self):
+        """Enter the runtime context."""
+        return self
+
+    def __exit__(self, _exc_type, _exc, _tb):
+        """Exit the runtime context."""
+        self.close()
+
+    def __getitem__(self, key: str) -> DataVariable:
+        """Return self[key]."""
+        if not isinstance(key, str):
+            raise TypeError("DataVariable key must be a string")
+
+        path = key
+        if path in (".", "/", "./"):
+            return self
+
+        if path.startswith("/"):
+            path = path[1:]
+
+        if path.startswith("./"):
+            path = path[2:]
+
+        if path.endswith("/"):
+            path = path[:-1]
+
+        if "/" in path:
+            raise KeyError(f"Nested paths are not supported: {key!r}")
+
+        return self.variables[path]
+
+    def __iter__(self) -> Iterator[str]:
+        """Return an iterator over the variable mapping keys."""
+        return iter(self.variables)
+
+    def __len__(self):
+        """Return len(self)."""
+        return len(self.variables)
+
+    def __repr__(self):
+        """Return repr(self)."""
+        n_data = len(self.data_variables)
+        n_metadata = len(self.variables) - n_data
+        return (
+            f"<ppfive.{self.__class__.__name__}: {self.filename}, "
+            f"{n_data} data variables, {n_metadata} metadata variables>"
+        )
+
+    def __str__(self):
+        """Return str(self)."""
+        data_variables = self.data_variables
+        out = [repr(self)]
+        out.append("Data variables:")
+        out.extend(
+            f"    {name}: {var!r}"
+            for name, var in self.variables.items()
+            if name in data_variables
+        )
+        out.append("Metadata variables:")
+        out.extend(
+            f"    {name}: {var!r}"
+            for name, var in self.variables.items()
+            if name not in data_variables
+        )
+        return "\n".join(out)
+
+    def _auto_thread_count(self) -> int:
         """Choose local POSIX default thread count from chunk topology.
 
         Preference order for representative chunk-count sample:
         1) WGDOS-packed variables
         2) any packed variables
         3) all variables
+
+        :Parameters:
+
+             data_variable_index: `list`
+                 The dictionary representations of the data variables.
+
+        :Returns:
+
+            `int`
+                The chosen thread count.
+
         """
 
+        # TODO change this to set the thread count on each variable separtely.!!!!!
         def _counts(predicate) -> list[int]:
             counts = []
-            for meta in variable_index.values():
-                attrs = meta.get("attrs", {})
-                if predicate(attrs):
-                    counts.append(len(meta.get("chunk_records", ())))
+            for name, var in self.variables.items():
+                if var not in self.data_variables:
+                    continue
+
+                if predicate(var):
+                    counts.append(len(var.chunk_records))
 
             return counts
 
-        chunk_counts = _counts(
-            lambda attrs: bool(attrs.get("is_wgdos_packed", False))
-        )
+        chunk_counts = _counts(lambda var: 1 in var.packing_modes)
+
         if not chunk_counts:
-            chunk_counts = _counts(
-                lambda attrs: bool(attrs.get("is_packed", False))
-            )
+            chunk_counts = _counts(lambda var: bool(var.packing_modes))
+
         if not chunk_counts:
             chunk_counts = [
-                len(meta.get("chunk_records", ()))
-                for meta in variable_index.values()
+                len(var.chunk_records)
+                for name, var in self.variables.items()
+                if name in self.data_variables
             ]
 
         if not chunk_counts:
@@ -371,200 +471,18 @@ class File(Mapping):
 
         return 4
 
-    def __init__(
-        self,
-        filename: str | ByteReader | Any,
-        mode: str = "r",
-        um_version=405,
-        height_at_top_of_model=None,
-        metadata_buffer_size: int = 1,
-        disable_os_cache: bool = False,
-        *,
-        reader: ByteReader | None = None,
-        variable_index: dict | None = None,
-    ):
-        if mode != "r":
-            raise ValueError(
-                "ppfive.File currently supports read-only mode='r'"
-            )
-
-        if isinstance(filename, ByteReader):
-            if reader is not None:
-                raise ValueError(
-                    "Do not provide both filename as ByteReader and reader="
-                )
-            reader = filename
-            filename = getattr(reader, "path", "<byte-reader>")
-        elif (
-            reader is None
-            and hasattr(filename, "read")
-            and hasattr(filename, "seek")
-        ):
-            reader = FileObjReader(filename)
-            filename = getattr(filename, "name", "<fileobj>")
-
-        self.filename = str(Path(filename))
-        self.mode = mode
-
-        self._um_version = um_version
-        self._height_at_top_of_model = height_at_top_of_model
-
-        self.metadata_buffer_size = metadata_buffer_size
-        self.disable_os_cache = bool(disable_os_cache)
-        self._owns_reader = reader is None
-        self._reader = reader or LocalPosixReader(
-            self.filename,
-            disable_os_cache=self.disable_os_cache,
-        )
-        self._records = []
-        self._thread_count = 0
-        self._cat_range_allowed = True
-        self.parent = None
-        self.name = "/"
-        self.path = "/"
-        self.attrs = {"Conventions": CF_CONVENTIONS}
-        self.groups = {}
-        self.dimensions = {}
-
-        # Create a cache of metadata Variable and DimensionScale
-        # instance names for the enture dataset. The dictionary keys
-        # are typically derived from lookup header values.
-        cache: dict[Any, str] = {}
-
-        # Initialise the Netcdf4Dimid of DimensionScale
-        # instances. This list get updated in-place during each
-        # DimensionScale initialisation.
-        Netcdf4Dimid = [np.int32(0)]
-
-        if variable_index is None:
-            file_type = detect_file_type(self._reader)
-            self.fmt = file_type.fmt
-            self.byte_ordering = file_type.byte_ordering
-            self.word_size = file_type.word_size
-            if file_type.fmt == "PP":
-                self._records = scan_pp_headers(self._reader, file_type)
-            else:
-                self._records = scan_ff_headers(self._reader, file_type)
-
-            if not self._records:
-                raise ValueError(
-                    f"No valid records found in {self.fmt} file "
-                    f"{self.filename}. "
-                    f"The file may be corrupted or empty."
-                )
-
-            # Default policy: remote readers use 4 threads.
-            self._thread_count = 4
-
-            if isinstance(self._reader, FsspecReader):
-                self._thread_count = 4
-
-            # Default policy: local POSIX readers choose 1/2/4 by
-            if isinstance(self._reader, LocalPosixReader):
-                self._thread_count = 4
-
-            variable_index = build_variable_index(
-                self._records,
-                self._reader,
-                self.word_size,
-                self.byte_ordering,
-                parallel_config={
-                    "thread_count": self._thread_count,
-                    "cat_range_allowed": self._cat_range_allowed,
-                },
-            )
-
-            ## Default policy: local POSIX readers choose 1/2/4 by
-            ## chunk count.
-            # if isinstance(self._reader, LocalPosixReader):
-            #    auto_threads = self._local_default_thread_count_from_variable_index(variable_index)
-            #    if auto_threads != self._thread_count:
-            #        self._thread_count = auto_threads
-            #        variable_index = build_variable_index(
-            #            self._records,
-            #            self._reader,
-            #            self.word_size,
-            #            self.byte_ordering,
-            #            parallel_config={
-            #                "thread_count": self._thread_count,
-            #                "cat_range_allowed": self._cat_range_allowed,
-            #            },
-            #        )
-        else:
-            self.fmt = None
-            self.byte_ordering = None
-            self.word_size = None
-
-        self.variables = self._build_variables(
-            variable_index, cache, Netcdf4Dimid
-        )
-
-    #        # Link in domain ancillaries to formula_terms
-    #        for XY, orog in cache['orog'].items():
-    #            if len(orog) != 1:
-    #                continue
-    #
-    #            for v in cache['atmosphere_hybrid_height'].get(XY, ()):
-    #                self.update_formula_terms(v, f"orog: {orog[0]}")
-    #
-    #        for XY, pstar in cache['pstar'].items():
-    #            if len(pstar) != 1:
-    #                continue
-    #
-    #            for v in cache['atmosphere_hybrid_sigma_pressure'].get(XY, ()):
-    #                self.update_formula_terms(v, f"ps: {pstar[0]}")
-
-    def _build_variables(self, variable_index, cache, Netcdf4Dimid):
-        """TODO"""
-        # Dictionary of all dataset variables, keyed by their dataset
-        # names
-        variables = {}
-
-        for int_code, meta in tuple(variable_index.items()):
-            data_variable = DataVariableMetadata(
-                meta, variables, self, cache, Netcdf4Dimid
-            )
-
-            # Add a 'variables' entry for this data variable
-            name = data_variable.name
-            if name is None:
-                continue
-
-            variables[name] = DataVariable(
-                name=name,
-                attrs=data_variable.attrs, #_PyfiveAttrs(data_variable.attrs),
-                shape=tuple(meta.get("shape", ())),
-                dtype=meta.get("dtype"),
-                chunk_shape=meta.get("chunk_shape"),
-                data_loader=meta.get("data_loader"),
-                file=self,
-                parent=self,
-                chunk_records=list(meta.get("chunk_records", [])),
-                DIMENSION_LIST=data_variable.DIMENSION_LIST,
-            )
-
-        return variables
-
     @property
     def userblock_size(self) -> int:
+        """TODO."""
         return 0
 
     @property
     def consolidated_metadata(self) -> bool | None:
-        return None
-
-#    def update_formula_terms(self, name, terms):
-#        """TODO"""
-#        var = self.variables[name]
-#        formula_terms = var.attrs.get("formula_terms")
-#        if formula_terms is None:
-#            formula_terms = terms
-#        else:
-#            formula_terms += f" {terms}"
-#
-#        var.setattr("formula_terms", formula_terms)
+        """TODO."""
+        return
 
     def get_lazy_view(self, key) -> DataVariable:
+        """TODO."""
         # UM guidance says this cannot be fully implemented yet.
         logger.info(
             "get_lazy_view is not supported; returning normal variable view"
@@ -572,92 +490,86 @@ class File(Mapping):
         return self[key]
 
     def close(self) -> None:
+        """Close the underlying dataset reader.
+
+        However, the reader is not closed if it was opened externally
+        to `ppfive`, i.e. if the *filename* argument to `ppfive.File`
+        was a file-like object.
+
+        :Returns:
+
+            `None`
+
+        """
+        # Keep _reader reference so variables can re-open on demand
+        # after close.
         if self._owns_reader and self._reader is not None:
             self._reader.close()
-            # Keep _reader reference so variables can re-open on
-            # demand after close.
 
     def set_parallelism(
-            self,
-            cache, Netcdf4Dimid,
-            thread_count: int = 5, cat_range_allowed: bool = True,
+        self,
+        thread_count: int = 4,
+        cat_range_allowed: bool = True,
     ):
-        """Configure experimental chunk/record read parallelism."""
-        if thread_count is None:
-            thread_count = 0
+        """Configure data chunk read parallelism.
 
-        thread_count = int(thread_count)
-        if thread_count < 0:
-            raise ValueError("thread_count must be >= 0")
+        :Parameters:
 
+            thread_count: `int`, optional
+                The number of concurrent worker threads to use for
+                reading data chunks. If ``0`` or ``1``, the reading of
+                data chunks runs sequentially in the main thread.
+                Defaults to ``4``.
+
+            cat_range_allowed: `bool`, optional
+                If True (the default), uses fsspec's bulk range
+                fetching to download multiple data chunks concurrently
+                in a single network request. Set to False to force
+                sequential chunk loading. Defaults to True. Ignored
+                for non-fsspec readers.
+
+        :Returns:
+
+            `None`
+
+        """
+        # Let's have this on DataVariable, too!!!!
+        
         self._thread_count = thread_count
-        self._cat_range_allowed = bool(cat_range_allowed)
+        self._cat_range_allowed = cat_range_allowed
 
-        if self._records:
-            variable_index = build_variable_index(
-                self._records,
-                self._reader,
-                self.word_size,
-                self.byte_ordering,
-                parallel_config={
-                    "thread_count": self._thread_count,
-                    "cat_range_allowed": self._cat_range_allowed,
-                },
-            )
-            self.variables = self._build_variables(
-                variable_index, cache, Netcdf4Dimid
-            )
+        parallel_config = {
+            "thread_count": thread_count,
+            "cat_range_allowed": cat_range_allowed,
+        }
 
-    def __getitem__(self, key: str) -> DataVariable:
-        if not isinstance(key, str):
-            raise TypeError("DataVariable key must be a string")
+        data_variables = self.data_variables
+        for name, var in self.variables.items():
+            if name not in data_variables:
+                continue
 
-        path = posixpath.normpath(key)
-        if path == ".":
-            raise KeyError("'.' does not reference a variable")
-
-        if path.startswith("/"):
-            path = path[1:]
-
-        if path.startswith("./"):
-            path = path[2:]
-
-        if "/" in path:
-            raise KeyError(f"Nested paths are not supported: {key!r}")
-
-        return self.variables[path]
+            var.data_loader_options.update(parallel_config)
 
     def items(self):
+        """TODO."""
         return self.variables.items()
 
-    def __iter__(self) -> Iterator[str]:
-        return iter(self.variables)
-
-    def __len__(self) -> int:
-        return len(self.variables)
-
-    def __enter__(self) -> "File":
-        return self
-
-    def __exit__(self, exc_type, exc, tb) -> None:
-        self.close()
-
-    def __repr__(self) -> str:
-        return f'<PP file "{self.filename}" ({len(self)} variables)>'
-
     def to_reference_dict(self) -> dict[str, Any]:
+        """TODO."""
+        data_variables = self.data_variables
         return {
             "version": 1,
             "path": self.filename,
             "variables": {
                 name: variable.to_reference_dict()
-                for name, variable in self._variables.items()
+                for name, variable in self.variables.items()
+                if name in data_variables
             },
         }
 
 
 class DataVariableMetadata:
-    """TODO"""
+    """TODO."""
 
     def __init__(
         self, data_variable_meta, variables, file_obj, cache, Netcdf4Dimid
@@ -666,8 +578,26 @@ class DataVariableMetadata:
 
         :Parameters:
 
-            height_at_top_of_model: `float`
+            data_variable_meta: `dict`
+                The data variable meta dictionary from the variable
+                index list.
 
+            variables: `dict`
+                The dictionary of all (i.e. data and metadata)
+                variables.
+
+            file_obj: `File`
+                The parent `File` instance.
+
+            cache: `dict`
+                The cache of metadata `Variable` and `DimensionScale`
+                instance names for the entire dataset. The dictionary
+                keys are typically derived from lookup header values.
+
+            Netcdf4Dimid: `list`
+                A single-element list containing the next available
+                "_NetCDF4Dimid" attribute value for `DimensionScale`
+                instances.
 
         """
         # Data variable attributes
@@ -675,9 +605,6 @@ class DataVariableMetadata:
 
         # Data variable name
         self.name = None
-
-        #        self.orog = []
-        #        self.pstar = []
 
         self.variables = variables
 
@@ -871,12 +798,13 @@ class DataVariableMetadata:
         if um_condition:
             identity += f"_{um_condition}"
 
-        # Set the data variable name
-        self.name = self.add_to_variables(identity)
-        cf_properties["identity"] = identity
+        cf_properties["um_identity"] = identity
 
         if long_name is None:
             cf_properties["long_name"] = identity
+
+        # Set the data variable name
+        self.name = self.add_to_variables(identity, "data_variable")
 
         # ------------------------------------------------------------
         # Unique headers for the 'T' and 'Z' axes
@@ -971,7 +899,7 @@ class DataVariableMetadata:
 
             # Create a model_level_number auxiliary coordinate
             #
-            # Selected LBVC codes
+            # Relevant LBVC codes
             # -------------------
             #   2  Depth
             #   9  Hybrid pressure
@@ -1062,23 +990,8 @@ class DataVariableMetadata:
         # Set missing value attributes
         self.missing_value()
 
-        #        # ------------------------------------------------------------
-        #        # Register if the data variable is an orogrpahy or surface
-        #        # pressure.
-        #        # ------------------------------------------------------------
-        #        cache.setdefault('orog', {})
-        #        cache.setdefault('pstar', {})
-        #        cache.setdefault('atmosphere_hybrid_height', {})
-        #        cache.setdefault('atmosphere_hybrid_sigma_pressure', {})
-        #
-        #        if self.attrs.get('standard_name') == "surface_altitude":
-        #            cache['orog'].setdefault(self._XY, []).append(identity)
-        #
-        #        if self.attrs.get('standard_name') == "surface_air_pressure":
-        #            cache['pstar'].setdefault(self._XY, []).append(identity)
-
         # ------------------------------------------------------------
-        # Set the dimension names in the data variable's attributes
+        # Set the data variable's dimension names
         # ------------------------------------------------------------
         dim_names = []
         for axis, size in zip(axis_order, shape):
@@ -1103,13 +1016,13 @@ class DataVariableMetadata:
         self.DIMENSION_LIST = tuple((ncdim,) for ncdim in dim_names)
 
     def add_to_coordinates(self, name):
-        """Add a variable name the data variable's "coordinates" attribute.
+        """Add a name the data variable's "coordinates" attribute.
 
         :Parameters:
 
             name: `str`
                 The variable name to add.
-        
+
         :Returns:
 
             `None`
@@ -1132,15 +1045,15 @@ class DataVariableMetadata:
 
         :Parameters:
 
-            name: 
+            name:
                 The name of the variable to add. Either a string, or a
                 a variable instance that has its name stored in its
                 `!name` attribute, or `None`.
-        
+
             default: `str`, optional
                 The variable name to add if no string-valued name is
                 available.
-        
+
         :Returns:
 
             `str`
@@ -1223,7 +1136,7 @@ class DataVariableMetadata:
         # Zsea
         array_a = tuple(rec.real_hdr[INDEX_BLEV] for rec in z_recs)
         # Zsea lower
-        bounds0_a = (tuple(rec.real_hdr[INDEX_BRLEV] for rec in z_recs))
+        bounds0_a = tuple(rec.real_hdr[INDEX_BRLEV] for rec in z_recs)
         # Zsea upper
         bounds1_a = tuple(rec.real_hdr[INDEX_BRSVD1] for rec in z_recs)
 
@@ -1232,17 +1145,12 @@ class DataVariableMetadata:
         bounds1_b = tuple(rec.real_hdr[INDEX_BRSVD2] for rec in z_recs)
 
         key = (
-            "atmosphere_hybrid_height_coordinateBLEV",
+            "atmosphere_hybrid_height_coordinate",
             array_a,
-            "BRLEV",
             bounds0_a,
-            "BRSVD1",
             bounds1_a,
-            "BHLEV",
             array_b,
-            "BHRLEV",
             bounds0_b,
-            "BRSVD2",
             bounds1_b,
         )
         dim_ncvar = self._cache.get(key)
@@ -1263,13 +1171,13 @@ class DataVariableMetadata:
                     toa_height = -1
 
             if toa_height is None:
-                toa_height = bounds1.max()
+                toa_height = bounds1_a.max()
                 if toa_height <= 0:
                     toa_height = None
             elif toa_height <= 0:
                 toa_height = None
             else:
-                toa_height = float(toa_height)
+                toa_height = np.float64(toa_height)
 
             array_a = np.array(array_a)
             bounds0_a = np.array(bounds0_a)
@@ -1311,8 +1219,7 @@ class DataVariableMetadata:
                     DIMENSION_LIST=((self._axis["z"],), (bounds_dim,)),
                 )
                 bounds_ncvar = self.add_to_variables(dc_bounds)
-
-                dc.setattr("bounds", dc_bounds.name)
+                dc.setattr("bounds", bounds_ncvar)
 
             # "a" domain ancillary
             da_a = Variable(
@@ -1324,19 +1231,17 @@ class DataVariableMetadata:
                 },
                 DIMENSION_LIST=((self._axis["z"],),),
             )
-            ncvar = self.add_to_variables(da_a)
-
-            # TODO
-            da_a.setattr("bounds", da_a_bounds.name)
+            self.add_to_variables(da_a)
 
             # "a" domain ancillary bounds
             bounds_dim = self.bounds_dim(bounds)
             da_a_bounds = Variable(
                 name=f"{da_a.name}_bounds",
                 data=bounds_a,
-                DIMENSION_LIST=((_axis["z"],), (bounds_dim,)),
+                DIMENSION_LIST=((self._axis["z"],), (bounds_dim,)),
             )
-            ncvar = self.add_to_variables(da_a_bounds)
+            self.add_to_variables(da_a_bounds)
+            da_a.setattr("bounds", da_a_bounds.name)
 
             # "b" domain ancillary
             da_b = Variable(
@@ -1348,7 +1253,7 @@ class DataVariableMetadata:
                 },
                 DIMENSION_LIST=((self._axis["z"],),),
             )
-            ncvar = self.add_to_variables(da_b)
+            self.add_to_variables(da_b)
 
             # "b" domain ancillary bounds
             bounds_dim = self.bounds_dim(bounds)
@@ -1357,25 +1262,17 @@ class DataVariableMetadata:
                 data=bounds_b,
                 DIMENSION_LIST=((self._axis["z"],), (bounds_dim,)),
             )
-            ncvar = self.add_to_variables(da_b_bounds)
-
-            # TODO
+            self.add_to_variables(da_b_bounds)
             da_b.setattr("bounds", da_b_bounds.name)
 
-            # Set the 'forumla terms' attriubtes on the parent coordinate
-            # and coordinate bounds variables
+            # Set the 'forumla terms' attributes on the parent
+            # coordinate and coordinate bounds variables
             self.formula_terms(dc, f"a: {da_a.name} b: {da_b.name}")
             self.formula_terms(
                 dc_bounds, f"a: {da_a_bounds.name} b: {da_b_bounds.name}"
             )
 
             self._cache[key] = dim_ncvar
-
-        #            # Register the data variable as having an
-        #            # atmosphere_hybrid_height vertical coordinate
-        #            self._atmosphere_hybrid_height = True
-        #            self._cache['atmosphere_hybrid_height'].setdefault(self._XY, [])
-        #            self._cache['atmosphere_hybrid_height'][self._XY].append(dim_ncvar)
         else:
             self._axis["z"] = dim_ncvar
 
@@ -1413,7 +1310,7 @@ class DataVariableMetadata:
                 The name dimension coordinate variable.
 
         """
-        items = tuple(self.header_bz(rec) for rec in self._z_recs)
+        items = tuple(self.bz(rec) for rec in self._z_recs)
         key = ("atmosphere_hybrid_sigma_pressure_coordinate", items)
         dim_ncvar = self._cache.get(key)
         if dim_ncvar is None:
@@ -1457,9 +1354,7 @@ class DataVariableMetadata:
                 data=bounds,
                 DIMENSION_LIST=((self._axis["z"],), (bounds_dim,)),
             )
-            bounds_ncvar = self.add_to_variables(dc_bounds)
-
-            # TODO
+            self.add_to_variables(dc_bounds)
             dc.setattr("bounds", dc_bounds.name)
 
             # "a" domain ancillary
@@ -1473,7 +1368,7 @@ class DataVariableMetadata:
                 },
                 DIMENSION_LIST=((self._axis["z"],),),
             )
-            da_a_ncvar = self.add_to_variables(da_a)
+            self.add_to_variables(da_a)
 
             # "a" domain ancillary bounds
             bounds_dim = self.bounds_dim(bounds)
@@ -1482,9 +1377,7 @@ class DataVariableMetadata:
                 data=ak_bounds,
                 DIMENSION_LIST=((self._axis["z"],), (bounds_dim,)),
             )
-            ncvar = self.add_to_variables(da_a_bounds)
-
-            # TODO
+            self.add_to_variables(da_a_bounds)
             da_a.setattr("bounds", da_a_bounds.name)
 
             # "b" domain ancillary
@@ -1498,7 +1391,7 @@ class DataVariableMetadata:
                 },
                 DIMENSION_LIST=((self._axis["z"],),),
             )
-            ncvar = self.add_to_variables(da_b)
+            self.add_to_variables(da_b)
 
             # "b" domain ancillary bounds
             bounds_dim = self.bounds_dim(bounds)
@@ -1507,26 +1400,17 @@ class DataVariableMetadata:
                 data=bk_bounds,
                 DIMENSION_LIST=((self._axis["z"],), (bounds_dim,)),
             )
-            ncvar = self.add_to_variables(da_b_bounds)
-
-            # TODO
+            self.add_to_variables(da_b_bounds)
             da_b.setattr("bounds", da_b_bounds.name)
 
-            # Set the 'forumla terms' attriubtes on the parent coordinate
-            # and coordinate bounds variables
+            # Set the 'forumla terms' attributes on the parent
+            # coordinate and coordinate bounds variables
             self.formula_terms(dc, f"a: {da_a.name} b: {da_b.name}")
             self.formula_terms(
                 dc_bounds, f"a: {da_a_bounds.name} b: {da_b_bounds.name}"
             )
 
             self._cache[key] = dim_ncvar
-
-        #            # Register the data variable as having an
-        #            # atmosphere_hybrid_sigma_pressure vertical coordinate
-        #            self._atmosphere_hybrid_sigma_pressure = True
-        #            self._cache['atmosphere_hybrid_sigma_pressure'].setdefault(self._XY, [])
-        #            self._cache['atmosphere_hybrid_sigma_pressure'][self._XY].append(dim_ncvar)
-
         else:
             self._axis["z"] = dim_ncvar
 
@@ -1664,14 +1548,25 @@ class DataVariableMetadata:
         if cell_methods:
             self.attrs["cell_methods"] = " ".join(cell_methods)
 
-    def ctime(self, rec):
-        """Return elapsed time since the clock time of the given
-        record."""
+    def time_since_climatological_dtime(self, rec):
+        """Return elapsed time since the climatological data time.
+
+        :Parameters:
+
+            rec: `RecordInfo`
+
+        :Returns:
+
+            `float`
+                The elapsed time, in units defined by `_refunits` and
+                `_calendar`.
+
+        """
         calendar = self._calendar
         refunits = self._refunits
 
-        LBVTIME = self.header_vtime(rec)
-        LBDTIME = self.header_dtime(rec)
+        LBVTIME = self.vtime(rec)
+        LBDTIME = self.dtime(rec)
 
         key = ("ctime", LBVTIME, LBDTIME, refunits, calendar)
         ctime = _cache_date2num.get(key)
@@ -1684,7 +1579,6 @@ class DataVariableMetadata:
         LBDTIME[0] = LBVTIME[0]
 
         ctime = cftime.datetime(*LBDTIME, calendar=calendar)
-
         if ctime < cftime.datetime(*LBVTIME, calendar=calendar):
             LBDTIME[0] += 1
             ctime = cftime.datetime(*LBDTIME, calendar=calendar)
@@ -1694,51 +1588,45 @@ class DataVariableMetadata:
         _cache_date2num[key] = ctime
         return ctime
 
-    def dtime(self, rec):
-        """Return the elapsed time since the data time of the given
-        record.
+    def time_since_dtime(self, rec):
+        """Return the elapsed time since the data time.
 
         :Parameters:
 
-            rec:
+            rec: `RecordInfo`
 
         :Returns:
 
             `float`
-
-        **Examples**
-
-        >>> u.dtime(rec)
-        31.5
+                The elapsed time, in units defined by `_refunits` and
+                `_calendar`.
 
         """
         refunits = self._refunits
         calendar = self._calendar
+        LBDTIME = self.dtime(rec)
 
-        LBDTIME = self.header_dtime(rec)
-
-        key = (LBDTIME, refunits, calendar)
+        key = ("time_since", LBDTIME, refunits, calendar)
         time = _cache_date2num.get(key)
-        if time is not None:
-            return time
+        if time is None:
+            import cftime
 
-        import cftime
+            # It is important to use the same time_units as vtime
+            try:
+                time = cftime.date2num(
+                    cftime.datetime(*LBDTIME, calendar=calendar),
+                    refunits,
+                    calendar,
+                )
+            except ValueError:
+                time = np.nan  # ppp
 
-        # It is important to use the same time_units as vtime
-        try:
-            time = cftime.date2num(
-                cftime.datetime(*LBDTIME, calendar=calendar),
-                refunits,
-                calendar,
-            )
-        except ValueError:
-            time = np.nan  # ppp
+            _cache_date2num[key] = time
 
-        _cache_date2num[key] = time
         return time
 
     def grid_mapping(self, BPLAT, BPLON):
-        """Add add_offset and scale_factor attributes to a variable. TODO
+        """Add packing attributes to a data variable.
 
         :Returns:
 
@@ -1763,33 +1651,31 @@ class DataVariableMetadata:
 
         self.attrs["grid_mapping"] = gm_name
 
-    def header_bz(self, rec):
-        """Return the list [BLEV, BRLEV, BHLEV, BHRLEV, BULEV, BHULEV]
+    def bz(self, rec):
+        """Return Z coordinate information.
+
+        Return the tuple (BLEV, BRLEV, BHLEV, BHRLEV, BULEV, BHULEV)
         for the given record.
 
         :Parameters:
 
-            rec:
+            rec: `RecordInfo`
 
         :Returns:
 
-            `list`
-
-        **Examples**
-
-        >>> u.header_bz(rec)
+            `tuple`
 
         """
         real_hdr = rec.real_hdr
         return tuple(
             real_hdr[INDEX_BLEV : INDEX_BHRLEV + 1].tolist()
-            + real_hdr[  # BLEV, BRLEV, BHLEV, BHRLEV
-                INDEX_BRSVD1 : INDEX_BRSVD2 + 1
-            ].tolist()  # BULEV, BHULEV
+            + real_hdr[INDEX_BRSVD1 : INDEX_BRSVD2 + 1].tolist()
         )
 
-    def header_dtime(self, rec):
-        """Return the list [LBYRD, LBMOND, LBDATD, LBHRD, LBMIND] for
+    def dtime(self, rec):
+        """Return data-time information.
+
+        Return the tuple (LBYRD, LBMOND, LBDATD, LBHRD, LBMIND) for
         the given record.
 
         :Parameters:
@@ -1798,46 +1684,49 @@ class DataVariableMetadata:
 
         :Returns:
 
-            `list`
+            `tuple`
 
         **Examples**
 
-        >>> u.header_dtime(rec)
+        >>> u.dtime(rec)
         (1991, 2, 1, 0, 0)
 
         """
         return tuple(rec.int_hdr[INDEX_LBYRD : INDEX_LBMIND + 1])
 
-    def header_vtime(self, rec):
-        """Return the list [LBYR, LBMON, LBDAT, LBHR, LBMIN] for the
-        given record.
+    def formula_terms(self, var, formula_terms):
+        """Add a formula_terms attribute to a varable.
 
         :Parameters:
 
-            rec:
+            var:
+                The variable.
+
+            formula_terms: `str`
+                The formula terms to set as the variable's
+                "formula_terms" attribute.
 
         :Returns:
 
-            `list`
-
-        **Examples**
-
-        >>> u.header_vtime(rec)
-        (1991, 1, 1, 0, 0)
+            `None`
 
         """
-        return tuple(rec.int_hdr[INDEX_LBYR : INDEX_LBMIN + 1])
+        var.setattr("formula_terms", formula_terms)
 
     def model_level_number_coordinate(self, aux=False):
-        """model_level_number dimension or auxiliary coordinate.
+        """Create a model_level_number coordinate.
 
         :Parameters:
 
             aux: `bool`
+                If True then create an auxiliary coordinate variabel,
+                otherwise create a dimension coordinate variable.
 
         :Returns:
 
             out: `str` or `None`
+                The variable name, or `None` if one couldn't be
+                created.
 
         """
         array = tuple(rec.int_hdr[INDEX_LBLEV] for rec in self._z_recs)
@@ -1907,7 +1796,7 @@ class DataVariableMetadata:
 
             self._cache[key] = aux_ncvar
 
-        self._axis["r"] = dim_ncvar
+        self._axis["r"] = aux_ncvar
 
         self.add_to_coordinates(aux_ncvar)
         return aux_ncvar
@@ -1954,7 +1843,7 @@ class DataVariableMetadata:
                integer then that number is returned as a string
                (e.g. ``'-34'``).
 
-        """        
+        """
         LBEXP = self._int_hdr[INDEX_LBEXP]
 
         runid = _cache_runid.get(LBEXP)
@@ -1986,7 +1875,7 @@ class DataVariableMetadata:
 
     def size_1_height_coordinate(self, height, units):
         """Create a size-one height coordinate.
-        
+
         :Parameters:
 
             height: `float`
@@ -1994,7 +1883,7 @@ class DataVariableMetadata:
 
             units: `str`
                 The height units. E.g. ``'m'``.
-         
+
         :Returns:
 
             `str`
@@ -2002,7 +1891,7 @@ class DataVariableMetadata:
 
         """
         axiscode = 2
-        
+
         # Create the height coordinate from the information given in
         # the STASH to standard_name conversion table
         key = ("size_1_height_coordinate", height, units)
@@ -2026,8 +1915,7 @@ class DataVariableMetadata:
         return dim_ncvar
 
     def test_um_condition(self, um_condition, LBCODE, BPLAT, BPLON):
-        """Return `True` if the lookup header satisfies a UM
-        condition.
+        """Return `True` if the lookup header satisfies a UM condition.
 
         :Parameters:
 
@@ -2035,7 +1923,7 @@ class DataVariableMetadata:
                 A UM condition found from a record in the STASH
                 table. E.g. ``'true_latitude_longitude'``,
                 ``'rotated_latitude_longitude'``.
-        
+
             LBCODE: `int`
                 The lookup header's LBCODE Grid code.
 
@@ -2046,7 +1934,7 @@ class DataVariableMetadata:
             BPLON: `float`
                  Thelookup header's BPLON real longitude of ‘pseudo’ N
                  pole.
-        
+
         :Returns:
 
             `bool`
@@ -2086,17 +1974,17 @@ class DataVariableMetadata:
 
         :Parameters:
 
-            valid_from: `int` or `float` or `None`     
+            valid_from: `int` or `float` or `None`
                 The "valid from" version. Set to `None` if there is no
-                lower limit. E.g. `401`, `606.3`.
-        
-            valid_to: `int or  `float` or `None` 
+                lower limit. E.g. ``401``, ``606.3``.
+
+            valid_to: `int or  `float` or `None`
                 The "valid to" version. Set to `None` if there is no
-                upper limit. E.g. `401`, `606.3`.
-           
+                upper limit. E.g. ``401``, ``606.3``.
+
             um_version: `int` or `float`
                 The UM version to test against the *valid_from* and
-                *valid_to* range. E.g. `405`, `606.1`.
+                *valid_to* range. E.g. ``405``, ``606.1``.
 
         :Returns:
 
@@ -2111,11 +1999,11 @@ class DataVariableMetadata:
 
             if valid_from <= um_version:
                 return True
-            
+
         elif valid_from is None:
             if um_version <= valid_to:
                 return True
-            
+
         elif valid_from <= um_version <= valid_to:
             return True
 
@@ -2135,20 +2023,22 @@ class DataVariableMetadata:
 
         """
         t_recs = self._t_recs
+
+        vtimes = tuple(self.time_since_vtime(rec) for rec in t_recs)
+        dtimes = tuple(self.time_since_dtime(rec) for rec in t_recs)
         key = (
             "t_coordinate",
-            tuple(
-                (self.header_vtime(rec), self.header_dtime(rec))
-                for rec in t_recs
-            ),
+            vtimes,
+            dtimes,
+            self._lbtim,
             self._refunits,
             self._calendar,
         )
         dim_ncvar = self._cache.get(key)
         if dim_ncvar is None:
             # Create new 'T' coordinate
-            vtimes = np.array([self.vtime(rec) for rec in t_recs], dtype=float)
-            dtimes = np.array([self.dtime(rec) for rec in t_recs], dtype=float)
+            vtimes = np.array(vtimes, dtype=float)
+            dtimes = np.array(dtimes, dtype=float)
 
             if np.isnan(vtimes.sum()) or np.isnan(dtimes.sum()):
                 return  # ppp
@@ -2156,17 +2046,29 @@ class DataVariableMetadata:
             IB = self._lbtim_ib
 
             if IB <= 1 or vtimes.item(0) >= dtimes.item(0):
+                # Only the validity time (T1) is valid
                 array = vtimes
                 bounds = None
                 climatology = False
             elif IB == 3:
-                # The field is a time mean from T1 to T2 for each year
-                # from LBYR to LBYRD
-                ctimes = np.array([self.ctime(rec) for rec in t_recs])
+                # The field is a time mean from T1 to the data time
+                # (T2) for each year from LBYR to LBYRD
+                ctimes = np.array(
+                    [
+                        self.time_since_climatological_dtime(rec)
+                        for rec in t_recs
+                    ]
+                )
                 array = 0.5 * (vtimes + ctimes)
                 bounds = self.create_bounds_array(vtimes, dtimes)
                 climatology = True
             else:
+                # One of:
+                # - the ﬁeld is a time mean between T1 and T2, or
+                #   represents a sequence of times between T1 and T2.
+                # - the ﬁeld is a difference between ﬁelds valid at T1
+                #   and T2 (in sense T2-T1).
+                # - the ﬁeld is a mean daily cycle between T2 and T1
                 array = 0.5 * (vtimes + dtimes)
                 bounds = self.create_bounds_array(vtimes, dtimes)
                 climatology = False
@@ -2212,12 +2114,12 @@ class DataVariableMetadata:
 
             bounds: `nump.ndarray`
                 The bounds array.
-        
+
         :Returns:
 
             `str`
                 The bounds dimension name.
-        
+
         """
         size = bounds.shape[-1]
         name = f"bounds{size}"
@@ -2284,24 +2186,68 @@ class DataVariableMetadata:
 
             self.attrs["add_offset"] = add_offset
 
-    def formula_terms(self, var, formula_terms):
-        """Add a formula_terms attribute to a varable.
+    def site_coordinates_from_extra_data(self, axis):
+        """Create site-related coordinates from extra data.
 
         :Parameters:
 
-            var: 
-                The variable.
+            axis: `str`
+                Which type of axis to create the site coordinate for:
+                ``'x'`` or ``'y'``.
 
-            formula_terms: `str`
-                The formula terms to set as the variable's
-                "formula_terms" attribute.
-        
         :Returns:
 
             `None`
 
         """
-        var.setattr("formula_terms", formula_terms)
+        # Create coordinate from extra data
+        for site_axis, standard_name, units in zip(
+            ("x", "y"),
+            ("longitude", "latitude"),
+            ("degrees_east", "degrees_north"),
+        ):
+            lower_bounds = self.extra.get(f"{site_axis}_domain_lower_bound")
+            upper_bounds = self.extra.get(f"{site_axis}_domain_upper_bound")
+            if lower_bounds is None or upper_bounds is None:
+                continue
+
+            # Still here?
+            bounds = self.create_bounds_array(lower_bounds, upper_bounds)
+            array = np.average(bounds, axis=1)
+
+            ac = Variable(
+                name=standard_name,
+                data=array,
+                attrs={
+                    "standard_name": standard_name,
+                    "long_name": "region limit",
+                    "units": units,
+                },
+                DIMENSION_LIST=((self._axis[axis],),),
+            )
+            aux_ncvar = self.add_to_variables(ac)
+
+            bounds_dim = self.bounds_dim(bounds)
+            ac_bounds = Variable(
+                name=f"{aux_ncvar}_bounds",
+                data=bounds,
+                DIMENSION_LIST=((self._axis[axis],), (bounds_dim,)),
+            )
+            ac_bounds_ncvar = self.add_to_variables(ac_bounds)
+
+            ac.setattr("bounds", ac_bounds_ncvar)
+
+            self.add_to_coordinates(aux_ncvar)
+
+        array = self.extra.get("domain_title")
+        if array is not None:
+            ac = Variable(
+                name="region",
+                data=array,
+                DIMENSION_LIST=((self._axis[axis],),),
+            )
+            aux__ncvar = self.add_to_variables(ac)
+            self.add_to_coordinates(aux__ncvar)
 
     def time_coordinate_from_extra_data(self, axiscode, axis):
         """Create the time coordinate from extra data and return it.
@@ -2359,10 +2305,10 @@ class DataVariableMetadata:
         # to be the time for the first sample, the data time for the
         # last sample, with the others evenly between.
         rec = self._chunk_recs[0]["record"]
-        vtime = self.vtime(rec)
-        dtime = self.dtime(rec)
+        vtime = self.time_since_vtime(rec)
+        dtime = self.time_since_dtime(rec)
 
-        size = self._lbuser3 - 1.0
+        size = np.float64(self._lbuser3 - 1.0)
         delta = (dtime - vtime) / size
 
         calendar = self._calendar
@@ -2390,9 +2336,8 @@ class DataVariableMetadata:
         self.add_to_coordinates(dim_ncvar)
         return dim_ncvar
 
-    def vtime(self, rec):
-        """Return the elapsed time since the validity time of the given
-        record.
+    def time_since_vtime(self, rec):
+        """Return the elapsed time since the validity time.
 
         :Parameters:
 
@@ -2401,171 +2346,55 @@ class DataVariableMetadata:
         :Returns:
 
             `float`
-
-        **Examples**
-
-        >>> u.vtime(rec)
-        31.5
+                The elapsed time, in units defined by `_refunits` and
+                `_calendar`.
 
         """
         refunits = self._refunits
         calendar = self._calendar
-        LBVTIME = self.header_vtime(rec)
+        LBVTIME = self.vtime(rec)
 
-        key = (LBVTIME, refunits, calendar)
+        key = ("time_since", LBVTIME, refunits, calendar)
 
         time = _cache_date2num.get(key)
-        if time is not None:
-            return time
+        if time is None:
+            import cftime
 
-        import cftime
+            # It is important to use the same time_units as dtime
+            try:
+                time = cftime.date2num(
+                    cftime.datetime(*LBVTIME, calendar=calendar),
+                    refunits,
+                    calendar,
+                )
+            except ValueError:
+                time = np.nan  # ppp
 
-        # It is important to use the same time_units as dtime
-        try:
-            time = cftime.date2num(
-                cftime.datetime(*LBVTIME, calendar=calendar),
-                refunits,
-                calendar,
-            )
-        except ValueError:
-            time = np.nan  # ppp
+            _cache_date2num[key] = time
 
-        _cache_date2num[key] = time
         return time
 
-    #    def dddd(self):
-    #        """TODO."""
-    #        for axis_code, extra_type in zip((11, 10), ("x", "y")):
-    #            coord_type = extra_type + "_domain_bounds"
-    #
-    #            if coord_type in p.extra:
-    #                p.extra[coord_type]
-    #                # Create, from extra data, an auxiliary coordinate
-    #                # with 1) data and bounds, if the upper and lower
-    #                # bounds have no missing values; or 2) data but no
-    #                # bounds, if the upper bound has missing values
-    #                # but the lower bound does not.
-    #
-    #                # Should be the axis which has axis_code 13
-    #                file_position = ppfile.tell()
-    #                bounds = p.extra[coord_type][...]
-    #
-    #                # Reset the file pointer after reading the extra
-    #                # data into a numpy array
-    #                ppfile.seek(file_position, os.SEEK_SET)
-    #                data = None
-    #                # dch also test in bmdi?:
-    #                if np.any(bounds[..., 1] == _pp_rmdi):
-    #                    # dch also test in bmdi?:
-    #                    if not np.any(bounds[..., 0] == _pp_rmdi):
-    #                        data = bounds[..., 0]
-    #                    bounds = None
-    #                else:
-    #                    data = np.mean(bounds, axis=1)
-    #
-    #                if (data, bounds) != (None, None):
-    #                    aux = "aux%(auxN)d" % locals()
-    #                    auxN += 1  # Increment auxiliary number
-    #
-    #                    coord = _create_Coordinate(
-    #                        domain,
-    #                        aux,
-    #                        axis_code,
-    #                        p=p,
-    #                        array=data,
-    #                        aux=True,
-    #                        bounds_array=bounds,
-    #                        pubattr={"axis": None},
-    #                        # DCH xdim? should be the axis which has axis_code 13:
-    #                        dimensions=[xdim],
-    #                    )
-    #            else:
-    #                coord_type = "{0}_domain_lower_bound".format(extra_type)
-    #                if coord_type in p.extra:
-    #                    # Create, from extra data, an auxiliary
-    #                    # coordinate with data but no bounds, if the
-    #                    # data noes not contain any missing values
-    #                    file_position = ppfile.tell()
-    #                    data = p.extra[coord_type][...]
-    #                    # Reset the file pointer after reading the
-    #                    # extra data into a numpy array
-    #                    ppfile.seek(file_position, os.SEEK_SET)
-    #                    if not np.any(data == _pp_rmdi):  # dch + test in bmdi
-    #                        aux = "aux%(auxN)d" % locals()
-    #                        auxN += 1  # Increment auxiliary number
-    #                        coord = _create_Coordinate(
-    #                            domain,
-    #                            aux,
-    #                            axis_code,
-    #                            p=p,
-    #                            aux=True,
-    #                            array=np.array(data),
-    #                            pubattr={"axis": None},
-    #                            dimensions=[xdim],
-    #                        )  # DCH xdim?
+    def vtime(self, rec):
+        """Return validity-time information.
 
-    def site_coordinates_from_extra_data(self, axis):
-        """Create site-related coordinates from extra data.
+        Return the tuple(LBYR, LBMON, LBDAT, LBHR, LBMIN) for the
+        given record.
 
         :Parameters:
 
-            axis: `str`
-                Which type of coordinate to create the site coordinate
-                for: ``'x'`` or ``'y'``.
+            rec:
 
         :Returns:
 
-            `None`
+            `tuple`
+
+        **Examples**
+
+        >>> u.vtime(rec)
+        (1991, 1, 1, 0, 0)
 
         """
-        # Create coordinate from extra data
-        for site_axis, standard_name, units in zip(
-            ("x", "y"),
-            ("longitude", "latitude"),
-            ("degrees_east", "degrees_north"),
-        ):
-            lower_bounds = self.extra.get(f"{site_axis}_domain_lower_bound")
-            upper_bounds = self.extra.get(f"{site_axis}_domain_upper_bound")
-            if lower_bounds is None or upper_bounds is None:
-                continue
-
-            # Still here?
-            bounds = self.create_bounds_array(lower_bounds, upper_bounds)
-            array = np.average(bounds, axis=1)
-
-            ac = Variable(
-                name=standard_name,
-                data=array,
-                attrs={
-                    "standard_name": standard_name,
-                    "long_name": "region limit",
-                    "units": units,
-                },
-                DIMENSION_LIST=((self._axis[axis],),),
-            )
-            aux_ncvar = self.add_to_variables(ac)
-
-            bounds_dim = self.bounds_dim(bounds)
-            ac_bounds = Variable(
-                name=f"{aux_ncvar}_bounds",
-                data=bounds,
-                DIMENSION_LIST=((self._axis[axis],), (bounds_dim,)),
-            )
-            ac_bounds_ncvar = self.add_to_variables(ac_bounds)
-
-            ac.setattr("bounds", ac_bounds_ncvar)
-
-            self.add_to_coordinates(aux_ncvar)
-
-        array = self.extra.get("domain_title")
-        if array is not None:
-            ac = Variable(
-                name="region",
-                data=array,
-                DIMENSION_LIST=((self._axis[axis],),),
-            )
-            aux__ncvar = self.add_to_variables(ac)
-            self.add_to_coordinates(aux__ncvar)
+        return tuple(rec.int_hdr[INDEX_LBYR : INDEX_LBMIN + 1])
 
     def xy_coordinate(self, axiscode, axis):
         """Create an X or Y dimension coordinate.

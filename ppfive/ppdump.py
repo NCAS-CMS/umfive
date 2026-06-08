@@ -7,11 +7,12 @@ from .inspect import ppncdump
 
 
 def main(argv=None):
-    """
-    Provides some of the functionality of tools like ncdump and h5dump.
+    """Provides some of the functionality of ncdump and h5dump.
+
     By default this will attempt to do something similar to ncdump.
     - h will return this information
     - s is accepted for compatibility with p5dump output modes.
+
     """
     if argv is None:
         argv = sys.argv[1:]

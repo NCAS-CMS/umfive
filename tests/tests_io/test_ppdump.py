@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import re
-from io import StringIO
 from contextlib import redirect_stdout
+from io import StringIO
 
 import pytest
 
@@ -13,17 +13,19 @@ def _run_ppdump(path: str) -> str:
     buf = StringIO()
     with redirect_stdout(buf):
         rc = ppdump_main([path])
+
     assert rc == 0
     return buf.getvalue()
 
 
 def _run_p5dump(path: str) -> str:
-    pyfive = pytest.importorskip("pyfive")
+    pytest.importorskip("pyfive")
     from pyfive.p5dump import main as p5dump_main
 
     buf = StringIO()
     with redirect_stdout(buf):
         rc = p5dump_main([path])
+
     assert rc == 0
     return buf.getvalue()
 
@@ -36,8 +38,10 @@ def _variable_names(dump_text: str) -> list[str]:
         if stripped == "variables:":
             in_variables = True
             continue
+
         if in_variables and stripped.startswith("//"):
             break
+
         if not in_variables or not stripped or ":" in stripped:
             continue
 

@@ -3,8 +3,8 @@ import numpy as np
 from ppfive import File
 from ppfive.constants import (
     INDEX_LBCODE,
-    INDEX_LBLREC,
     INDEX_LBLEV,
+    INDEX_LBLREC,
     INDEX_LBNPT,
     INDEX_LBPACK,
     INDEX_LBROW,

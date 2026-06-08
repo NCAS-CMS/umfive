@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
-import logging
+
 import numpy as np
 
 from ppfive.core.data import (
@@ -17,9 +18,15 @@ logger = logging.getLogger(__name__)
 
 
 class ChunkReadMixin:
-    """Chunk selection reader with serial, local-threaded, and fsspec bulk strategies."""
+    """Chunk selection reader.
+
+    Chunk selection reader with serial, local-threaded, and fsspec bulk
+    strategies.
+
+    """
 
     def _get_required_chunks(self, indexer) -> list[tuple[Any, ...]]:
+        """TODO."""
         required = []
         for chunk_coords, chunk_selection, out_selection in indexer:
             chunk_offset = tuple(
@@ -31,7 +38,8 @@ class ChunkReadMixin:
             rec = self._record_cache.get(chunk_offset)
             if rec is None:
                 raise OSError(
-                    f"Chunk coordinates not found in record index: {chunk_offset}"
+                    "Chunk coordinates not found in record index: "
+                    f"{chunk_offset}"
                 )
 
             chunk_shape = tuple(
@@ -57,6 +65,8 @@ class ChunkReadMixin:
     def _decode_chunk_buffer(
         self, raw: bytes, rec, chunk_shape: tuple[int, ...]
     ) -> np.ndarray:
+        """TODO."""
+        """TODO."""
         return decode_record_array_from_raw(
             raw,
             rec,
@@ -65,6 +75,7 @@ class ChunkReadMixin:
         ).reshape(chunk_shape)
 
     def _store_and_assign(self, decoded_chunks, out: np.ndarray) -> None:
+        """TODO."""
         for (
             _chunk_offset,
             chunk_selection,
@@ -74,6 +85,7 @@ class ChunkReadMixin:
             out[out_selection] = chunk_data[chunk_selection]
 
     def _read_serial_chunks(self, required, out: np.ndarray) -> None:
+        """TODO."""
         decoded_chunks = []
         for (
             chunk_offset,
@@ -97,6 +109,8 @@ class ChunkReadMixin:
     def _read_parallel_local_chunks(
         self, required, out: np.ndarray, thread_count: int
     ) -> None:
+        """TODO."""
+
         def _read_one(item):
             chunk_offset, chunk_selection, out_selection, rec, chunk_shape = (
                 item
@@ -121,6 +135,7 @@ class ChunkReadMixin:
     def _read_bulk_fsspec_chunks(
         self, required, out: np.ndarray, thread_count: int
     ) -> None:
+        """TODO."""
         reader = self._variable.file._reader
         fh = getattr(reader, "_fh", None)
         actual_fh = getattr(fh, "fh", fh)
@@ -159,13 +174,12 @@ class ChunkReadMixin:
         self._store_and_assign(decoded_iter, out)
 
     def _select_chunks(self, indexer, out: np.ndarray) -> None:
+        """TODO."""
         file_obj = self._variable.file
         reader = file_obj._reader
         thread_count = int(getattr(file_obj, "_thread_count", 0) or 0)
         cat_range_allowed = bool(getattr(file_obj, "_cat_range_allowed", True))
-        cat_str = {True: "Cat ranges ON", False: "Cat ranges OFF"}[
-            cat_range_allowed
-        ]
+        cat_str = "Cat ranges ON" if cat_range_allowed else "Cat ranges OFF"
         logger.info(
             f"[ppfive] select chunks: thread_count={thread_count}, {cat_str}"
         )
@@ -176,23 +190,41 @@ class ChunkReadMixin:
         if not required:
             return
 
-        if (
-            thread_count != 0
-            and cat_range_allowed
-            and isinstance(reader, FsspecReader)
-        ):
-            fh = getattr(reader, "_fh", None)
-            actual_fh = getattr(fh, "fh", fh)
-            if (
-                actual_fh is not None
-                and hasattr(actual_fh, "fs")
-                and hasattr(actual_fh.fs, "cat_ranges")
-            ):
-                self._read_bulk_fsspec_chunks(required, out, thread_count)
+        if thread_count:
+            if cat_range_allowed and isinstance(reader, FsspecReader):
+                fh = getattr(reader, "_fh", None)
+                actual_fh = getattr(fh, "fh", fh)
+                if (
+                    actual_fh is not None
+                    and hasattr(actual_fh, "fs")
+                    and hasattr(actual_fh.fs, "cat_ranges")
+                ):
+                    self._read_bulk_fsspec_chunks(required, out, thread_count)
+                    return
+
+            # Still here?
+            if isinstance(reader, LocalPosixReader):
+                self._read_parallel_local_chunks(required, out, thread_count)
                 return
 
-        if thread_count != 0 and isinstance(reader, LocalPosixReader):
-            self._read_parallel_local_chunks(required, out, thread_count)
-            return
+        # if (
+        #    thread_count != 0
+        #    and cat_range_allowed
+        #    and isinstance(reader, FsspecReader)
+        # ):
+        #    fh = getattr(reader, "_fh", None)
+        #    actual_fh = getattr(fh, "fh", fh)
+        #    if (
+        #        actual_fh is not None
+        #        and hasattr(actual_fh, "fs")
+        #        and hasattr(actual_fh.fs, "cat_ranges")
+        #    ):
+        #        self._read_bulk_fsspec_chunks(required, out, thread_count)
+        #        return
+        #
+        # if thread_count != 0 and isinstance(reader, LocalPosixReader):
+        #    self._read_parallel_local_chunks(required, out, thread_count)
+        #    return
 
+        # Still here?
         self._read_serial_chunks(required, out)

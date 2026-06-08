@@ -27,14 +27,13 @@ _stash_table = {}
 def _parse_version(value):
     """Parse UM versions from the STASH table source.
 
-    
     :Parameters:
 
         value: `str`
-            The UM version from the STASH table source.    
-    
+            The UM version from the STASH table source.
+
     :Returns:
-    
+
         `float` or `None`
             The parsed version, which will a `float`, or `None` of the
             input *value* cannot be converted to a `float`.
@@ -49,12 +48,12 @@ def _parse_version(value):
 
     """
     if not value:
-        return None
+        return
 
     try:
         return float(value)
     except ValueError:
-        return None
+        return
 
 
 def _parse_cf_extra(value):
@@ -64,9 +63,9 @@ def _parse_cf_extra(value):
 
         value: `str`
             The CF extra information from the STASH table source.
-    
+
     :Returns:
-    
+
         `dict`
             A dictionary containing the extra inormation.
 
@@ -170,7 +169,7 @@ def load_stash_table(table=None, delimiter="!", merge=True):
         if _default_stash_table:
             # The default STASH table has already been loaded
             return
-        
+
         default = True
         merge = False
         table_path = files("ppfive").joinpath("data/STASH_to_CF.txt")
@@ -221,7 +220,7 @@ def load_stash_table(table=None, delimiter="!", merge=True):
     if default:
         # Store the default STASH table
         _default_stash_table.update(stash2sn)
-            
+
     if not merge:
         _stash_table.clear()
 
@@ -229,8 +228,7 @@ def load_stash_table(table=None, delimiter="!", merge=True):
 
 
 def stash_table():
-    """Return a copy of the loaded STASH to standard name conversion
-    table.
+    """Return a copy of the current STASH table.
 
     .. seealso:: `load_stash_table`, `stash_record`
 
@@ -238,7 +236,7 @@ def stash_table():
 
         `dict`
             The currently loaded STASH table.
-    
+
     """
     if not _stash_table:
         load_stash_table()
@@ -255,10 +253,10 @@ def stash_records(submodel, stash_code):
 
         submodel: `int`
             The submodel of the STASH code (e.g. ``2``).
-    
+
         stash: `int`
             The STASH code (e.g. ``101``).
-    
+
     :Returns:
 
         `tuple`

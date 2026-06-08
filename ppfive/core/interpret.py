@@ -12,6 +12,7 @@ from ..constants import (
 
 
 def get_type(int_hdr) -> str:
+    """TODO."""
     code = int(int_hdr[INDEX_LBUSER1])
     if code in (2, -2, 3, -3):
         return "integer"
@@ -19,12 +20,14 @@ def get_type(int_hdr) -> str:
 
 
 def get_extra_data_length(int_hdr, word_size: int) -> int:
+    """TODO."""
     if int(int_hdr[INDEX_LBEXT]) > 0:
         return int(int_hdr[INDEX_LBEXT]) * word_size
     return 0
 
 
 def get_num_data_words(int_hdr, word_size: int) -> int:
+    """TODO."""
     if (
         int(int_hdr[INDEX_LBPACK]) != 0
         and int(int_hdr[INDEX_LBROW]) > 0
@@ -38,12 +41,14 @@ def get_num_data_words(int_hdr, word_size: int) -> int:
 
 
 def get_type_and_num_words(int_hdr, word_size: int):
+    """TODO."""
     return get_type(int_hdr), get_num_data_words(int_hdr, word_size)
 
 
 def get_extra_data_offset_and_length(
     int_hdr, data_offset: int, disk_length: int, word_size: int
 ):
+    """TODO."""
     extra_data_length = get_extra_data_length(int_hdr, word_size)
     if int(int_hdr[INDEX_LBPACK]) != 0:
         extra_data_offset = data_offset + disk_length - extra_data_length
@@ -56,6 +61,7 @@ def get_extra_data_offset_and_length(
 
 
 def get_ff_disk_length(int_hdr, word_size: int):
+    """TODO."""
     if int(int_hdr[INDEX_LBPACK]) != 0 and int(int_hdr[INDEX_LBNREC]) != 0:
         return int(int_hdr[INDEX_LBNREC]) * word_size
     if int(int_hdr[INDEX_LBPACK]) % 10 == 2:

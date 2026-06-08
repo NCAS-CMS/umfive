@@ -1,7 +1,7 @@
 import numpy as np
 
-from ppfive.core.constants import (
-    INDEX_LBBEGIN,
+from ppfive.constants import (
+    INDEX_LBEGIN,
     INDEX_LBLREC,
     INDEX_LBPACK,
     N_INT_HDR,
@@ -52,7 +52,6 @@ def test_scan_pp_headers_single_record(tmp_path):
 
 
 def test_scan_ff_headers_single_lookup(tmp_path):
-    word_size = 4
     fixed = np.zeros(300, dtype="<i4")
     fixed[149] = 161  # start_lookup (1-based)
     fixed[150] = 64  # nlookup1
@@ -63,7 +62,7 @@ def test_scan_ff_headers_single_lookup(tmp_path):
     real_hdr = np.zeros(N_REAL_HDR, dtype="<f4")
     int_hdr[INDEX_LBLREC] = 3
     int_hdr[INDEX_LBPACK] = 0
-    int_hdr[INDEX_LBBEGIN] = 0
+    int_hdr[INDEX_LBEGIN] = 0
 
     lookup = int_hdr.tobytes() + real_hdr.tobytes()
 

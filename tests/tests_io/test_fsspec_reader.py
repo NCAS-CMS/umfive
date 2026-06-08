@@ -76,6 +76,6 @@ def test_full_read_parity_local_vs_fsspec(fixture_name: str):
         rhs = local[name]
         assert lhs.shape == rhs.shape
         assert lhs.dtype == rhs.dtype
-        assert np.array_equal(lhs, rhs), (
-            f"fsspec mismatch for {fixture_name} variable {name}"
-        )
+        assert np.array_equal(
+            lhs, rhs
+        ), f"fsspec mismatch for {fixture_name} variable {name}"

@@ -1,4 +1,4 @@
-from ppfive.core.stash_table import stash_records
+from ppfive.stash import stash_records
 
 
 def test_stash_table_has_expected_entry():

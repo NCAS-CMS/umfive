@@ -7,32 +7,56 @@ from typing import Any, Callable
 import numpy as np
 from pyfive.indexing import OrthogonalIndexer, ZarrArrayStub
 
+from .constants import (
+    INDEX_LBPACK,
+    _axiscode_to_units,
+    _coord_axis,
+    _coord_long_name,
+    _coord_positive,
+    _coord_standard_name,
+)
 from .core.data import read_record_raw
 from .core.interpret import get_extra_data_length
 from .core.models import StoreInfo
 from .io.chunk_read import ChunkReadMixin
 
 
-from .constants import (
-    _coord_long_name,
-    _axiscode_to_units,
-    _coord_axis,
-    _coord_positive,
-    _coord_standard_name,
-)
+class _PyfiveAttrs(dict):
+    """Attribute mapping tuned for cfdm/p5netcdf compatibility.
+
+    Keep normal Python `str` values for direct user access, but expose those
+    strings as byte scalars when iterating `.items()` so cfdm's p5netcdf
+    adapter formats them as scalar text instead of character arrays.
+
+    """
+
+    @staticmethod
+    def _coerce_for_items(value: Any) -> Any:
+        if isinstance(value, str):
+            return np.bytes_(value)
+
+        return value
+
+    def items(self):
+        """A set-like object providing a view on the items."""
+        for key, value in super().items():
+            yield key, self._coerce_for_items(value)
 
 
 class AstypeContext:
     """Context manager to cast reads from a variable."""
 
     def __init__(self, variable: "Variable", dtype: str | np.dtype):
+        """TODO."""
         self._variable = variable
         self._dtype = np.dtype(dtype)
 
     def __enter__(self):
+        """Enter the runtime context."""
         self._variable._astype = self._dtype
 
-    def __exit__(self, exc_type, exc, tb):
+    def __exit__(self, _exc_type, _exc, _tb):
+        """Exit the runtime context."""
         self._variable._astype = None
 
 
@@ -40,6 +64,7 @@ class DataVariableID(ChunkReadMixin):
     """Small dataset-id-like object that backs DataVariable reads."""
 
     def __init__(self, variable: "DataVariable"):
+        """TODO."""
         self._variable = variable
         self._index_cache = None
         self._nthindex = None
@@ -47,33 +72,40 @@ class DataVariableID(ChunkReadMixin):
 
     @property
     def shape(self):
+        """Shape of the array."""
         return self._variable.shape
 
     @property
     def dtype(self):
-        return (
-            np.dtype(self._variable.dtype)
-            if self._variable.dtype is not None
-            else None
-        )
+        """The format of the elements in the array."""
+        if self._variable.dtype is None:
+            return
+
+        return np.dtype(self._variable.dtype)
 
     @property
     def chunks(self):
+        """TODO."""
         return self._variable.chunk_shape
 
     @property
     def first_chunk(self):
+        """TODO."""
         if not self.__chunk_init_check():
-            return None
+            return
+
         return self._nthindex[0]
 
     @property
     def index(self):
+        """TODO."""
         if not self.__chunk_init_check():
             raise TypeError("Dataset is not chunked ")
+
         return self._index_cache
 
     def __chunk_init_check(self):
+        """TODO."""
         if (
             self._variable.chunk_shape is None
             or not self._variable.chunk_records
@@ -99,6 +131,7 @@ class DataVariableID(ChunkReadMixin):
                 )
                 index[chunk_offset] = info
                 record_cache[chunk_offset] = rec
+
             self._index_cache = index
             self._nthindex = sorted(index)
             self._record_cache = record_cache
@@ -106,6 +139,7 @@ class DataVariableID(ChunkReadMixin):
         return True
 
     def _get_selection_via_chunks(self, args):
+        """TODO."""
         array = ZarrArrayStub(self.shape, self.chunks)
         indexer = OrthogonalIndexer(args, array)
         out = np.empty(indexer.shape, dtype=self.dtype)
@@ -114,22 +148,22 @@ class DataVariableID(ChunkReadMixin):
 
         return out
 
-    def get_data(self, args=(), fillvalue=None):
-        del fillvalue
-
+    def get_data(self, args=()):
+        """TODO."""
         if self.__chunk_init_check():
             return self._get_selection_via_chunks(args)
 
         # Fallback for variables with data_loader but no chunk records
-        if self._variable.data_loader is not None:
-            data = self._variable.data_loader()
+        variable = self._variable
+        if variable.data_loader is not None:
+            data = variable.data_loader(**variable.data_loader_options)
             if data is None:
-                return None
+                return
+
             return data[args] if args else data
 
-        return None
-
     def iter_chunks(self, sel=()):
+        """TODO."""
         shape = self.shape
         if not shape:
             return iter(())
@@ -145,6 +179,7 @@ class DataVariableID(ChunkReadMixin):
                     )
             else:
                 start, stop = 0, size
+
             normalized.append((start, stop, chunks[axis]))
 
         chunk_slices = []
@@ -154,39 +189,50 @@ class DataVariableID(ChunkReadMixin):
             while pos < stop:
                 axis_slices.append(slice(pos, min(pos + chunk, stop), 1))
                 pos += chunk
+
             chunk_slices.append(axis_slices)
 
         def _generator(axis=0, prefix=()):
             if axis == len(chunk_slices):
                 yield prefix
                 return
+
             for item in chunk_slices[axis]:
                 yield from _generator(axis + 1, prefix + (item,))
 
         return _generator()
 
     def get_num_chunks(self):
+        """TODO."""
         if self.__chunk_init_check():
             return len(self._index_cache)
+
         return 0
 
     def get_chunk_info(self, index):
+        """TODO."""
         if self.__chunk_init_check():
             return self._index_cache[self._nthindex[index]]
+
         raise TypeError("Dataset is not chunked ")
 
     def get_chunk_info_by_coord(self, coordinate_index):
+        """TODO."""
         if self.__chunk_init_check():
             return self._index_cache[tuple(coordinate_index)]
+
         raise TypeError("Dataset is not chunked ")
 
     def get_chunk_info_from_chunk_coord(self, coordinate_index):
+        """TODO."""
         return self.get_chunk_info_by_coord(coordinate_index)
 
     def read_direct_chunk(self, chunk_position, **kwargs):
+        """TODO."""
         del kwargs
         if not self.__chunk_init_check():
             raise TypeError("Dataset is not chunked ")
+
         chunk_position = tuple(chunk_position)
         if chunk_position not in self._index_cache:
             raise OSError("Chunk coordinates must lie on chunk boundaries")
@@ -235,9 +281,17 @@ class _Mixin:
 
     @property
     def dimensions(self):
+        """The dimension names.
+
+        :Returns:
+
+            `tuple` or `None`
+                The dimension names, or `None` if they are undefined.
+
+        """
         DIMENSION_LIST = self.attrs.get("DIMENSION_LIST")
         if DIMENSION_LIST is None:
-            return None
+            return
 
         return tuple(dim[0] for dim in DIMENSION_LIST)
 
@@ -248,7 +302,7 @@ class _Mixin:
 
     @property
     def size(self):
-        """Number of elements in the array"""
+        """Number of elements in the array."""
         return prod(self.shape)
 
     def _setattrs_from_axiscode(self, axiscode):
@@ -268,33 +322,31 @@ class _Mixin:
         if axiscode is None:
             return
 
-        attrs = self.attrs
-
         name = _coord_standard_name.get(axiscode)
         if name is not None:
-            attrs["standard_name"] = name
+            self.setattr("standard_name", name)
             if self.name is None:
                 self.name = name
         else:
             name = _coord_long_name.get(axiscode)
             if name is not None:
-                attrs["long_name"] = name
+                self.setattr("long_name", name)
 
         axis = _coord_axis.get(axiscode)
         if axis is not None:
-            attrs["axis"] = axis
+            self.setattr("axis", axis)
 
         positive = _coord_positive.get(axiscode)
         if positive is not None:
-            attrs["positive"] = positive
+            self.setattr("positive", positive)
 
         units = _axiscode_to_units.get(axiscode)
         if units:
-            attrs["units"] = units
+            self.setattr("units", units)
 
     def setattr(self, name, value):
         """Set an attribute.
-        
+
         :Parameters:
 
             name: `str`
@@ -302,44 +354,76 @@ class _Mixin:
 
             value:
                 The attribute value.
-        
+
         :Returns:
 
             `None`
 
         """
         self.attrs[name] = value
-        
+
+
 class DimensionScale(_Mixin):
-    """Internal pyfive-like dimension-scale dataset for cfdm bridging."""
+    """Internal pyfive-like dimension-scale dataset."""
 
     def __init__(
         self,
-        name: str | None = None,
+        name=None,
         data=None,
-        size: int | None = None,
-        axiscode: int | None = None,
-        attrs: dict | None = None,
+        size=None,
+        axiscode=None,
+        attrs=None,
         file_obj=None,
-        Netcdf4Dimid: list | None = None,
+        Netcdf4Dimid=None,
     ):
-        self.name = name
-        self.file = file_obj
+        """**Initialisation**
 
-        if data is not None:
-            arr = np.asanyarray(data)
-            if arr.ndim != 1:
-                raise ValueError("Dimension scale data must be 1-D")
+        :Parameters:
 
-            self._data = arr
-            self.shape = (int(arr.size),)
-            self.dtype = arr.dtype
-        else:
+            name: `str` or `None`, optional
+                The dimension name.
+
+            data: `np.ndarray` or `None`, optional
+                The 1-d data, or `None` if dimension has no data.
+
+            size: `int` or `None`, optional
+                The size of the dimension. Ignored if *data* is set to
+                an array.
+
+            axiscode: `int` or `None`, optional
+                The integer PP axis code from which attributes are
+                derived, or `None` if there isn't one.
+
+            attrs: `dict` or `None`, optional
+                The dimension coordinate attributes, which override
+                any with the same name set via *axiscode*.
+
+            file_obj: `File` or `None, optional
+                The parent dataset.
+
+            Netcdf4Dimid: `list` or `None`, optional
+                A single-element list containing the next available
+                "_NetCDF4Dimid" attribute value. The list is updated
+                in-place.
+
+        """
+        if data is None:
             self._data = None
             self.shape = (int(size),)
-            self.dtype = None
+            self.dtype = np.dtype("float32")
+        else:
+            data = np.asanyarray(data)
+            if data.ndim != 1:
+                raise ValueError("Dimension scale data must be 1-d")
+
+            self._data = data
+            self.shape = data.shape
+            self.dtype = data.dtype
 
         self.maxshape = self.shape
+
+        self.name = name
+        self.file = file_obj
         self.chunks = None
 
         self.attrs = {}
@@ -350,30 +434,25 @@ class DimensionScale(_Mixin):
         if Netcdf4Dimid is None:
             Netcdf4Dimid = [np.int32(0)]
 
-        if data is None:
-            self.attrs.update(
-                {
-                    "CLASS": b"DIMENSION_SCALE",
-                    "NAME": (
-                        b"This is a netCDF dimension "
-                        b"but not a netCDF variable."
-                    ),
-                    "_Netcdf4Dimid": Netcdf4Dimid[0],
-                }
-            )
-        else:
-            self.attrs.update(
-                {
-                    "CLASS": b"DIMENSION_SCALE",
-                    "NAME": b"netCDF dimension coordinate variable",
-                    "_Netcdf4Dimid": Netcdf4Dimid[0],
-                }
-            )
+        hdf5_attrs = {
+            "CLASS": b"DIMENSION_SCALE",
+            "_Netcdf4Dimid": Netcdf4Dimid[0],
+        }
 
         # Increment Netcdf4Dimid in-place
         Netcdf4Dimid[0] += 1
 
+        if data is None:
+            hdf5_attrs["NAME"] = (
+                b"This is a netCDF dimension but not a netCDF variable."
+            )
+        else:
+            hdf5_attrs["NAME"] = b"netCDF dimension coordinate variable"
+
+        self.attrs.update(hdf5_attrs)
+
     def __getitem__(self, key):
+        """Return self[key]."""
         data = self._data
         if data is None:
             raise ValueError(
@@ -384,6 +463,7 @@ class DimensionScale(_Mixin):
         return data[key]
 
     def __repr__(self):
+        """Return repr(self)."""
         out = f"<ppfive.{self.__class__.__name__}: {self.name}, "
         if self._data is None:
             out += f"size={self.shape[0]}>"
@@ -394,9 +474,17 @@ class DimensionScale(_Mixin):
 
     @property
     def dimensions(self):
+        """The dimension name.
+
+        :Returns:
+
+            `tuple` or `None`
+                The dimension name, or `None` if it is undefined.
+
+        """
         name = self.name
         if name is None:
-            return None
+            return
 
         return (name,)
 
@@ -409,9 +497,9 @@ class Variable(_Mixin):
     includes coordinate bounds, auxilary coordinate, domain ancillary,
     and grid mapping variables.
 
-    A dimension coordinate variable is represented by a
-    `DimensionScale` instance, and a data variable is represented by a
-    `DataVariable` instance.
+    A dimension coordinate variable (with or within an array) is
+    represented by a `DimensionScale` instance, and a data variable is
+    represented by a `DataVariable` instance.
 
     """
 
@@ -423,7 +511,29 @@ class Variable(_Mixin):
         attrs: dict | None = None,
         DIMENSION_LIST: tuple | None = None,
     ):
-        """TODO"""
+        """**Initialisation**
+
+        :Parameters:
+
+            name: `str` or `None`, optional
+                The variable name.
+
+            data: `np.ndarray` or `None`, optional
+                The data.
+
+            axiscode: `int` or `None`, optional
+                The integer PP axis code from which attributes are
+                derived, or `None` if there isn't one.
+
+            attrs: `dict` or `None`, optional
+                The variable attributes, which override any with the
+                same name set via *axiscode*.
+
+            DIMENSION_LIST: `tuple` or `None`, optional
+                The dimension names for the data, e.g. ``()``,
+                ``(('time',),)``, ``(('latitude',), ('longitude',))``
+
+        """
         self.name = name
         self._data = data
         self.shape = data.shape
@@ -438,16 +548,16 @@ class Variable(_Mixin):
 
         if DIMENSION_LIST is None and data is not None and not self.shape:
             DIMENSION_LIST = ()
-            
+
         if DIMENSION_LIST is None:
             raise ValueError(
                 "Must provide DIMENSION_LIST when instantiating a "
                 f"non-scalar Variable instance: {name}({self.shape})"
             )
-            
+
         if len(DIMENSION_LIST) != len(self.shape):
             raise ValueError("TODO")
-        
+
         self.setattr("DIMENSION_LIST", DIMENSION_LIST)
 
     def __getitem__(self, key):
@@ -455,9 +565,9 @@ class Variable(_Mixin):
         return self._data[key]
 
 
-@dataclass
+@dataclass(repr=False)
 class DataVariable(_Mixin):
-    """Minimal pyfive-like variable surface for PP/Fields data."""
+    """Minimal pyfive-like variable for PP/Fields data."""
 
     name: str
     attrs: dict[str, Any] = field(default_factory=dict)
@@ -465,79 +575,107 @@ class DataVariable(_Mixin):
     dtype: Any = None
     chunk_shape: tuple[int, ...] | None = None
     data_loader: Callable[[], Any] | None = None
+    data_loader_options: dict | None = None
     file: Any = None
-    parent: Any = None
     chunk_records: list[dict[str, Any]] = field(default_factory=list)
     _astype: np.dtype | None = field(default=None, init=False, repr=False)
     id: DataVariableID = field(init=False, repr=False)
     DIMENSION_LIST: tuple[tuple, ...] | None = None
 
     def __post_init__(self):
+        """TODO."""
         if self.dtype is not None:
             self.dtype = np.dtype(self.dtype)
 
+        if self.data_loader_options is None:
+            self.data_loader_options = {}
+
         self.id = DataVariableID(self)
 
-        if self.parent is None:
-            self.parent = self.file
+        self.parent = self.file
 
         DIMENSION_LIST = self.DIMENSION_LIST
-        if DIMENSION_LIST is None and data is not None and not shape:
+        if DIMENSION_LIST is None and not self.shape:
             DIMENSION_LIST = ()
-            
+
         if DIMENSION_LIST is None:
             raise ValueError(
                 "Must provide DIMENSION_LIST when instantiating a "
-                f"non-scalar DataVariable instance: {name}({self.shape})"
+                "non-scalar DataVariable instance: "
+                f"{self.name}, shape={self.shape}"
             )
-        
+
         if len(DIMENSION_LIST) != len(self.shape):
             raise ValueError("TODO")
-        
+
         self.setattr("DIMENSION_LIST", DIMENSION_LIST)
+
+    def __getitem__(self, key):
+        """Return self[key]."""
+        data = self.id.get_data(key)
+        if data is None:
+            return
+
+        if self._astype is None:
+            return data
+
+        return data.astype(self._astype, copy=False)
+
+    def __array__(self, dtype=None, copy=None):
+        """The numpy array interface.
+
+        :Parameters:
+
+            dtype: optional
+                Typecode or data-type to which the array is cast.
+
+            copy: `None` or `bool`
+                Included to match the `numpy.ndarray.__array__` API,
+                but ignored. The returned numpy array is always
+                independent.
+
+        :Returns:
+
+            `numpy.ndarray`
+                An independent numpy array of the data.
+
+        """
+        array = self[...]
+        if array is None:
+            raise RuntimeError("Failed to get data array")
+
+        if dtype is None:
+            return array
+
+        return array.astype(dtype, copy=False)
 
     @property
     def value(self):
+        """TODO."""
         return self[()]
-
-    def __getitem__(self, key):
-        data = self.id.get_data(key, self.fillvalue)
-        if data is None:
-            return None
-        
-        if self._astype is None:
-            return data
-        
-        return np.asarray(data).astype(self._astype)
-
-    def __array__(self):
-        data = self.id.get_data(())
-        if data is None:
-            raise TypeError("DataVariable has no data loader configured")
-        
-        return np.asarray(data)
-
-#    def len(self):
-#        return len(self)
 
     def read_direct(
         self, array: np.ndarray, source_sel=None, dest_sel=None
     ) -> None:
+        """TODO."""
         if source_sel is None:
             source_sel = slice(None)
-            
+
         if dest_sel is None:
             dest_sel = slice(None)
-            
+
         array[dest_sel] = self[source_sel]
 
     def astype(self, dtype: str | np.dtype) -> AstypeContext:
+        """TODO."""
         return AstypeContext(self, dtype)
 
     def iter_chunks(self, sel=()):
+        """TODO."""
         return self.id.iter_chunks(sel)
 
     def to_reference_dict(self) -> dict[str, Any]:
+        """TODO."""
         refs: dict[str, Any] = {}
         for chunk_coords, info in self.id.index.items():
             rec = None
@@ -559,6 +697,7 @@ class DataVariable(_Mixin):
                 "filter_mask": info.filter_mask,
                 "int_hdr": rec.int_hdr.tolist(),
                 "real_hdr": rec.real_hdr.tolist(),
+                "extra_Data": rec.extra_data,
             }
 
         return {
@@ -566,12 +705,14 @@ class DataVariable(_Mixin):
             "name": self.name,
             "path": getattr(self.file, "filename", None),
             "shape": list(self.shape),
-            "dtype": np.dtype(self.dtype).str
-            if self.dtype is not None
-            else None,
-            "chunk_shape": list(self.chunk_shape)
-            if self.chunk_shape is not None
-            else None,
+            "dtype": (
+                np.dtype(self.dtype).str if self.dtype is not None else None
+            ),
+            "chunk_shape": (
+                list(self.chunk_shape)
+                if self.chunk_shape is not None
+                else None
+            ),
             "word_size": getattr(self.file, "word_size", None),
             "byte_ordering": getattr(self.file, "byte_ordering", None),
             "refs": refs,
@@ -580,44 +721,111 @@ class DataVariable(_Mixin):
     # Dataset-like attributes that are not currently meaningful for PP/Fields.
     @property
     def chunks(self):
+        """TODO."""
         return self.chunk_shape
 
     @property
     def compression(self):
-        return None
+        """TODO."""
+        return
 
     @property
     def compression_opts(self):
-        return None
+        """TODO."""
+        return
+
+    @property
+    def lbpack(self):
+        """The unique data chunk LBPACK values.
+
+        These are the unique values of the LBPACK across all data chunks
+        in the variable.
+
+        """
+        return sorted(
+            {
+                int(chunk_record["record"].int_hdr[INDEX_LBPACK])
+                for chunk_record in self.chunk_records
+            }
+        )
+
+    @property
+    def compression_modes(self):
+        """The unique data chunk compression flags.
+
+        These are the unique values, excluding ``0``, of the N2 digit
+        of LBPACK across all data chunks in the variable.
+
+        1: Data compressed using the N3rd group of compressed ﬁeld
+           index arrays in the dump.
+        2: Data compressed with the N3rd bit mask
+
+        """
+        out = {
+            (int(chunk_record["record"].int_hdr[INDEX_LBPACK]) // 10) % 10
+            for chunk_record in self.chunk_records
+        }
+
+        out.discard(0)
+        return sorted(out)
+
+    @property
+    def packing_modes(self):
+        """The unique data chunk packing flags.
+
+        These are the unique values, excluding ``0``, of the N1 digit
+        of LBPACK across all data chunks in the variable.
+
+        1: Data packed using WGDOS archive method.
+        2: Data packed using CRAY 32 bit method.
+        3: Data compressed using the GRIB method.
+        4: Data compressed using Run Length Encoding
+
+        """
+        out = {
+            int(chunk_record["record"].int_hdr[INDEX_LBPACK]) % 10
+            for chunk_record in self.chunk_records
+        }
+
+        out.discard(0)
+        return sorted(out)
 
     @property
     def shuffle(self):
-        return None
+        """TODO."""
+        return
 
     @property
     def fletcher32(self):
-        return None
+        """TODO."""
+        return
 
     @property
     def maxshape(self):
-        return None
+        """TODO."""
+        return
 
     @property
     def fillvalue(self):
-        return None
+        """TODO."""
+        return
 
     @property
     def dims(self):
-        return None
+        """TODO."""
+        return
 
     @property
     def scaleoffset(self):
-        return None
+        """TODO."""
+        return
 
     @property
     def external(self):
-        return None
+        """TODO."""
+        return
 
     @property
     def is_virtual(self):
-        return None
+        """TODO."""
+        return

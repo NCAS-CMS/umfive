@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import numpy as np
@@ -19,13 +19,13 @@ from ..constants import (
     INDEX_BPLON,
     INDEX_BZX,
     INDEX_BZY,
+    INDEX_LBCODE,
     INDEX_LBDAT,
     INDEX_LBDATD,
     INDEX_LBDAY,
     INDEX_LBDAYD,
     INDEX_LBFT,
     INDEX_LBHEM,
-    INDEX_LBCODE,
     INDEX_LBHR,
     INDEX_LBHRD,
     INDEX_LBLEV,
@@ -56,10 +56,12 @@ from .models import RecordInfo
 
 
 def _float_key(val) -> float:
+    """TODO."""
     return round(float(val), 9)
 
 
 def _between_var_key(rec: RecordInfo) -> tuple:
+    """TODO."""
     ih = rec.int_hdr
     rh = rec.real_hdr
     return (
@@ -108,6 +110,7 @@ def _within_var_key(rec: RecordInfo) -> tuple:
 
 
 def _record_is_skippable(rec: RecordInfo) -> bool:
+    """TODO."""
     ih = rec.int_hdr
 
     # Mirrors key skip logic in process_vars.c
@@ -124,6 +127,7 @@ def _record_is_skippable(rec: RecordInfo) -> bool:
 
 
 def _dtype_name(first: RecordInfo, word_size: int) -> str:
+    """TODO."""
     kind = get_type(first.int_hdr)
     if kind == "integer":
         return "int32" if word_size == 4 else "int64"
@@ -132,6 +136,7 @@ def _dtype_name(first: RecordInfo, word_size: int) -> str:
 
 
 def _z_key(rec: RecordInfo) -> tuple:
+    """TODO."""
     ih = rec.int_hdr
     pseudo = int(ih[INDEX_LBUSER5])
     if pseudo in (0, INT_MISSING_DATA):
@@ -142,16 +147,20 @@ def _z_key(rec: RecordInfo) -> tuple:
 
 
 def _t_key(rec: RecordInfo) -> tuple:
+    """TODO."""
     return _within_var_key(rec)[:13]
 
 
 def _split_on_duplicate_tz_pairs(
     recs: list[RecordInfo],
 ) -> list[list[RecordInfo]]:
-    """Split a grouped variable when (t,z) coordinate pairs are duplicated.
+    """Split a grouped variable on duplicate (t,z) coordinate pairs.
+
+    Split a grouped variable when (t,z) coordinate pairs are duplicated.
 
     This mirrors the key behavior of the legacy disambiguation index in
     process_vars.c for non-regular z/t record layouts.
+
     """
     seen: dict[tuple[Any, Any], int] = defaultdict(int)
     buckets: dict[int, list[RecordInfo]] = defaultdict(list)
@@ -168,15 +177,18 @@ def _split_on_duplicate_tz_pairs(
     return [buckets[index] for index in sorted(buckets)]
 
 
-def build_variable_index(
+def build_data_variable_index(
     records: list[RecordInfo],
     reader,
     word_size: int,
     byte_ordering: str,
     parallel_config: dict[str, Any] | None = None,
 ) -> dict[int, dict[str, Any]]:
+    """TODO."""
     if parallel_config is None:
-        parallel_config = {"thread_count": 0, "cat_range_allowed": True}
+        raise ValueError(
+            "Must set parallel_config keyword to build_data_variable_index"
+        )
 
     filtered = [r for r in records if not _record_is_skippable(r)]
     ordered = sorted(
@@ -189,17 +201,17 @@ def build_variable_index(
 
     grouped = split_groups_by_extra_data(grouped)
 
-    variable_index = {}
+    variable_index = []
 
-    # Assign an integer code to each data variable. This is used as
-    # the key in 'variable_index'.
+    # Assign a unique integer code to each data variable. This is used
+    # as the key in the 'variable_index' dictionary.
     int_code = 0
 
     for _, recs in grouped.items():
         for recs_split in _split_on_duplicate_tz_pairs(recs):
             first = recs_split[0]
 
-            # Selected LBVC codes
+            # Relevant LBVC codes
             # -------------------
             #   0  Unspecified
             #   8  Pressure
@@ -247,16 +259,19 @@ def build_variable_index(
             has_z_axis = not is_single_level_surface
 
             dtype = np.dtype(_dtype_name(first, word_size))
-            packing_modes = sorted(
-                {int(rec.int_hdr[INDEX_LBPACK]) % 10 for rec in recs_split}
-            )
 
-            compression_modes = sorted(
-                {
-                    (int(rec.int_hdr[INDEX_LBPACK]) // 10) % 10
-                    for rec in recs_split
-                }
-            )
+            # # Digit N1 of LBPACK = N5N4N3N2N1
+            # packing_modes = sorted(
+            #      {int(rec.int_hdr[INDEX_LBPACK]) % 10 for rec in recs_split}
+            # )
+            #
+            # # Digit N2 of LBPACK = N5N4N3N2N1
+            # compression_modes = sorted(
+            #     {
+            #         (int(rec.int_hdr[INDEX_LBPACK]) // 10) % 10
+            #         for rec in recs_split
+            #     }
+            # )
 
             chunk_records = []
             for rec in recs_split:
@@ -283,21 +298,14 @@ def build_variable_index(
                 _z_index,
                 _has_z_axis,
             ):
-                def _load():
+                def _load(thread_count=0, cat_range_allowed=True):
                     out_shape = (_nt, _nz, _ny, _nx)
 
                     out = np.empty(out_shape, dtype=_dtype)
                     out.fill(np.nan if _dtype.kind == "f" else 0)
 
-                    thread_count = int(
-                        parallel_config.get("thread_count", 0) or 0
-                    )
-                    cat_range_allowed = bool(
-                        parallel_config.get("cat_range_allowed", True)
-                    )
-
                     # Strategy A: fsspec bulk range reads for unpacked
-                    # records.
+                    #             records.
                     if (
                         thread_count != 0
                         and cat_range_allowed
@@ -354,7 +362,7 @@ def build_variable_index(
                             return out
 
                     # Strategy B: local threaded reads using
-                    # os.pread-backed reader.
+                    #             os.pread-backed reader.
                     if thread_count != 0 and isinstance(
                         reader, LocalPosixReader
                     ):
@@ -407,26 +415,29 @@ def build_variable_index(
                 shape = (nt, ny, nx)
                 chunk_shape = (1, ny, nx)
 
-            variable_index[int_code] = {
-                "attrs": {},
-                "shape": shape,
-                "dtype": _dtype_name(first, word_size),
-                "chunk_shape": chunk_shape,
-                "records": recs_split,
-                "chunk_records": chunk_records,
-                "axis_order": axis_order,
-                "data_loader": _make_loader(
-                    recs_split,
-                    nt,
-                    nz,
-                    ny,
-                    nx,
-                    dtype,
-                    t_index,
-                    z_index,
-                    has_z_axis,
-                ),
-            }
+            variable_index.append(
+                {
+                    "attrs": {},
+                    "shape": shape,
+                    "dtype": _dtype_name(first, word_size),
+                    "chunk_shape": chunk_shape,
+                    "records": recs_split,
+                    "chunk_records": chunk_records,
+                    "axis_order": axis_order,
+                    "data_loader": _make_loader(
+                        recs_split,
+                        nt,
+                        nz,
+                        ny,
+                        nx,
+                        dtype,
+                        t_index,
+                        z_index,
+                        has_z_axis,
+                    ),
+                    "data_loader_options": parallel_config.copy(),
+                }
+            )
 
             int_code += 1
 
@@ -434,7 +445,19 @@ def build_variable_index(
 
 
 def split_groups_by_extra_data(grouped):
-    """TODO"""
+    """Split groups by extra data.
+
+    :Parameters:
+
+        groups: `dict`
+            The groups derived with ignoring extra data.
+
+    :Returns:
+
+        `dict`
+            The new groups taking extra data into account.
+
+    """
     new_grouped = {}
 
     for key, recs in grouped.items():
@@ -458,7 +481,22 @@ def split_groups_by_extra_data(grouped):
 
 
 def equal_extra_data(rec0, rec1):
-    """TODO"""
+    """Whether two sets of record extra data are equal.
+
+    :Parameters:
+
+        rec0: `RecordInfo`
+            The first record.
+
+        rec1: `RecordInfo`
+            The second record.
+
+    :Returns:
+
+        `bool`
+            Whether or not the records' extra data are equal.
+
+    """
     extra0 = rec0.extra_data
     extra1 = rec0.extra_data
 

@@ -1,9 +1,11 @@
 """Tests for ppfive.File accepting a raw seekable file-like object.
 
-pyfive.File accepts any object that has .read and .seek methods and uses it
-directly (duck-typing).  ppfive.File should behave the same way so that callers
-do not need to know about ByteReader / FsspecReader internals -- they can simply
-open a file (e.g. via fsspec) and pass the handle straight to ppfive.File.
+pyfive.File accepts any object that has .read and .seek methods and uses
+it directly (duck-typing).  ppfive.File should behave the same way so
+that callers do not need to know about ByteReader / FsspecReader
+internals -- they can simply open a file (e.g. via fsspec) and pass the
+handle straight to ppfive.File.
+
 """
 
 from io import BytesIO
@@ -14,7 +16,6 @@ import numpy as np
 import pytest
 
 from ppfive import File
-
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 PP_PATH = DATA_DIR / "test2.pp"
@@ -36,7 +37,8 @@ def _data_variable_names(f: File) -> list[str]:
 
 
 class _MinimalFileObj:
-    """Bare-minimum seekable/readable wrapper around an in-memory buffer."""
+    """Bare-minimum seekable/readable wrapper around an in-memory
+    buffer."""
 
     def __init__(self, data: bytes) -> None:
         self._buf = BytesIO(data)
@@ -56,7 +58,8 @@ class _MinimalFileObj:
 
 
 def test_file_accepts_raw_open_builtin():
-    """ppfive.File should accept a built-in open() handle (has .read and .seek)."""
+    """ppfive.File should accept a built-in open() handle (has .read and
+    .seek)."""
     with open(PP_PATH, "rb") as fh:
         f = File(fh)
         names = _data_variable_names(f)
@@ -79,7 +82,8 @@ def test_file_accepts_bytesio():
 
 
 def test_file_accepts_minimal_fileobj():
-    """ppfive.File should work with any object that has .read and .seek."""
+    """ppfive.File should work with any object that has .read and
+    .seek."""
     data = PP_PATH.read_bytes()
     fobj = _MinimalFileObj(data)
     f = File(fobj)
@@ -104,8 +108,8 @@ def test_file_rejects_object_without_seek():
 
 
 def test_file_accepts_fsspec_local_handle():
-    """ppfive.File should accept an fsspec local-filesystem open handle directly,
-    without the caller needing to construct a FsspecReader."""
+    """ppfive.File should accept an fsspec local-filesystem open handle
+    directly, without the caller needing to construct a FsspecReader."""
     fs = fsspec.filesystem("file")
     with fs.open(str(PP_PATH), "rb") as fh:
         f = File(fh)
@@ -118,7 +122,8 @@ def test_file_accepts_fsspec_local_handle():
 
 
 def test_fileobj_parity_with_path():
-    """Reading via a raw fsspec handle should return identical data to path-based open."""
+    """Reading via a raw fsspec handle should return identical data to
+    path-based open."""
     with File(PP_PATH) as f_path:
         expected = {
             name: np.asarray(f_path[name][:])

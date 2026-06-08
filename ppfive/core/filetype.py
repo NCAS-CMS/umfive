@@ -9,16 +9,19 @@ from .models import FileTypeInfo
 
 
 def _valid_um_word2(val: int) -> bool:
+    """TODO."""
     return val in (1, 2, 4)
 
 
 def _valid_pp_word1(val: int, wsize: int) -> bool:
+    """TODO."""
     return val in (64 * wsize, 128 * wsize)
 
 
 def _is_alternating_zeros_without_offset(
     vals: list[int], num_pairs: int
 ) -> bool:
+    """TODO."""
     for i in range(num_pairs):
         if vals[i * 2] != 0:
             return False
@@ -26,6 +29,7 @@ def _is_alternating_zeros_without_offset(
 
 
 def _is_alternating_zeros(vals: list[int], num_pairs: int) -> bool:
+    """TODO."""
     if _is_alternating_zeros_without_offset(vals, num_pairs):
         return True
 
@@ -36,6 +40,7 @@ def _is_alternating_zeros(vals: list[int], num_pairs: int) -> bool:
 
 
 def _unpack_many(fmt: str, buf: bytes, offset: int, count: int) -> list[int]:
+    """TODO."""
     size = struct.calcsize(fmt)
     return [
         struct.unpack(fmt, buf[offset + i * size : offset + (i + 1) * size])[0]
@@ -44,8 +49,7 @@ def _unpack_many(fmt: str, buf: bytes, offset: int, count: int) -> list[int]:
 
 
 def detect_file_type(reader: ByteReader) -> FileTypeInfo:
-    """Auto-detect PP/FF file type from initial bytes, mirroring C logic."""
-
+    """Auto-detect file type from initial bytes, mirroring C logic."""
     n_pairs = 14
     raw = reader.read_at(0, 8 * n_pairs)
     if len(raw) < 8 * n_pairs:

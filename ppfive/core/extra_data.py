@@ -2,7 +2,6 @@ import sys
 
 import numpy as np
 
-
 _codes = {
     1: ("x", float),
     2: ("y", float),
@@ -22,10 +21,13 @@ _codes = {
 
 
 class ExtraDataUnpacker:
+    """TODO."""
+
     _int_types = {4: np.int32, 8: np.int64}
     _float_types = {4: np.float32, 8: np.float64}
 
     def __init__(self, raw_extra_data, word_size, byte_ordering):
+        """TODO."""
         self.rdata = raw_extra_data
         self.ws = word_size
         self.itype = self._int_types[word_size]
@@ -35,8 +37,12 @@ class ExtraDataUnpacker:
         self.is_swapped = not byte_ordering.startswith(sys.byteorder)
 
     def next_words(self, n):
-        """return next n words as raw data string, and pop them off the
-        front of the string."""
+        """Return words as bytes.
+
+        Return next n words as raw data string, and pop them off the
+        front of the string.
+
+        """
         ws = self.ws
         is_swapped = self.is_swapped
         rdata = self.rdata

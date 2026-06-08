@@ -3,16 +3,16 @@ from __future__ import annotations
 from ppfive.io.base import ByteReader
 
 from ..constants import INDEX_LBEGIN, N_HDR
-
-from .header import decode_header_from_bytes
-from .interpret import get_ff_disk_length, get_extra_data_offset_and_length
-from .models import FileTypeInfo, RecordInfo
 from .extra_data import ExtraDataUnpacker
+from .header import decode_header_from_bytes
+from .interpret import get_extra_data_offset_and_length, get_ff_disk_length
+from .models import FileTypeInfo, RecordInfo
 
 
 def _read_word(
     reader: ByteReader, word_index: int, word_size: int, byte_ordering: str
 ) -> int:
+    """TODO."""
     offset = word_index * word_size
     raw = reader.read_at(offset, word_size)
     if len(raw) != word_size:
@@ -25,9 +25,11 @@ def _read_word(
 def _read_fortran_record_len(
     reader: ByteReader, pos: int, word_size: int, byte_ordering: str
 ):
+    """TODO."""
     raw = reader.read_at(pos, word_size)
     if len(raw) == 0:
-        return None
+        return
+
     if len(raw) != word_size:
         raise ValueError("Short read on fortran record length")
 
@@ -42,9 +44,10 @@ def _read_fortran_record_len(
 def _skip_fortran_record(
     reader: ByteReader, pos: int, word_size: int, byte_ordering: str
 ):
+    """TODO."""
     rec_bytes = _read_fortran_record_len(reader, pos, word_size, byte_ordering)
     if rec_bytes is None:
-        return None
+        return
 
     trailer_pos = pos + word_size + rec_bytes
     trailer = _read_fortran_record_len(
@@ -61,6 +64,7 @@ def _skip_fortran_record(
 def scan_pp_headers(
     reader: ByteReader, file_type: FileTypeInfo
 ) -> list[RecordInfo]:
+    """TODO."""
     if file_type.fmt != "PP":
         raise ValueError("scan_pp_headers requires PP file type")
 
@@ -103,16 +107,13 @@ def scan_pp_headers(
                 int_hdr, data_offset, data_record_len, word_size
             )
         )
-        if extra_data_length:
-            extra_data = read_extra_data(
-                reader,
-                extra_data_offset,
-                extra_data_length,
-                word_size,
-                byte_ordering,
-            )
-        else:
-            extra_data = {}
+        extra_data = read_extra_data(
+            reader,
+            extra_data_offset,
+            extra_data_length,
+            word_size,
+            byte_ordering,
+        )
 
         recs.append(
             RecordInfo(
@@ -132,6 +133,7 @@ def scan_pp_headers(
 def scan_ff_headers(
     reader: ByteReader, file_type: FileTypeInfo
 ) -> list[RecordInfo]:
+    """TODO."""
     if file_type.fmt != "FF":
         raise ValueError("scan_ff_headers requires FF file type")
 
@@ -195,7 +197,7 @@ def scan_ff_headers(
         # Read any extra data and parse it into a dictionary
         extra_data_offset, extra_data_length = (
             get_extra_data_offset_and_length(
-                int_hdr, data_offset, data_record_len, word_size
+                int_hdr, data_offset, disk_length, word_size
             )
         )
         if extra_data_length:
@@ -226,7 +228,10 @@ def scan_ff_headers(
 def read_extra_data(
     reader, extra_data_offset, extra_data_length, word_size, byte_ordering
 ):
-    """TODO"""
+    """TODO."""
+    if not extra_data_length:
+        return {}
+
     raw_extra_data = reader.read_at(extra_data_offset, extra_data_length)
     extra = ExtraDataUnpacker(raw_extra_data, word_size, byte_ordering)
     return extra.get_data()

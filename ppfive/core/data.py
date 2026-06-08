@@ -5,13 +5,13 @@ import numpy as np
 from ppfive.io.base import ByteReader
 
 from ..constants import INDEX_BMDI, INDEX_LBPACK
+from ..wgdos import unpack_wgdos
 from .interpret import get_extra_data_length, get_type_and_num_words
 from .models import RecordInfo
-from ..wgdos import unpack_wgdos
 
 
 def _endian_prefix(byte_ordering: str) -> str:
-    """TODO"""
+    """TODO."""
     if byte_ordering == "little_endian":
         return "<"
 
@@ -24,7 +24,7 @@ def _endian_prefix(byte_ordering: str) -> str:
 def _dtype_for_record(
     rec: RecordInfo, word_size: int, byte_ordering: str
 ) -> np.dtype:
-    """TODO"""
+    """TODO."""
     data_type, _ = get_type_and_num_words(rec.int_hdr, word_size)
     prefix = _endian_prefix(byte_ordering)
     if data_type == "integer":
@@ -36,7 +36,7 @@ def _dtype_for_record(
 def _unpack_cray32(
     raw: bytes, nwords: int, byte_ordering: str, word_size: int
 ) -> np.ndarray:
-    """TODO"""
+    """TODO."""
     prefix = _endian_prefix(byte_ordering)
     packed = np.frombuffer(
         raw[: nwords * 4], dtype=np.dtype(f"{prefix}f4"), count=nwords
@@ -50,11 +50,37 @@ def _unpack_cray32(
 def _unpack_run_length(
     raw: bytes, nwords: int, byte_ordering: str, word_size: int, mdi: float
 ) -> np.ndarray:
-    """TODO"""
+    """Unpack runlength encoded data.
+
+    :Parameters:
+
+        raw: bytes
+            The raw bytes of the packed data.
+
+        nwords: `int`
+            The nnumber of words in the unpacked data.
+
+        byte_ordering: `str`
+            The word byte order (``'little_endian'`` or
+            ``'big_endian'``).
+
+        word_size: `int`
+            The word size (``4`` or ``8``).
+
+        mdi: `float`
+            The missing data value.
+
+    :Returns:
+
+        `np.ndarray`
+            The unpacked data in a 1-d array.
+
+    """
     prefix = _endian_prefix(byte_ordering)
     dtype = np.dtype(f"{prefix}f{word_size}")
     packed = np.frombuffer(raw, dtype=dtype)
-    out = np.empty(nwords, dtype=np.float32 if word_size == 4 else np.float64)
+    # out = np.empty(nwords, dtype=np.float32 if word_size == 4 else np.float64)
+    out = np.full((nwords,), mdi, dtype=f"f{word_size}")
 
     src = 0
     dst = 0
@@ -84,7 +110,7 @@ def _unpack_run_length(
                 "Malformed run-length packed data: repeat exceeds output size"
             )
 
-        out[dst:end] = mdi
+        # out[dst:end] = mdi
         dst = end
 
     if dst != nwords:
@@ -96,7 +122,7 @@ def _unpack_run_length(
 
 
 def get_record_packed_nbytes(rec: RecordInfo, word_size: int) -> int:
-    """TODO"""
+    """TODO."""
     extra_bytes = get_extra_data_length(rec.int_hdr, word_size)
     return rec.disk_length - extra_bytes
 
@@ -104,7 +130,7 @@ def get_record_packed_nbytes(rec: RecordInfo, word_size: int) -> int:
 def read_record_raw(
     reader: ByteReader, rec: RecordInfo, word_size: int
 ) -> bytes:
-    """TODO"""
+    """TODO."""
     packed_bytes = get_record_packed_nbytes(rec, word_size)
     raw = reader.read_at(rec.data_offset, packed_bytes)
     if len(raw) < packed_bytes:
@@ -116,7 +142,7 @@ def read_record_raw(
 def decode_record_array_from_raw(
     raw: bytes, rec: RecordInfo, word_size: int, byte_ordering: str
 ) -> np.ndarray:
-    """TODO"""
+    """TODO."""
     pack = int(rec.int_hdr[INDEX_LBPACK]) % 10
     _, nwords = get_type_and_num_words(rec.int_hdr, word_size)
 
@@ -147,5 +173,6 @@ def decode_record_array_from_raw(
 def read_record_array(
     reader: ByteReader, rec: RecordInfo, word_size: int, byte_ordering: str
 ) -> np.ndarray:
+    """TODO."""
     raw = read_record_raw(reader, rec, word_size)
     return decode_record_array_from_raw(raw, rec, word_size, byte_ordering)

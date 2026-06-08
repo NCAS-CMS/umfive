@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import platform
 import shutil
 import subprocess
+from pathlib import Path
 
 from .base import ByteReader
 
@@ -13,16 +13,18 @@ class LocalPosixReader(ByteReader):
     """POSIX file reader using pread-style absolute reads."""
 
     def __init__(
-        self, path: str | os.PathLike[str], disable_os_cache: bool = False
+        self, path: str | os.PathLike[str], local_os_cache: bool = True
     ):
+        """TODO."""
         self.path = str(Path(path))
         self._fd = os.open(self.path, os.O_RDONLY)
-        self._disable_os_cache = disable_os_cache
+        self._local_os_cache = local_os_cache
         self._set_cache_policy()
 
     def _set_cache_policy(self) -> None:
+        """TODO."""
         # Best effort hint for benchmarking without page cache on macOS.
-        if not self._disable_os_cache:
+        if self._local_os_cache:
             return
 
         try:
@@ -43,6 +45,7 @@ class LocalPosixReader(ByteReader):
 
         On macOS this tries the `purge` command when available.
         Returns True when a cache-drop command was executed successfully.
+
         """
         if platform.system() == "Darwin" and shutil.which("purge"):
             try:
@@ -59,6 +62,7 @@ class LocalPosixReader(ByteReader):
         return False
 
     def read_at(self, offset: int, nbytes: int) -> bytes:
+        """TODO."""
         if offset < 0:
             raise ValueError("offset must be >= 0")
         if nbytes < 0:
@@ -71,12 +75,15 @@ class LocalPosixReader(ByteReader):
         return os.pread(self._fd, nbytes, offset)
 
     def close(self) -> None:
+        """TODO."""
         if self._fd is not None:
             os.close(self._fd)
             self._fd = None
 
     def __enter__(self) -> "LocalPosixReader":
+        """Enter the runtime context."""
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
+        """Exit the runtime context."""
         self.close()

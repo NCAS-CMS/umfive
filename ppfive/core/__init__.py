@@ -4,9 +4,10 @@ from .filetype import detect_file_type
 from .header import read_header
 from .interpret import get_extra_data_offset_and_length, get_type_and_num_words
 from .models import FileTypeInfo, RecordInfo
-from .references import materialize_reference_dict
+
+# from .references import materialize_reference_dict
 from .scanner import scan_ff_headers, scan_pp_headers
-from .variables import build_variable_index
+from .variables import build_data_variable_index
 
 __all__ = [
     "FileTypeInfo",

@@ -7,6 +7,8 @@ import numpy as np
 
 @dataclass(frozen=True)
 class FileTypeInfo:
+    """TODO."""
+
     fmt: str
     byte_ordering: str
     word_size: int
@@ -14,6 +16,8 @@ class FileTypeInfo:
 
 @dataclass
 class RecordInfo:
+    """TODO."""
+
     int_hdr: np.ndarray
     real_hdr: np.ndarray
     header_offset: int
@@ -24,6 +28,8 @@ class RecordInfo:
 
 @dataclass(frozen=True)
 class StoreInfo:
+    """TODO."""
+
     chunk_offset: tuple[int, ...]
     filter_mask: int
     byte_offset: int
