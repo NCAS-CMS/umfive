@@ -182,13 +182,11 @@ def build_data_variable_index(
     reader,
     word_size: int,
     byte_ordering: str,
-    parallel_config: dict[str, Any] | None = None,
+    parallelism: dict[str, Any] | None = None,
 ) -> dict[int, dict[str, Any]]:
     """TODO."""
-    if parallel_config is None:
-        raise ValueError(
-            "Must set parallel_config keyword to build_data_variable_index"
-        )
+    if parallelism is None:
+        parallelism = {}
 
     filtered = [r for r in records if not _record_is_skippable(r)]
     ordered = sorted(
@@ -435,7 +433,7 @@ def build_data_variable_index(
                         z_index,
                         has_z_axis,
                     ),
-                    "data_loader_options": parallel_config.copy(),
+                    "data_loader_options": parallelism.copy(),
                 }
             )
 

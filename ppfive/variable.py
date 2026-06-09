@@ -829,3 +829,84 @@ class DataVariable(_Mixin):
     def is_virtual(self):
         """TODO."""
         return
+
+    def auto_parallelism(self, max_thread_count=4):
+        """Choose local POSIX default thread count from chunk topology.
+
+        Preference TODO order for representative chunk-count sample:
+        1) WGDOS-packed variables
+        2) any packed variables
+        3) all variables
+
+        .. seealso:: `get_parallelism`, `set_parallelism`
+
+        :Parameters:
+
+            max_thread_count: `int`
+                The maximum number of concurrent worker threads to use
+                for reading the local POSIX data chunks of the
+                variable. If the number of data chunks is less than
+                *max_thread_count* then only that number of threads
+                are used. If ``0`` then the reading of data chunks
+                runs sequentially in the main thread. Defaults to
+                ``4``. Ignored for non-local POSIX readers.
+
+        :Returns:
+
+            `None`
+
+        """
+        thread_count = min(len(self.chunk_records), max_thread_count)
+        self.set_parallelism(thread_count, cat_range_allowed=True)
+
+    def get_parallelism(self):
+        """Configure data chunk read parallelism configuration.
+
+        .. seealso:: `auto_parallelism`, `set_parallelism`
+
+        :Returns:
+
+            `dict`
+                The thread count and cat_range parameters to be used
+                when accessing the data. See `set_parallelism` for
+                details.
+
+        """
+        return self.data_loader_options.copy()
+
+    def set_parallelism(
+        self,
+        thread_count: int = 4,
+        cat_range_allowed: bool = True,
+    ):
+        """Configure data chunk read parallelism.
+
+        .. seealso:: `auto_parallelism`, `get_parallelism`
+
+        :Parameters:
+
+            thread_count: `int`, optional
+                The number of concurrent worker threads to use for
+                reading the local POSIX data chunks of the
+                variable. Ignored for non-local POSIX readers. If
+                ``0`` then the reading of data chunks runs
+                sequentially in the main thread. Defaults to ``4``.
+
+            cat_range_allowed: `bool`, optional
+                If True (the default), uses fsspec's bulk range
+                fetching to download multiple data chunks concurrently
+                in a single network request. Ignored for non-fsspec
+                reader. Set to False to force sequential chunk
+                loading. Defaults to True.
+
+        :Returns:
+
+            `None`
+
+        """
+        self.data_loader_options.update(
+            {
+                "thread_count": thread_count,
+                "cat_range_allowed": cat_range_allowed,
+            }
+        )
