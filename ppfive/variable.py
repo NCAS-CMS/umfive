@@ -336,6 +336,11 @@ class _Mixin:
         )
 
     @property
+    def __orthogonal_indexing__(self):
+        """Flag to indicate whether indexing is orthogonal."""
+        return False
+
+    @property
     def dimensions(self):
         """The dimension names.
 
@@ -709,6 +714,11 @@ class DataVariable(_Mixin):
             return array
 
         return array.astype(dtype, copy=False)
+
+    @property
+    def __orthogonal_indexing__(self):
+        """Flag to indicate whether indexing is orthogonal."""
+        return True
 
     @property
     def chunks(self):
