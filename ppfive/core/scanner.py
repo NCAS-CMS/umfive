@@ -3,20 +3,45 @@ from __future__ import annotations
 from ppfive.io.base import ByteReader
 
 from ..constants import INDEX_LBEGIN, N_HDR
-from .extra_data import ExtraDataUnpacker
+from .extra_data import read_extra_data
 from .header import decode_header_from_bytes
 from .interpret import get_extra_data_offset_and_length, get_ff_disk_length
 from .models import FileTypeInfo, RecordInfo
 
 
-def _read_word(
+def _read_flh_word(
     reader: ByteReader, word_index: int, word_size: int, byte_ordering: str
 ) -> int:
-    """TODO."""
+    """Read a fixed length header (FLH) word.
+
+    :Parameter:
+
+        reader:
+
+        word_index: `int`
+            The index of the word (Starting at 1).
+
+        word_size: `int`
+            The word size (``4`` or ``8``).
+
+        byte_ordering: `str`
+            The word byte order (``'little_endian'`` or
+            ``'big_endian'``).
+    
+    :Returns:
+
+        `int`
+            The value of the FLH word.
+
+    """
     offset = word_index * word_size
     raw = reader.read_at(offset, word_size)
     if len(raw) != word_size:
-        raise ValueError("Short read while reading fixed header word")
+        raise ValueError(
+            f"Short read while reading fixed length header word at "
+            f"word address {pos}: "
+            f"Expected {word_size} bytes, got {len(raw)} bytes"
+        )
 
     endian = "little" if byte_ordering == "little_endian" else "big"
     return int.from_bytes(raw, byteorder=endian, signed=True)
@@ -25,26 +50,73 @@ def _read_word(
 def _read_fortran_record_len(
     reader: ByteReader, pos: int, word_size: int, byte_ordering: str
 ):
-    """TODO."""
+    """The size in bytes of a header or data record.
+
+    The size is gleaned by reading the associated block control word
+    (BCW) that gives the size in bytes of the associated header or
+    data record. For instance, the BCW for a 32-bit header is 256
+    (=64*4).
+    
+    :Parameter:
+
+        reader:
+
+        pos: `int`
+            The word address of the block control word.
+
+        word_size: `int`
+            The word size (``4`` or ``8``).
+
+        byte_ordering: `str`
+            The word byte order (``'little_endian'`` or
+            ``'big_endian'``).
+    
+    :Returns:
+
+        `int`
+            The record size.
+
+    """
     raw = reader.read_at(pos, word_size)
     if len(raw) == 0:
         return
 
     if len(raw) != word_size:
-        raise ValueError("Short read on fortran record length")
+        raise ValueError(
+            f"Short read on fortran record length at word address {pos}: "
+            f"Expected 0 or {word_size} bytes, got {len(raw)} bytes"
+        )
 
     if byte_ordering == "little_endian":
         endian = "little"
     else:
         endian = "big"
-
+    print(int.from_bytes(raw, byteorder=endian, signed=True))
     return int.from_bytes(raw, byteorder=endian, signed=True)
 
 
 def _skip_fortran_record(
     reader: ByteReader, pos: int, word_size: int, byte_ordering: str
 ):
-    """TODO."""
+    """TODO.
+    
+    :Parameter:
+
+        reader:
+
+        pos: `int`
+
+        word_size: `int`
+            The word size (``4`` or ``8``).
+
+        byte_ordering: `str`
+            The word byte order (``'little_endian'`` or
+            ``'big_endian'``).
+
+    :Returns:
+
+
+    """
     rec_bytes = _read_fortran_record_len(reader, pos, word_size, byte_ordering)
     if rec_bytes is None:
         return
@@ -141,12 +213,12 @@ def scan_ff_headers(
     byte_ordering = file_type.byte_ordering
 
     # Kept for parity with C read path; currently not otherwise used.
-    _ = _read_word(reader, 4, word_size, byte_ordering)
+    _read_flh_word(reader, 4, word_size, byte_ordering)
 
-    start_lookup = _read_word(reader, 149, word_size, byte_ordering)
-    nlookup1 = _read_word(reader, 150, word_size, byte_ordering)
-    nlookup2 = _read_word(reader, 151, word_size, byte_ordering)
-    start_data = _read_word(reader, 159, word_size, byte_ordering)
+    start_lookup = _read_flh_word(reader, 149, word_size, byte_ordering)
+    nlookup1 = _read_flh_word(reader, 150, word_size, byte_ordering)
+    nlookup2 = _read_flh_word(reader, 151, word_size, byte_ordering)
+    start_data = _read_flh_word(reader, 159, word_size, byte_ordering)
 
     if nlookup1 < N_HDR:
         raise ValueError(f"Unsupported header length: {nlookup1} words")
@@ -223,15 +295,3 @@ def scan_ff_headers(
         )
 
     return recs
-
-
-def read_extra_data(
-    reader, extra_data_offset, extra_data_length, word_size, byte_ordering
-):
-    """TODO."""
-    if not extra_data_length:
-        return {}
-
-    raw_extra_data = reader.read_at(extra_data_offset, extra_data_length)
-    extra = ExtraDataUnpacker(raw_extra_data, word_size, byte_ordering)
-    return extra.get_data()

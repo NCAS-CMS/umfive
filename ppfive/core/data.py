@@ -58,7 +58,7 @@ def _unpack_run_length(
             The raw bytes of the packed data.
 
         nwords: `int`
-            The nnumber of words in the unpacked data.
+            The number of words in the unpacked data.
 
         byte_ordering: `str`
             The word byte order (``'little_endian'`` or

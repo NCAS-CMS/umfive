@@ -20,6 +20,18 @@ _codes = {
 }
 
 
+def read_extra_data(
+    reader, extra_data_offset, extra_data_length, word_size, byte_ordering
+):
+    """TODO."""
+    if not extra_data_length:
+        return {}
+
+    raw_extra_data = reader.read_at(extra_data_offset, extra_data_length)
+    extra = ExtraDataUnpacker(raw_extra_data, word_size, byte_ordering)
+    return extra.get_data()
+
+
 class ExtraDataUnpacker:
     """TODO."""
 

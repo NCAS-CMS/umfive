@@ -85,6 +85,7 @@ class File(Mapping):
         um_version: str | None = None,
         height_at_top_of_model=None,
         local_os_cache: bool = True,
+        verbose=0,
         *,
         _data_variable_index: list | None = None,
     ):
@@ -157,6 +158,13 @@ class File(Mapping):
                  *filename* is a string-like. If False then this
                  caching is disabled in this case.
 
+            verbose: `int`, optional
+                 Set the verbosity. If *verbose* is ``0`` there is no
+                 verbose output, and more output is produced for
+                 progressively larger values of *verbose*. Values of
+                 ``2`` and higher (or the value ``-1``) produce the
+                 same maximally verbose output.
+
             _data_variable_index: `list` or `None`, optional
                  The dictionary representations of the data
                  variables. By default this is derived internally from
@@ -167,7 +175,8 @@ class File(Mapping):
         """
         if mode != "r":
             raise ValueError(
-                "ppfive.File currently supports read-only mode='r'"
+                f"{self.__class__.__name__} currently supports "
+                "read-only mode='r'"
             )
 
         if isinstance(filename, ByteReader):
@@ -184,6 +193,8 @@ class File(Mapping):
                     "_data_variable_index must not be None when "
                     "filename is None"
                 )
+
+            self._reader = "no reader"
         else:
             if _data_variable_index is not None:
                 raise ValueError(
@@ -191,12 +202,12 @@ class File(Mapping):
                     "filename is not None"
                 )
 
-            # Initialise the reader - it'll get set to an actual
-            # reader later.
+            # Initialise the reader to None - it'll get set to an
+            # actual reader later.
             self._reader = None
 
-        self.filename = str(Path(filename))
-        self.mode = mode
+        if filename is not None:
+            self.filename = str(Path(filename))
 
         self.local_os_cache = bool(local_os_cache)
         if self._reader is None:
@@ -206,6 +217,7 @@ class File(Mapping):
             )
             self._owns_reader = True
 
+        self.mode = mode
         self.parent = None
         self.name = "/"
         self.path = "/"
@@ -273,7 +285,17 @@ class File(Mapping):
         # Create the cache of metadata `Variable` and `DimensionScale`
         # instance names for the entire dataset. The dictionary keys
         # are typically derived from lookup header values.
-        cache: dict[Any, str] = {}
+
+        # E.g.
+        #
+        # {('grid_mapping', np.float32(38.0), np.float32(190.0)): 'rotated_latitude_longitude',
+        #  ('time_coordinate', 'days since 1979-1-1', 'gregorian', np.int32(121), (np.int64(120), np.int64(121), np.int64(122)), (np.int64(121), np.int64(122), np.int64(123))): 'time',
+        #  ('time_coordinate', 'days since 1979-1-1', 'gregorian', np.int32(121), (np.int64(123), np.int64(124), np.int64(125)), (np.int64(124), np.int64(125), np.int64(126))): 'time_1',
+        #  ('x_coordinate', np.int32(101), np.int32(3), np.int32(106), np.float32(38.0), np.float32(190.0), np.float32(0.0), np.float32(339.02), np.float32(0.44)): 'grid_longitude',
+        #  ('y_coordinate', np.int32(101), np.int32(3), np.int32(110), np.float32(38.0), np.float32(190.0), np.float32(0.0), np.float32(23.76), np.float32(-0.44)): 'grid_latitude',
+        #  ('z_coordinate', np.int32(8), (np.float32(850.00006), np.float32(700.00006), np.float32(500.00003), np.float32(250.00002), np.float32(50.000004)), (np.float32(0.0), np.float32(0.0), np.float32(0.0), np.float32(0.0), np.float32(0.0)), (np.float32(0.0), np.float32(0.0), np.float32(0.0), np.float32(0.0), np.float32(0.0))): 'air_pressure'}
+
+        cache = {}
 
         # Initialise the _Netcdf4Dimid attribute of DimensionScale
         # instances. This list get updated in-place during each
@@ -310,6 +332,12 @@ class File(Mapping):
         self.data_variables = data_variables
         self.variables = all_variables
 
+        # Verbosity
+        if verbose == 1:
+            print(repr(self))
+        elif verbose >= 2 or verbose == -1:
+            print(self)
+
     def __enter__(self):
         """Enter the runtime context."""
         return self
@@ -318,28 +346,33 @@ class File(Mapping):
         """Exit the runtime context."""
         self.close()
 
-    def __getitem__(self, key: str) -> DataVariable:
-        """Return self[key]."""
-        if not isinstance(key, str):
-            raise TypeError("DataVariable key must be a string")
+    def __getitem__(self, path: str):
+        """Get the File or a data or metadata variable from its path.
 
-        path = key
-        if path in (".", "/", "./"):
+        Paths may start with ``.``, ``/``, or ``./``, and a trailing
+        ``/`` is ignored.
+
+        """
+        if not isinstance(path, str):
+            raise TypeError("path must be a string")
+
+        key = path
+        if key in ("", ".", "/", "./"):
             return self
 
-        if path.startswith("/"):
-            path = path[1:]
+        if key.startswith("/"):
+            key = key[1:]
 
-        if path.startswith("./"):
-            path = path[2:]
+        if key.startswith("./"):
+            key = key[2:]
 
-        if path.endswith("/"):
-            path = path[:-1]
+        if key.endswith("/"):
+            key = key[:-1]
 
-        if "/" in path:
-            raise KeyError(f"Nested paths are not supported: {key!r}")
+        if "/" in key:
+            raise KeyError(f"Nested paths are not supported: {path!r}")
 
-        return self.variables[path]
+        return self.variables[key]
 
     def __iter__(self) -> Iterator[str]:
         """Return an iterator over the variable mapping keys."""
@@ -386,54 +419,54 @@ class File(Mapping):
         """TODO."""
         return
 
-    def auto_parallelism(self, max_thread_count=4):
-        """Choose local POSIX default thread count from chunk topology.
-
-        Preference TODO  order for representative chunk-count sample:
-        1) WGDOS-packed variables
-        2) any packed variables
-        3) all variables
-
-        .. seealso:: `get_parallelism`, `set_parallelism`
-
-        :Parameters:
-
-            max_thread_count: `int`
-                The maximum number of concurrent worker threads to use
-                for reading the local POSIX data chunks of each
-                variable. If the number of data chunks for a variable
-                is less than *max_thread_count* then only that number
-                of threads are used. If ``0`` then the reading of data
-                chunks runs sequentially in the main thread. Defaults
-                to ``4``. Ignored for non-local POSIX readers.
-                :Returns:
-
-            `None`
-
-        """
-        for name, var in self.variables.items():
-            if var not in self.data_variables:
-                continue
-
-            var.auto_parallelism(max_thread_count)
+    # ef auto_parallelism(self, max_thread_count=4):
+    #   """Choose local POSIX default thread count from chunk topology.
+    #
+    #   Preference TODO  order for representative chunk-count sample:
+    #   1) WGDOS-packed variables
+    #   2) any packed variables
+    #   3) all variables
+    #
+    #   .. seealso:: `get_parallelism`, `set_parallelism`
+    #
+    #   :Parameters:
+    #
+    #       max_thread_count: `int`
+    #           The maximum number of concurrent worker threads to use
+    #           for reading the local POSIX data chunks of each
+    #           variable. If the number of data chunks for a variable
+    #           is less than *max_thread_count* then only that number
+    #           of threads are used. If ``0`` then the reading of data
+    #           chunks runs sequentially in the main thread. Defaults
+    #           to ``4``. Ignored for non-local POSIX readers.
+    #           :Returns:
+    #
+    #       `None`
+    #
+    #   """
+    #   for name, var in self.variables.items():
+    #       if name not in self.data_variables:
+    #           continue
+    #
+    #       var.auto_parallelism(max_thread_count)
 
     def get_parallelism(self):
-        """Get data variable chunk read parallelism configuration.
+        """Get the data variable chunk read parallelism configurations.
 
-        .. seealso:: `auto_parallelism`, `set_parallelism`
+        .. seealso:: `set_parallelism`
 
         :Returns:
 
             `dict`
-                For each data variable, the thread count and cat_range
-                parameters to be used when accessing the data. See
-                `set_parallelism` for details.
+                For each data variable, the "thread_count" and
+                "cat_range_allowed" parameters to be used when
+                accessing the data. See `set_parallelism` for details.
 
         """
         return {
             name: var.get_parallelism()
             for name, var in self.variables.items()
-            if var in self.data_variables
+            if name in self.data_variables
         }
 
     def get_lazy_view(self, key) -> DataVariable:
@@ -461,23 +494,21 @@ class File(Mapping):
         if self._owns_reader and self._reader is not None:
             self._reader.close()
 
-    def set_parallelism(
-        self,
-        thread_count: int = 4,
-        cat_range_allowed: bool = True,
-    ):
+    def set_parallelism(self, max_thread_count=0, cat_range_allowed=True):
         """Configure data variable chunk read parallelism.
 
-        .. seealso:: `auto_parallelism`, `get_parallelism`
+        .. seealso:: `get_parallelism`
 
         :Parameters:
 
-            thread_count: `int`, optional
+            max_thread_count: `int`, optional
                 The number of concurrent worker threads to use for
                 reading the local POSIX data chunks of each
                 variable. Ignored for non-local POSIX readers. If
-                ``0`` then the reading of data chunks runs
-                sequentially in the main thread. Defaults to ``4``.
+                ``0`` (the default) then the reading of data chunks
+                runs sequentially in the main thread. For each
+                varable, the number of threads is limited to the
+                number of data chunks.
 
             cat_range_allowed: `bool`, optional
                 If True (the default), uses fsspec's bulk range
@@ -497,7 +528,7 @@ class File(Mapping):
             if name not in data_variables:
                 continue
 
-            var.set_parallelism(thread_count, cat_range_allowed)
+            var.set_parallelism(max_thread_count, cat_range_allowed)
 
     def items(self):
         """TODO."""
@@ -596,9 +627,12 @@ class DataVariableMetadata:
         self._lbnpt = LBNPT
         self._lbrow = LBROW
         self._lbtim = LBTIM
+        self._lbcode = LBCODE
         self._lbproc = LBPROC
         self._lbvc = LBVC
         self._stash = stash
+        self._bplat = BPLAT
+        self._bplon = BPLON
 
         if not LBROW or not LBNPT:
             logger.warn(
@@ -688,18 +722,18 @@ class DataVariableMetadata:
         self._cf_info = {}
 
         # A key defining the XY grid (not currently used)
-        self._XY = (
-            LBROW,
-            LBNPT,
-            int_hdr[INDEX_LBHEM],
-            LBCODE,
-            int_hdr[INDEX_LBUSER7],
-            real_hdr[INDEX_BDX],
-            real_hdr[INDEX_BZX],
-            real_hdr[INDEX_BDY],
-            real_hdr[INDEX_BZY],
-            real_hdr[INDEX_BGOR],
-        )
+        # self._XY = (
+        #     LBROW,
+        #     LBNPT,
+        #     int_hdr[INDEX_LBHEM],
+        #     LBCODE,
+        #     int_hdr[INDEX_LBUSER7],
+        #     real_hdr[INDEX_BGOR],
+        #     real_hdr[INDEX_BDX],
+        #     real_hdr[INDEX_BZX],
+        #     real_hdr[INDEX_BDY],
+        #     real_hdr[INDEX_BZY],
+        # )
 
         # The STASH code has been set in the PP header, so try to find
         # its standard_name from the conversion table
@@ -720,9 +754,7 @@ class DataVariableMetadata:
                 continue
 
             if um_condition:
-                if not self.test_um_condition(
-                    um_condition, LBCODE, BPLAT, BPLON
-                ):
+                if not self.test_um_condition(um_condition):
                     continue
 
             # Still here? Then we have our standard_name, etc.
@@ -790,6 +822,8 @@ class DataVariableMetadata:
         cf_properties["runid"] = self.runid()
         cf_properties["lbproc"] = str(LBPROC)
         cf_properties["lbtim"] = str(LBTIM)
+        cf_properties["lbcode"] = str(LBCODE)
+        cf_properties["lbvc"] = str(LBVC)
         cf_properties["stash_code"] = str(stash)
         cf_properties["submodel"] = str(submodel)
 
@@ -905,7 +939,7 @@ class DataVariableMetadata:
             # Create a ROTATED_LATITUDE_LONGITUDE grid_mapping
             # variable
             # ----------------------------------------------------
-            self.grid_mapping(BPLAT, BPLON)
+            self.grid_mapping()
 
         # --------------------------------------------------------
         # Create a RADIATION WAVELENGTH dimension coordinate
@@ -1531,8 +1565,7 @@ class DataVariableMetadata:
         # ------------------------------------------------------------
         axis = getattr(self, "_time_axis", "time")
         if LBTIM_IB == 0 or LBTIM_IB == 1:
-            if axis == "t":
-                cell_methods.append(f"{axis}: point")
+            cell_methods.append(f"{axis}: point")
         elif LBPROC == 4096:
             cell_methods.append(f"{axis}: minimum")
         elif LBPROC == 8192:
@@ -1589,7 +1622,7 @@ class DataVariableMetadata:
         """
         var.setattr("formula_terms", formula_terms)
 
-    def grid_mapping(self, BPLAT, BPLON):
+    def grid_mapping(self):
         """Add packing attributes to a data variable.
 
         :Returns:
@@ -1597,6 +1630,8 @@ class DataVariableMetadata:
             `None`
 
         """
+        BPLAT = self._bplat
+        BPLON = self._bplon
         key = ("grid_mapping", BPLAT, BPLON)
         gm_name = self._cache.get(key)
         if gm_name is None:
@@ -1879,7 +1914,7 @@ class DataVariableMetadata:
         self.add_to_coordinates(dim_ncvar)
         return dim_ncvar
 
-    def test_um_condition(self, um_condition, LBCODE, BPLAT, BPLON):
+    def test_um_condition(self, um_condition):
         """Return `True` if the lookup header satisfies a UM condition.
 
         :Parameters:
@@ -1889,17 +1924,6 @@ class DataVariableMetadata:
                 table. E.g. ``'true_latitude_longitude'``,
                 ``'rotated_latitude_longitude'``.
 
-            LBCODE: `int`
-                The lookup header's LBCODE Grid code.
-
-            BPLAT: `float`
-                The lookup header's BPLAT real latitude of ‘pseudo’ N
-                pole.
-
-            BPLON: `float`
-                 Thelookup header's BPLON real longitude of ‘pseudo’ N
-                 pole.
-
         :Returns:
 
             `bool`
@@ -1907,6 +1931,10 @@ class DataVariableMetadata:
                 `False` otherwise.
 
         """
+        LBCODE = self._lbcode
+        BPLAT = self._bplat
+        BPLON = self._bplon
+
         if um_condition == "true_latitude_longitude":
             if LBCODE in (1, 2):
                 return True
@@ -1992,12 +2020,12 @@ class DataVariableMetadata:
         vtimes = tuple(self.time_since_vtime(rec) for rec in t_recs)
         dtimes = tuple(self.time_since_dtime(rec) for rec in t_recs)
         key = (
-            "t_coordinate",
-            vtimes,
-            dtimes,
-            self._lbtim,
+            "time_coordinate",
             self._refunits,
             self._calendar,
+            self._lbtim,
+            vtimes,
+            dtimes,
         )
         dim_ncvar = self._cache.get(key)
         if dim_ncvar is None:
@@ -2392,7 +2420,17 @@ class DataVariableMetadata:
             origin = real_hdr[INDEX_BZY]
             size = self._lbrow
 
-        key = (f"{axis}_coordinate", delta, origin, size)
+        key = (
+            f"{axis}_coordinate",
+            self._lbcode,
+            self._int_hdr[INDEX_LBHEM],
+            size,
+            self._bplat,
+            self._bplon,
+            real_hdr[INDEX_BGOR],
+            origin,
+            delta,
+        )
         dim_ncvar = self._cache.get(key)
         if dim_ncvar is None:
             name = None
@@ -2493,7 +2531,7 @@ class DataVariableMetadata:
         # bulev
         bounds1 = tuple(rec.real_hdr[INDEX_BRSVD1] for rec in z_recs)
 
-        key = ("z_coordinate", array, bounds0, bounds1)
+        key = ("z_coordinate", self._lbvc, array, bounds0, bounds1)
         dim_ncvar = self._cache.get(key)
         if dim_ncvar is None:
             if _coord_positive.get(axiscode) == "down":

@@ -305,8 +305,8 @@ def build_data_variable_index(
                     # Strategy A: fsspec bulk range reads for unpacked
                     #             records.
                     if (
-                        thread_count != 0
-                        and cat_range_allowed
+                        #                        thread_count != 0
+                        cat_range_allowed
                         and isinstance(reader, FsspecReader)
                     ):
                         fh = getattr(reader, "_fh", None)
@@ -361,7 +361,7 @@ def build_data_variable_index(
 
                     # Strategy B: local threaded reads using
                     #             os.pread-backed reader.
-                    if thread_count != 0 and isinstance(
+                    if thread_count > 0 and isinstance(
                         reader, LocalPosixReader
                     ):
 
