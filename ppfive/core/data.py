@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ppfive.io.base import ByteReader
+from ppfive.io.bytereader import ByteReader
 
 from ..constants import INDEX_BMDI, INDEX_LBPACK
 from ..wgdos import unpack_wgdos

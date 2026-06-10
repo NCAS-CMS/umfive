@@ -3,7 +3,7 @@ from __future__ import annotations
 import struct
 import sys
 
-from ppfive.io.base import ByteReader
+from ppfive.io.bytereader import ByteReader
 
 from .models import FileTypeInfo
 
