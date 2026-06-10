@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -81,13 +81,13 @@ class File(Mapping):
     def __init__(
         self,
         filename,
-        mode: str = "r",
-        um_version: str | None = None,
+        mode="r",
+        um_version=None,
         height_at_top_of_model=None,
-        local_os_cache: bool = True,
+        local_os_cache=True,
         verbose=0,
         *,
-        _data_variable_index: list | None = None,
+        _data_variable_index=None,
     ):
         """**Initialisation**
 
@@ -217,6 +217,26 @@ class File(Mapping):
             )
             self._owns_reader = True
 
+        # Set the default thread count (0 for local files, 4 for
+        # remote files)
+        thread_count = 0
+        try:
+            protocol = self._reader.fs.protocol
+        except AttributeError:
+            pass
+        else:
+            if isinstance(protocol, tuple):
+                protocol = protocol[0]
+                
+            if protocol in ("file", "local", "", None):
+                protocol = "file"
+            else:
+                # Remote file 
+                thread_count = 4
+
+            self.protocol = protocol
+
+        self._fh = self._reader
         self.mode = mode
         self.parent = None
         self.name = "/"
@@ -245,7 +265,7 @@ class File(Mapping):
         if _data_variable_index is None:
             file_type = detect_file_type(self._reader)
             self.fmt = file_type.fmt
-            self.byte_ordering = file_type.byte_ordering
+            self.byte_order = file_type.byte_order
             self.word_size = file_type.word_size
             if file_type.fmt == "PP":
                 records = scan_pp_headers(self._reader, file_type)
@@ -260,23 +280,23 @@ class File(Mapping):
                 )
 
             # Default parallelism
-            parallelism = {"thread_count": 0, "cat_range_allowed": True}
+            parallelism = {"thread_count": thread_count, "cat_range_allowed": True}
 
             _data_variable_index = build_data_variable_index(
                 records,
                 self._reader,
                 self.word_size,
-                self.byte_ordering,
+                self.byte_order,
                 parallelism=parallelism,
             )
 
         else:
             self.fmt = None
-            self.byte_ordering = None
+            self.byte_order = None
             self.word_size = None
 
         # Initialise the dictionary of all (i.e. data and metadata)
-        # variables
+        # variables, keyed by their variable names.
         all_variables = {}
 
         # Initialise the list of data variable names
@@ -294,7 +314,6 @@ class File(Mapping):
         #  ('x_coordinate', np.int32(101), np.int32(3), np.int32(106), np.float32(38.0), np.float32(190.0), np.float32(0.0), np.float32(339.02), np.float32(0.44)): 'grid_longitude',
         #  ('y_coordinate', np.int32(101), np.int32(3), np.int32(110), np.float32(38.0), np.float32(190.0), np.float32(0.0), np.float32(23.76), np.float32(-0.44)): 'grid_latitude',
         #  ('z_coordinate', np.int32(8), (np.float32(850.00006), np.float32(700.00006), np.float32(500.00003), np.float32(250.00002), np.float32(50.000004)), (np.float32(0.0), np.float32(0.0), np.float32(0.0), np.float32(0.0), np.float32(0.0)), (np.float32(0.0), np.float32(0.0), np.float32(0.0), np.float32(0.0), np.float32(0.0))): 'air_pressure'}
-
         cache = {}
 
         # Initialise the _Netcdf4Dimid attribute of DimensionScale
@@ -347,34 +366,34 @@ class File(Mapping):
         self.close()
 
     def __getitem__(self, path: str):
-        """Get the File or a data or metadata variable from its path.
+        """Get a data or metadata variable or the File from its path.
 
         Paths may start with ``.``, ``/``, or ``./``, and a trailing
-        ``/`` is ignored.
+        ``/`` is ignored. A path may be an empty string.
 
         """
         if not isinstance(path, str):
             raise TypeError("path must be a string")
 
         key = path
-        if key in ("", ".", "/", "./"):
-            return self
+        if key.startswith("."):
+            key = key[1:]
 
         if key.startswith("/"):
             key = key[1:]
 
-        if key.startswith("./"):
-            key = key[2:]
-
         if key.endswith("/"):
             key = key[:-1]
+
+        if not key:
+            return self
 
         if "/" in key:
             raise KeyError(f"Nested paths are not supported: {path!r}")
 
         return self.variables[key]
 
-    def __iter__(self) -> Iterator[str]:
+    def __iter__(self):
         """Return an iterator over the variable mapping keys."""
         return iter(self.variables)
 
@@ -386,9 +405,14 @@ class File(Mapping):
         """Return repr(self)."""
         n_data = len(self.data_variables)
         n_metadata = len(self.variables) - n_data
+
+        pd = "" if n_data == 1 else "s"
+        pm = "" if n_metadata == 1 else "s"
+
         return (
             f"<ppfive.{self.__class__.__name__}: {self.filename}, "
-            f"{n_data} data variables, {n_metadata} metadata variables>"
+            f"{n_data} data variable{pd}, "
+            f"{n_metadata} metadata variable{pm}>"
         )
 
     def __str__(self):

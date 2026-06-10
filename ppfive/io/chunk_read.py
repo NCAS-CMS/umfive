@@ -11,8 +11,9 @@ from ppfive.core.data import (
     get_record_packed_nbytes,
     read_record_array,
 )
-from ppfive.io.fsspec_reader import FsspecReader
-from ppfive.io.local import LocalPosixReader
+#from ppfive.io.fsspec_reader import FsspecReader
+from .bytereader import ByteReader
+from .local import LocalPosixReader
 
 logger = logging.getLogger(__name__)
 
@@ -66,12 +67,11 @@ class ChunkReadMixin:
         self, raw: bytes, rec, chunk_shape: tuple[int, ...]
     ) -> np.ndarray:
         """TODO."""
-        """TODO."""
         return decode_record_array_from_raw(
             raw,
             rec,
             self._variable.file.word_size,
-            self._variable.file.byte_ordering,
+            self._variable.file.byte_order,
         ).reshape(chunk_shape)
 
     def _store_and_assign(self, decoded_chunks, out: np.ndarray) -> None:
@@ -98,7 +98,7 @@ class ChunkReadMixin:
                 self._variable.file._reader,
                 rec,
                 self._variable.file.word_size,
-                self._variable.file.byte_ordering,
+                self._variable.file.byte_order,
             ).reshape(chunk_shape)
             decoded_chunks.append(
                 (chunk_offset, chunk_selection, out_selection, chunk_data)
@@ -119,7 +119,7 @@ class ChunkReadMixin:
                 self._variable.file._reader,
                 rec,
                 self._variable.file.word_size,
-                self._variable.file.byte_ordering,
+                self._variable.file.byte_order,
             ).reshape(chunk_shape)
             return chunk_offset, chunk_selection, out_selection, chunk_data
 
@@ -137,16 +137,15 @@ class ChunkReadMixin:
     ) -> None:
         """TODO."""
         reader = self._variable.file._reader
-        fh = getattr(reader, "_fh", None)
-        actual_fh = getattr(fh, "fh", fh)
-        path = actual_fh.path
+        path = reader.path
+        fs = reader.fs
         starts = [rec.data_offset for _, _, _, rec, _ in required]
         stops = [
             rec.data_offset
             + get_record_packed_nbytes(rec, self._variable.file.word_size)
             for _, _, _, rec, _ in required
         ]
-        buffers = actual_fh.fs.cat_ranges(
+        buffers = fs.cat_ranges(
             [path] * len(required), starts, stops
         )
         items = list(zip(required, buffers))
@@ -191,14 +190,20 @@ class ChunkReadMixin:
             return
 
         if thread_count:
-            if cat_range_allowed and isinstance(reader, FsspecReader):
-                fh = getattr(reader, "_fh", None)
-                actual_fh = getattr(fh, "fh", fh)
-                if (
-                    actual_fh is not None
-                    and hasattr(actual_fh, "fs")
-                    and hasattr(actual_fh.fs, "cat_ranges")
-                ):
+            #if cat_range_allowed and isinstance(reader, FsspecReader):
+            #    fh = getattr(reader, "_fh", None)
+            #    actual_fh = getattr(fh, "fh", fh)
+            #    if (
+            #        actual_fh is not None
+            #        and hasattr(actual_fh, "fs")
+            #        and hasattr(actual_fh.fs, "cat_ranges")
+            #    ):
+            #        self._read_bulk_fsspec_chunks(required, out, thread_count)
+            #        return
+
+            if cat_range_allowed and isinstance(reader, ByteReader):
+                fs = getattr(reader, "fs", None)
+                if hasattr(fs, "cat_ranges"):
                     self._read_bulk_fsspec_chunks(required, out, thread_count)
                     return
 

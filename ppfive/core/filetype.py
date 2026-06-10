@@ -66,50 +66,50 @@ def detect_file_type(reader: ByteReader) -> FileTypeInfo:
     if _valid_um_word2(data4[1]):
         return FileTypeInfo(
             fmt="FF",
-            byte_ordering="little_endian" if native == "<" else "big_endian",
+            byte_order="little" if native == "<" else "big",
             word_size=4,
         )
     if _valid_um_word2(data8[1]):
         return FileTypeInfo(
             fmt="FF",
-            byte_ordering="little_endian" if native == "<" else "big_endian",
+            byte_order="little" if native == "<" else "big",
             word_size=8,
         )
     if _valid_um_word2(data4s[1]):
         return FileTypeInfo(
             fmt="FF",
-            byte_ordering="big_endian" if native == "<" else "little_endian",
+            byte_order="big" if native == "<" else "little",
             word_size=4,
         )
     if _valid_um_word2(data8s[1]):
         return FileTypeInfo(
             fmt="FF",
-            byte_ordering="big_endian" if native == "<" else "little_endian",
+            byte_order="big" if native == "<" else "little",
             word_size=8,
         )
 
     if _valid_pp_word1(data8[0], 8) and _is_alternating_zeros(data4, n_pairs):
         return FileTypeInfo(
             fmt="PP",
-            byte_ordering="little_endian" if native == "<" else "big_endian",
+            byte_order="little" if native == "<" else "big",
             word_size=8,
         )
     if _valid_pp_word1(data8s[0], 8) and _is_alternating_zeros(data4, n_pairs):
         return FileTypeInfo(
             fmt="PP",
-            byte_ordering="big_endian" if native == "<" else "little_endian",
+            byte_order="big" if native == "<" else "little",
             word_size=8,
         )
     if _valid_pp_word1(data4[0], 4):
         return FileTypeInfo(
             fmt="PP",
-            byte_ordering="little_endian" if native == "<" else "big_endian",
+            byte_order="little" if native == "<" else "big",
             word_size=4,
         )
     if _valid_pp_word1(data4s[0], 4):
         return FileTypeInfo(
             fmt="PP",
-            byte_ordering="big_endian" if native == "<" else "little_endian",
+            byte_order="big" if native == "<" else "little",
             word_size=4,
         )
 

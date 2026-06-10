@@ -19,7 +19,7 @@
 #    chunk_shape = tuple(reference["chunk_shape"])
 #    dtype = np.dtype(reference["dtype"])
 #    word_size = int(reference["word_size"])
-#    byte_ordering = reference["byte_ordering"]
+#    byte_order = reference["byte_order"]
 #
 #    out = np.empty(shape, dtype=dtype)
 #    if dtype.kind == "f":
@@ -36,7 +36,7 @@
 #            disk_length=int(ref["disk_length"]),
 #            extra_data=ref["extra_data"]),
 #        )
-#        values = read_record_array(reader, rec, word_size, byte_ordering)
+#        values = read_record_array(reader, rec, word_size, byte_order)
 #
 #        chunk_coords = tuple(ref["chunk_coords"])
 #        selection = []

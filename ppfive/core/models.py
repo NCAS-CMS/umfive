@@ -10,7 +10,7 @@ class FileTypeInfo:
     """TODO."""
 
     fmt: str
-    byte_ordering: str
+    byte_order: str
     word_size: int
 
 

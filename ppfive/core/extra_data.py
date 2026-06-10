@@ -21,14 +21,14 @@ _codes = {
 
 
 def read_extra_data(
-    reader, extra_data_offset, extra_data_length, word_size, byte_ordering
+    reader, extra_data_offset, extra_data_length, word_size, byte_order
 ):
     """TODO."""
     if not extra_data_length:
         return {}
 
     raw_extra_data = reader.read_at(extra_data_offset, extra_data_length)
-    extra = ExtraDataUnpacker(raw_extra_data, word_size, byte_ordering)
+    extra = ExtraDataUnpacker(raw_extra_data, word_size, byte_order)
     return extra.get_data()
 
 
@@ -38,15 +38,13 @@ class ExtraDataUnpacker:
     _int_types = {4: np.int32, 8: np.int64}
     _float_types = {4: np.float32, 8: np.float64}
 
-    def __init__(self, raw_extra_data, word_size, byte_ordering):
+    def __init__(self, raw_extra_data, word_size, byte_order):
         """TODO."""
         self.rdata = raw_extra_data
         self.ws = word_size
         self.itype = self._int_types[word_size]
         self.ftype = self._float_types[word_size]
-        # byte_ordering is 'little_endian' or 'big_endian'
-        # sys.byteorder is 'little' or 'big'
-        self.is_swapped = not byte_ordering.startswith(sys.byteorder)
+        self.is_swapped = not byte_order == sys.byteorder
 
     def next_words(self, n):
         """Return words as bytes.

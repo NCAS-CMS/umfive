@@ -6,7 +6,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from .base import ByteReader
+from .bytereader import ByteReader
+from .mock_filesystem import MockFilesystem
 
 
 class LocalPosixReader(ByteReader):
@@ -21,6 +22,9 @@ class LocalPosixReader(ByteReader):
         self._local_os_cache = local_os_cache
         self._set_cache_policy()
 
+        # Create a mock file system with selected attributes
+        self.fs = MockFilesystem(protocol="file")
+        
     def _set_cache_policy(self) -> None:
         """TODO."""
         # Best effort hint for benchmarking without page cache on macOS.
@@ -65,6 +69,7 @@ class LocalPosixReader(ByteReader):
         """TODO."""
         if offset < 0:
             raise ValueError("offset must be >= 0")
+        
         if nbytes < 0:
             raise ValueError("nbytes must be >= 0")
 
@@ -79,11 +84,3 @@ class LocalPosixReader(ByteReader):
         if self._fd is not None:
             os.close(self._fd)
             self._fd = None
-
-    def __enter__(self) -> "LocalPosixReader":
-        """Enter the runtime context."""
-        return self
-
-    def __exit__(self, exc_type, exc, tb) -> None:
-        """Exit the runtime context."""
-        self.close()

@@ -1,7 +1,7 @@
 from .dataset import File
 from .stash import load_stash_table, stash_records, stash_table
 from .variable import DataVariable, DimensionScale, Variable
-from .io import ByteReader, FileObjReader, FsspecReader, LocalPosixReader
+from .io import ByteReader, FileObjReader, LocalPosixReader
 
 try:
     import pyfive

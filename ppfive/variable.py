@@ -714,7 +714,7 @@ class DataVariable(_Mixin):
                 else None
             ),
             "word_size": getattr(self.file, "word_size", None),
-            "byte_ordering": getattr(self.file, "byte_ordering", None),
+            "byte_order": getattr(self.file, "byte_order", None),
             "refs": refs,
         }
 

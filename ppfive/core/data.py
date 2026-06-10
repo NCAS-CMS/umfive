@@ -10,23 +10,23 @@ from .interpret import get_extra_data_length, get_type_and_num_words
 from .models import RecordInfo
 
 
-def _endian_prefix(byte_ordering: str) -> str:
+def _endian_prefix(byte_order: str) -> str:
     """TODO."""
-    if byte_ordering == "little_endian":
+    if byte_order == "little":
         return "<"
 
-    if byte_ordering == "big_endian":
+    if byte_order == "big":
         return ">"
 
-    raise ValueError(f"Unsupported byte_ordering: {byte_ordering!r}")
+    raise ValueError(f"Unsupported byte_order: {byte_order!r}")
 
 
 def _dtype_for_record(
-    rec: RecordInfo, word_size: int, byte_ordering: str
+    rec: RecordInfo, word_size: int, byte_order: str
 ) -> np.dtype:
     """TODO."""
     data_type, _ = get_type_and_num_words(rec.int_hdr, word_size)
-    prefix = _endian_prefix(byte_ordering)
+    prefix = _endian_prefix(byte_order)
     if data_type == "integer":
         return np.dtype(f"{prefix}i{word_size}")
 
@@ -34,10 +34,10 @@ def _dtype_for_record(
 
 
 def _unpack_cray32(
-    raw: bytes, nwords: int, byte_ordering: str, word_size: int
+    raw: bytes, nwords: int, byte_order: str, word_size: int
 ) -> np.ndarray:
     """TODO."""
-    prefix = _endian_prefix(byte_ordering)
+    prefix = _endian_prefix(byte_order)
     packed = np.frombuffer(
         raw[: nwords * 4], dtype=np.dtype(f"{prefix}f4"), count=nwords
     )
@@ -48,7 +48,7 @@ def _unpack_cray32(
 
 
 def _unpack_run_length(
-    raw: bytes, nwords: int, byte_ordering: str, word_size: int, mdi: float
+    raw: bytes, nwords: int, byte_order: str, word_size: int, mdi: float
 ) -> np.ndarray:
     """Unpack runlength encoded data.
 
@@ -60,9 +60,8 @@ def _unpack_run_length(
         nwords: `int`
             The number of words in the unpacked data.
 
-        byte_ordering: `str`
-            The word byte order (``'little_endian'`` or
-            ``'big_endian'``).
+        byte_order: `str`
+            The word byte order (``'little'`` or ``'big'``).
 
         word_size: `int`
             The word size (``4`` or ``8``).
@@ -76,7 +75,7 @@ def _unpack_run_length(
             The unpacked data in a 1-d array.
 
     """
-    prefix = _endian_prefix(byte_ordering)
+    prefix = _endian_prefix(byte_order)
     dtype = np.dtype(f"{prefix}f{word_size}")
     packed = np.frombuffer(raw, dtype=dtype)
     # out = np.empty(nwords, dtype=np.float32 if word_size == 4 else np.float64)
@@ -140,7 +139,7 @@ def read_record_raw(
 
 
 def decode_record_array_from_raw(
-    raw: bytes, rec: RecordInfo, word_size: int, byte_ordering: str
+    raw: bytes, rec: RecordInfo, word_size: int, byte_order: str
 ) -> np.ndarray:
     """TODO."""
     pack = int(rec.int_hdr[INDEX_LBPACK]) % 10
@@ -148,7 +147,7 @@ def decode_record_array_from_raw(
 
     if pack == 0:
         need = nwords * word_size
-        dtype = _dtype_for_record(rec, word_size, byte_ordering)
+        dtype = _dtype_for_record(rec, word_size, byte_order)
         return np.frombuffer(raw[:need], dtype=dtype, count=nwords).copy()
 
     if pack == 1:
@@ -156,11 +155,11 @@ def decode_record_array_from_raw(
         return unpack_wgdos(raw, nwords, mdi, word_size)
 
     if pack == 2:
-        return _unpack_cray32(raw, nwords, byte_ordering, word_size)
+        return _unpack_cray32(raw, nwords, byte_order, word_size)
 
     if pack == 4:
         mdi = float(rec.real_hdr[INDEX_BMDI])
-        return _unpack_run_length(raw, nwords, byte_ordering, word_size, mdi)
+        return _unpack_run_length(raw, nwords, byte_order, word_size, mdi)
 
     if pack == 3:
         raise NotImplementedError("GRIB packed data is not supported")
@@ -171,8 +170,8 @@ def decode_record_array_from_raw(
 
 
 def read_record_array(
-    reader: ByteReader, rec: RecordInfo, word_size: int, byte_ordering: str
+    reader: ByteReader, rec: RecordInfo, word_size: int, byte_order: str
 ) -> np.ndarray:
     """TODO."""
     raw = read_record_raw(reader, rec, word_size)
-    return decode_record_array_from_raw(raw, rec, word_size, byte_ordering)
+    return decode_record_array_from_raw(raw, rec, word_size, byte_order)

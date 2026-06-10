@@ -6,7 +6,8 @@ from typing import Any
 
 import numpy as np
 
-from ppfive.io.fsspec_reader import FsspecReader
+#from ppfive.io.fsspec_reader import FsspecReader
+from ppfive.io.bytereader import ByteReader
 from ppfive.io.local import LocalPosixReader
 
 from ..constants import (
@@ -181,7 +182,7 @@ def build_data_variable_index(
     records: list[RecordInfo],
     reader,
     word_size: int,
-    byte_ordering: str,
+    byte_order: str,
     parallelism: dict[str, Any] | None = None,
 ) -> dict[int, dict[str, Any]]:
     """TODO."""
@@ -305,25 +306,20 @@ def build_data_variable_index(
                     # Strategy A: fsspec bulk range reads for unpacked
                     #             records.
                     if (
-                        #                        thread_count != 0
+                        thread_count >  0 and 
                         cat_range_allowed
-                        and isinstance(reader, FsspecReader)
+                        and isinstance(reader, ByteReader)
                     ):
-                        fh = getattr(reader, "_fh", None)
-                        actual_fh = getattr(fh, "fh", fh)
-                        if (
-                            actual_fh is not None
-                            and hasattr(actual_fh, "fs")
-                            and hasattr(actual_fh.fs, "cat_ranges")
-                        ):
-                            path = actual_fh.path
+                        fs = getattr(reader, "fs", None)
+                        if hasattr(fs, "cat_ranges"):
+                            path = reader.path
                             starts = [rec.data_offset for rec in group_recs]
                             stops = [
                                 rec.data_offset
                                 + get_record_packed_nbytes(rec, word_size)
                                 for rec in group_recs
                             ]
-                            buffers = actual_fh.fs.cat_ranges(
+                            buffers = fs.cat_ranges(
                                 [path] * len(group_recs), starts, stops
                             )
 
@@ -334,7 +330,7 @@ def build_data_variable_index(
                                 ti = _t_index[_t_key(rec)]
                                 zi = _z_index[_z_key(rec)]
                                 values = decode_record_array_from_raw(
-                                    raw, rec, word_size, byte_ordering
+                                    raw, rec, word_size, byte_order
                                 )
                                 return ti, zi, values
 
@@ -369,7 +365,7 @@ def build_data_variable_index(
                             ti = _t_index[_t_key(rec)]
                             zi = _z_index[_z_key(rec)]
                             values = read_record_array(
-                                reader, rec, word_size, byte_ordering
+                                reader, rec, word_size, byte_order
                             )
                             return ti, zi, values
 
@@ -392,7 +388,7 @@ def build_data_variable_index(
                         ti = _t_index[_t_key(rec)]
                         zi = _z_index[_z_key(rec)]
                         values = read_record_array(
-                            reader, rec, word_size, byte_ordering
+                            reader, rec, word_size, byte_order
                         )
                         out[ti, zi, :, :] = values.reshape((_ny, _nx))
 
