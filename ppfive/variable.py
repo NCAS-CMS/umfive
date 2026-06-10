@@ -47,7 +47,6 @@ class AstypeContext:
     """Context manager to cast reads from a variable."""
 
     def __init__(self, variable: "Variable", dtype: str | np.dtype):
-        """TODO."""
         self._variable = variable
         self._dtype = np.dtype(dtype)
 
@@ -61,51 +60,32 @@ class AstypeContext:
 
 
 class DataVariableID(ChunkReadMixin):
-    """Small dataset-id-like object that backs DataVariable reads."""
+    """Small dataset-id-like object that backs `DataVariable` reads."""
 
-    def __init__(self, variable: "DataVariable"):
-        """TODO."""
+    def __init__(self, variable):
+        """**Initialisation**
+
+        :Parameters:
+
+            variable: `DataVariable`
+                The parent data variable instance.
+
+        """
         self._variable = variable
         self._index_cache = None
         self._nthindex = None
         self._record_cache = None
 
-    @property
-    def shape(self):
-        """Shape of the array."""
-        return self._variable.shape
-
-    @property
-    def dtype(self):
-        """The format of the elements in the array."""
-        if self._variable.dtype is None:
-            return
-
-        return np.dtype(self._variable.dtype)
-
-    @property
-    def chunks(self):
-        """TODO."""
-        return self._variable.chunk_shape
-
-    @property
-    def first_chunk(self):
-        """TODO."""
-        if not self.__chunk_init_check():
-            return
-
-        return self._nthindex[0]
-
-    @property
-    def index(self):
-        """TODO."""
-        if not self.__chunk_init_check():
-            raise TypeError("Dataset is not chunked ")
-
-        return self._index_cache
-
     def __chunk_init_check(self):
-        """TODO."""
+        """Check the chunks.
+
+        :Returns:
+
+            `bool`
+                False if there are no chunks, or the chunks shape is
+                undefined. Otherwise True.
+
+        """
         if (
             self._variable.chunk_shape is None
             or not self._variable.chunk_records
@@ -139,7 +119,9 @@ class DataVariableID(ChunkReadMixin):
         return True
 
     def _get_selection_via_chunks(self, args):
-        """TODO."""
+        """Use the zarr orthogonal indexer to extract data for a specfic
+        selection within the dataset array and in doing so, only load
+        the relevant chunks."""
         array = ZarrArrayStub(self.shape, self.chunks)
         indexer = OrthogonalIndexer(args, array)
         out = np.empty(indexer.shape, dtype=self.dtype)
@@ -148,8 +130,68 @@ class DataVariableID(ChunkReadMixin):
 
         return out
 
+    @property
+    def shape(self):
+        """Shape of the data array.
+
+        :Returns:
+
+            `tuple`
+
+        """
+        return self._variable.shape
+
+    @property
+    def chunks(self):
+        """The chunk shape.
+
+        :Returns:
+
+            `tuple`
+
+        """
+        return self._variable.chunk_shape
+
+    @property
+    def dtype(self):
+        """The format of the elements in the array."""
+        if self._variable.dtype is None:
+            return
+
+        return np.dtype(self._variable.dtype)
+
+    @property
+    def first_chunk(self):
+        """The indices of the first chunk.
+
+        :Returns:
+
+            `tuple` of `int`
+
+        """
+        if not self.__chunk_init_check():
+            return
+
+        return self._nthindex[0]
+
+    @property
+    def index(self):
+        """The `StoreInfo` object for each chunk.
+
+        :Returns:
+
+            `dict`
+                 The `StoreInfo` objects, each keyed by the `tuple` of
+                 its chunk indices.
+
+        """
+        if not self.__chunk_init_check():
+            raise TypeError("Dataset is not chunked ")
+
+        return self._index_cache
+
     def get_data(self, args=()):
-        """TODO."""
+        """Called by `DataVariable.__getitem__`."""
         if self.__chunk_init_check():
             return self._get_selection_via_chunks(args)
 
@@ -162,8 +204,19 @@ class DataVariableID(ChunkReadMixin):
 
             return data[args] if args else data
 
-    def iter_chunks(self, sel=()):
-        """TODO."""
+    def iter_chunks(self, args=()):
+        """Iterate over chunks in a chunked dataset.
+
+        The args argument is a (possibly empty) sequence of indices that
+        defines the region to be used. If an empty sequence then the
+        entire dataspace will be used for the iterator.
+
+        For each chunk within the given region, the iterator yields a
+        tuple of indices that gives the intersection of the given chunk
+        with the selection area. This can be used to read data in that
+        chunk.
+
+        """
         shape = self.shape
         if not shape:
             return iter(())
@@ -171,8 +224,8 @@ class DataVariableID(ChunkReadMixin):
         chunks = self.chunks or shape
         normalized = []
         for axis, size in enumerate(shape):
-            if axis < len(sel) and isinstance(sel[axis], slice):
-                start, stop, step = sel[axis].indices(size)
+            if axis < len(args) and isinstance(args[axis], slice):
+                start, stop, step = args[axis].indices(size)
                 if step != 1:
                     raise NotImplementedError(
                         "iter_chunks only supports step=1 slices"
@@ -203,32 +256,35 @@ class DataVariableID(ChunkReadMixin):
         return _generator()
 
     def get_num_chunks(self):
-        """TODO."""
+        """Return total number of chunks in dataset."""
         if self.__chunk_init_check():
             return len(self._index_cache)
 
         return 0
 
     def get_chunk_info(self, index):
-        """TODO."""
+        """Retrieve storage information about a chunk specified by its
+        index."""
         if self.__chunk_init_check():
             return self._index_cache[self._nthindex[index]]
 
         raise TypeError("Dataset is not chunked ")
 
     def get_chunk_info_by_coord(self, coordinate_index):
-        """TODO."""
+        """Retrieve information about a chunk specified by the array
+        address of the chunk's first element in each dimension."""
         if self.__chunk_init_check():
             return self._index_cache[tuple(coordinate_index)]
 
         raise TypeError("Dataset is not chunked ")
 
-    def get_chunk_info_from_chunk_coord(self, coordinate_index):
-        """TODO."""
-        return self.get_chunk_info_by_coord(coordinate_index)
-
     def read_direct_chunk(self, chunk_position, **kwargs):
-        """TODO."""
+        """Returns a tuple containing the filter_mask and the raw data
+        storing this chunk as bytes.
+
+        Additional arguments supported by ``h5py`` are not supported here.
+
+        """
         del kwargs
         if not self.__chunk_init_check():
             raise TypeError("Dataset is not chunked ")
@@ -556,7 +612,10 @@ class Variable(_Mixin):
             )
 
         if len(DIMENSION_LIST) != len(self.shape):
-            raise ValueError("TODO")
+            raise ValueError(
+                "DIMENSION_LIST must have the same number of elements as "
+                "there are data dimensions"
+            )
 
         self.setattr("DIMENSION_LIST", DIMENSION_LIST)
 
@@ -583,7 +642,6 @@ class DataVariable(_Mixin):
     DIMENSION_LIST: tuple[tuple, ...] | None = None
 
     def __post_init__(self):
-        """TODO."""
         if self.dtype is not None:
             self.dtype = np.dtype(self.dtype)
 
@@ -606,7 +664,10 @@ class DataVariable(_Mixin):
             )
 
         if len(DIMENSION_LIST) != len(self.shape):
-            raise ValueError("TODO")
+            raise ValueError(
+                "DIMENSION_LIST must have the same number of elements as "
+                "there are data dimensions"
+            )
 
         self.setattr("DIMENSION_LIST", DIMENSION_LIST)
 
@@ -650,104 +711,24 @@ class DataVariable(_Mixin):
         return array.astype(dtype, copy=False)
 
     @property
-    def value(self):
-        """TODO."""
-        return self[()]
-
-    def read_direct(
-        self, array: np.ndarray, source_sel=None, dest_sel=None
-    ) -> None:
-        """TODO."""
-        if source_sel is None:
-            source_sel = slice(None)
-
-        if dest_sel is None:
-            dest_sel = slice(None)
-
-        array[dest_sel] = self[source_sel]
-
-    def astype(self, dtype: str | np.dtype) -> AstypeContext:
-        """TODO."""
-        return AstypeContext(self, dtype)
-
-    def iter_chunks(self, sel=()):
-        """TODO."""
-        return self.id.iter_chunks(sel)
-
-    def to_reference_dict(self) -> dict[str, Any]:
-        """TODO."""
-        refs: dict[str, Any] = {}
-        for chunk_coords, info in self.id.index.items():
-            rec = None
-            for item in self.chunk_records:
-                if tuple(item["chunk_coords"]) == tuple(chunk_coords):
-                    rec = item["record"]
-                    break
-
-            if rec is None:
-                continue
-
-            key = ".".join(str(x) for x in chunk_coords)
-            refs[key] = {
-                "path": getattr(self.file, "filename", None),
-                "chunk_coords": list(info.chunk_offset),
-                "header_offset": rec.header_offset,
-                "data_offset": info.byte_offset,
-                "disk_length": info.size,
-                "filter_mask": info.filter_mask,
-                "int_hdr": rec.int_hdr.tolist(),
-                "real_hdr": rec.real_hdr.tolist(),
-                "extra_Data": rec.extra_data,
-            }
-
-        return {
-            "version": 1,
-            "name": self.name,
-            "path": getattr(self.file, "filename", None),
-            "shape": list(self.shape),
-            "dtype": (
-                np.dtype(self.dtype).str if self.dtype is not None else None
-            ),
-            "chunk_shape": (
-                list(self.chunk_shape)
-                if self.chunk_shape is not None
-                else None
-            ),
-            "word_size": getattr(self.file, "word_size", None),
-            "byte_order": getattr(self.file, "byte_order", None),
-            "refs": refs,
-        }
-
-    # Dataset-like attributes that are not currently meaningful for PP/Fields.
-    @property
     def chunks(self):
-        """TODO."""
+        """The chunk shape.
+
+        :Returns:
+
+            `tuple`
+
+        """
         return self.chunk_shape
 
     @property
     def compression(self):
-        """TODO."""
-        return
+        """Returns `None`.
 
-    @property
-    def compression_opts(self):
-        """TODO."""
-        return
-
-    @property
-    def lbpack(self):
-        """The unique data chunk LBPACK values.
-
-        These are the unique values of the LBPACK across all data chunks
-        in the variable.
+        Provided for compatability with the `pyfive` API.
 
         """
-        return sorted(
-            {
-                int(chunk_record["record"].int_hdr[INDEX_LBPACK])
-                for chunk_record in self.chunk_records
-            }
-        )
+        return
 
     @property
     def compression_modes(self):
@@ -768,6 +749,73 @@ class DataVariable(_Mixin):
 
         out.discard(0)
         return sorted(out)
+
+    @property
+    def compression_opts(self):
+        """Returns `None`.
+
+        Provided for compatability with the `pyfive` API.
+
+        """
+        return
+
+    @property
+    def dims(self):
+        """Returns `None`.
+
+        Provided for compatability with the `pyfive` API.
+
+        """
+        return
+
+    @property
+    def fillvalue(self):
+        """Fillvalue of the data."""
+        return self.attrs.get("missing_value")
+
+    @property
+    def fletcher32(self):
+        """Boolean indicator if fletcher32 filter was applied.
+
+        Provided for compatability with the `pyfive` API.
+
+        """
+        return
+
+    @property
+    def has_extra_data(self):
+        """Whether there is any extra data.
+
+        :Returns:
+
+            `bool`
+
+        """
+        chunk_records = self.chunk_records
+        if not chunk_records:
+            return False
+
+        return bool(chunk_records[0]["record"].extra_data)
+
+    @property
+    def lbpack(self):
+        """The unique data chunk LBPACK values.
+
+        These are the unique values of the LBPACK across all data chunks
+        in the variable.
+
+        """
+        return sorted(
+            {
+                int(chunk_record["record"].int_hdr[INDEX_LBPACK])
+                for chunk_record in self.chunk_records
+            }
+        )
+
+    @property
+    def maxshape(self):
+        """Maximum shape of the data."""
+        return self.shape
 
     @property
     def packing_modes(self):
@@ -791,73 +839,32 @@ class DataVariable(_Mixin):
         return sorted(out)
 
     @property
-    def shuffle(self):
-        """TODO."""
-        return
-
-    @property
-    def fletcher32(self):
-        """TODO."""
-        return
-
-    @property
-    def maxshape(self):
-        """TODO."""
-        return
-
-    @property
-    def fillvalue(self):
-        """TODO."""
-        return
-
-    @property
-    def dims(self):
-        """TODO."""
-        return
-
-    @property
     def scaleoffset(self):
-        """TODO."""
+        """Returns `None`.
+
+        Provided for compatability with the `pyfive` API.
+
+        """
         return
 
     @property
-    def external(self):
-        """TODO."""
-        return
+    def shuffle(self):
+        """Boolean indicator if shuffle filter was applied.
 
-    @property
-    def is_virtual(self):
-        """TODO."""
-        return
+        Provided for compatability with the `pyfive` API.
 
-    # def auto_parallelism(self, max_thread_count=4):
-    #    """Choose local POSIX default thread count from chunk topology.
-    #
-    #    Preference TODO order for representative chunk-count sample:
-    #    1) WGDOS-packed variables
-    #    2) any packed variables
-    #    3) all variables
-    #
-    #    .. seealso:: `get_parallelism`, `set_parallelism`
-    #
-    #    :Parameters:
-    #
-    #        max_thread_count: `int`
-    #            The maximum number of concurrent worker threads to use
-    #            for reading the local POSIX data chunks of the
-    #            variable. If the number of data chunks is less than
-    #            *max_thread_count* then only that number of threads
-    #            are used. If ``0`` then the reading of data chunks
-    #            runs sequentially in the main thread. Defaults to
-    #            ``4``. Ignored for non-local POSIX readers.
-    #
-    #    :Returns:
-    #
-    #        `None`
-    #
-    #    """
-    #    thread_count = min(len(self.chunk_records), max_thread_count)
-    #    self.set_parallelism(max_thread_count, cat_range_allowed=True)
+        """
+        return False
+
+    def astype(self, dtype: str | np.dtype) -> AstypeContext:
+        """Return a context manager which returns data as a particular
+        type.
+
+        Conversion is handled by NumPy after reading extracting the
+        data.
+
+        """
+        return AstypeContext(self, dtype)
 
     def get_parallelism(self):
         """Configure data chunk read parallelism configuration.
@@ -874,6 +881,40 @@ class DataVariable(_Mixin):
         """
         return self.data_loader_options.copy()
 
+    def iter_chunks(self, args=()):
+        """Iterate over data chunks.
+
+        The *args* argument is a (possibly empty) sequence of indices
+        that defines the region to be used. If an empty sequence then
+        the entire dataspace will be used for the iterator.
+
+        For each chunk within the given region, the iterator yields a
+        tuple of indices that gives the intersection of the given chunk
+        with the selection area. This can be used to read data in that
+        chunk.
+
+        """
+        return self.id.iter_chunks(args)
+
+    def read_direct(
+        self, array: np.ndarray, source_sel=None, dest_sel=None
+    ) -> None:
+        """Read from the dataset directly into a `numpy` array.
+
+        This is equivalent to dset[source_sel] = arr[dset_sel].
+
+        Creation of intermediates is not avoided. This method if
+        provided from compatibility with pyfive, it is not efficient.
+
+        """
+        if source_sel is None:
+            source_sel = slice(None)
+
+        if dest_sel is None:
+            dest_sel = slice(None)
+
+        array[dest_sel] = self[source_sel]
+
     def set_parallelism(self, max_thread_count=0, cat_range_allowed=True):
         """Configure data chunk read parallelism.
 
@@ -887,7 +928,7 @@ class DataVariable(_Mixin):
                 variable. Ignored for non-local POSIX readers. If
                 ``0`` (the default) then the reading of data chunks
                 runs sequentially in the main thread. The number of
-                threads is limited to the number of data
+                threads is limited by the number of data
                 chunks.
 
             cat_range_allowed: `bool`, optional

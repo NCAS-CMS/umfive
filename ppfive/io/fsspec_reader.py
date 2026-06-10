@@ -1,9 +1,9 @@
-#from __future__ import annotations
+# from __future__ import annotations
 #
-#from .base import ByteReader
+# from .base import ByteReader
 #
 #
-#class FsspecReader(ByteReader):
+# class FsspecReader(ByteReader):
 #    """Fsspec-backed byte reader with absolute reads."""
 #
 #    def __init__(self, filesystem, path: str):

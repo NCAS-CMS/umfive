@@ -6,7 +6,7 @@ from typing import Any
 
 import numpy as np
 
-#from ppfive.io.fsspec_reader import FsspecReader
+# from ppfive.io.fsspec_reader import FsspecReader
 from ppfive.io.bytereader import ByteReader
 from ppfive.io.local import LocalPosixReader
 
@@ -306,8 +306,8 @@ def build_data_variable_index(
                     # Strategy A: fsspec bulk range reads for unpacked
                     #             records.
                     if (
-                        thread_count >  0 and 
-                        cat_range_allowed
+                        thread_count > 0
+                        and cat_range_allowed
                         and isinstance(reader, ByteReader)
                     ):
                         fs = getattr(reader, "fs", None)

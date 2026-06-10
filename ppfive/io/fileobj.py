@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from .bytereader  import ByteReader
+from .bytereader import ByteReader
 from .mock_filesystem import MockFilesystem
+
 
 class FileObjReader(ByteReader):
     """ByteReader adapter for seekable/readable file-like objects."""
@@ -14,8 +15,15 @@ class FileObjReader(ByteReader):
         if not hasattr(fileobj, "seek") or not callable(fileobj.seek):
             raise ValueError("fileobj must provide a callable seek method")
 
+        # File-like object
         self.fileobj = fileobj
-        self.path = str(getattr(fileobj, "name", "<fileobj>"))
+
+        # filename
+        path = getattr(fileobj, "path", None)
+        if path is None:
+            path = getattr(fileobj, "name", "<file-like>")
+
+        self.path = path
 
         # Store the file system
         try:

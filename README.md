@@ -46,7 +46,7 @@ Like pyfive, ppfive is Read-only:
 - Some Dataset properties are intentionally placeholders (`None`) because they are
 	not meaningful for PP/Fields records:
 	- `compression`, `compression_opts`, `shuffle`, `fletcher32`, `maxshape`,
-		`fillvalue`, `dims`, `scaleoffset`, `external`, `is_virtual`.
+		`fillvalue`, `dims`, `scaleoffset`.
 - Compatibility metadata is synthesized for CF/cfdm bridging:
 	- dimension-scale datasets and `DIMENSION_LIST` are created where needed.
 	- rotated-grid helper variables (for example `latitude`, `longitude`,

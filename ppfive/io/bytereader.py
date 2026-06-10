@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 class ByteReader(ABC):
     """Minimal transport boundary for random-access reads."""
 
-    def __enter__(self) -> "FsspecReader":
+    def __enter__(self) -> ByteReader:
         """Enter the runtime context."""
         return self
 

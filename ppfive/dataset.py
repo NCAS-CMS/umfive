@@ -1,9 +1,6 @@
-from __future__ import annotations
-
 import logging
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 
@@ -186,7 +183,9 @@ class File(Mapping):
         elif hasattr(filename, "read") and hasattr(filename, "seek"):
             self._reader = FileObjReader(filename)
             self._owns_reader = False
-            filename = getattr(self._reader, "name", "<fileobj>")
+            filename = getattr(self._reader, "path", None)
+            if filename is None:
+                filename = getattr(self._reader, "name", "<file-like>")
         elif filename is None:
             if _data_variable_index is None:
                 raise ValueError(
@@ -194,7 +193,7 @@ class File(Mapping):
                     "filename is None"
                 )
 
-            self._reader = "no reader"
+            self._reader = "no reader: using external _data_variable_index"
         else:
             if _data_variable_index is not None:
                 raise ValueError(
@@ -217,8 +216,8 @@ class File(Mapping):
             )
             self._owns_reader = True
 
-        # Set the default thread count (0 for local files, 4 for
-        # remote files)
+        # Set the default thread_count and cat_range_allowed, and see
+        # if we can find the file system protocol.
         thread_count = 0
         try:
             protocol = self._reader.fs.protocol
@@ -227,12 +226,15 @@ class File(Mapping):
         else:
             if isinstance(protocol, tuple):
                 protocol = protocol[0]
-                
+
             if protocol in ("file", "local", "", None):
+                # Local file
                 protocol = "file"
+                cat_range_allowed = False
             else:
-                # Remote file 
+                # Remote file
                 thread_count = 4
+                cat_range_allowed = True
 
             self.protocol = protocol
 
@@ -279,8 +281,10 @@ class File(Mapping):
                     f"The file may be corrupted or empty."
                 )
 
-            # Default parallelism
-            parallelism = {"thread_count": thread_count, "cat_range_allowed": True}
+            parallelism = {
+                "thread_count": thread_count,
+                "cat_range_allowed": cat_range_allowed,
+            }
 
             _data_variable_index = build_data_variable_index(
                 records,
@@ -333,10 +337,13 @@ class File(Mapping):
             if name is None:
                 continue
 
+            attrs = data_variable.attrs
+            DIMENSION_LIST = data_variable.DIMENSION_LIST
+
             # Add a new entry for this data variable
             all_variables[name] = DataVariable(
                 name=name,
-                attrs=data_variable.attrs,
+                attrs=attrs,
                 shape=tuple(meta.get("shape", ())),
                 dtype=meta.get("dtype"),
                 chunk_shape=meta.get("chunk_shape"),
@@ -344,7 +351,7 @@ class File(Mapping):
                 data_loader_options=meta.get("data_loader_options"),
                 file=self,
                 chunk_records=list(meta.get("chunk_records")),
-                DIMENSION_LIST=data_variable.DIMENSION_LIST,
+                DIMENSION_LIST=DIMENSION_LIST,
             )
             data_variables.append(name)
 
@@ -434,72 +441,63 @@ class File(Mapping):
         return "\n".join(out)
 
     @property
-    def userblock_size(self) -> int:
-        """TODO."""
-        return 0
+    def consolidated_metadata(self):
+        """Whether the internal metadata are in a contiguous block.
 
-    @property
-    def consolidated_metadata(self) -> bool | None:
-        """TODO."""
-        return
-
-    # ef auto_parallelism(self, max_thread_count=4):
-    #   """Choose local POSIX default thread count from chunk topology.
-    #
-    #   Preference TODO  order for representative chunk-count sample:
-    #   1) WGDOS-packed variables
-    #   2) any packed variables
-    #   3) all variables
-    #
-    #   .. seealso:: `get_parallelism`, `set_parallelism`
-    #
-    #   :Parameters:
-    #
-    #       max_thread_count: `int`
-    #           The maximum number of concurrent worker threads to use
-    #           for reading the local POSIX data chunks of each
-    #           variable. If the number of data chunks for a variable
-    #           is less than *max_thread_count* then only that number
-    #           of threads are used. If ``0`` then the reading of data
-    #           chunks runs sequentially in the main thread. Defaults
-    #           to ``4``. Ignored for non-local POSIX readers.
-    #           :Returns:
-    #
-    #       `None`
-    #
-    #   """
-    #   for name, var in self.variables.items():
-    #       if name not in self.data_variables:
-    #           continue
-    #
-    #       var.auto_parallelism(max_thread_count)
-
-    def get_parallelism(self):
-        """Get the data variable chunk read parallelism configurations.
-
-        .. seealso:: `set_parallelism`
+        Provided for compatability with the `pyfive` API.
 
         :Returns:
 
-            `dict`
-                For each data variable, the "thread_count" and
-                "cat_range_allowed" parameters to be used when
-                accessing the data. See `set_parallelism` for details.
+            `bool`
 
         """
-        return {
-            name: var.get_parallelism()
-            for name, var in self.variables.items()
-            if name in self.data_variables
-        }
+        # FF files have consolidated_metadata there is no extra data
+        if self.fmt == "FF":
+            return not self.has_extra_data
 
-    def get_lazy_view(self, key) -> DataVariable:
-        """TODO."""
-        # UM guidance says this cannot be fully implemented yet.
-        logger.info(
-            "get_lazy_view is not supported; returning normal variable view"
-        )
-        return self[key]
+        # PP files have consolidated_metadata is there is only
+        # one lookup header with no extra data
+        data_variables = self.data_variables
+        if len(data_variables) > 1:
+            return False
+
+        if not len(data_variables):
+            return True
+
+        var = self.variables[data_variables[0]]
+        if len(var.chunk_records) > 1:
+            return False
+
+        return not var.has_extra_data
+
+    @property
+    def has_extra_data(self):
+        """Whether any data variables have extra data.
+
+        :Returns:
+
+            `bool`
+
+        """
+        variables = self.variables
+        for name in self.data_variables:
+            if variables[name].has_extra_data:
+                return True
+
+        return False
+
+    @property
+    def userblock_size(self) -> int:
+        """Size of the user block in bytes (currently always 0).
+
+        Provided for compatability with the `pyfive` API.
+
+        :Returns:
+
+            `int`
+
+        """
+        return 0
 
     def close(self) -> None:
         """Close the underlying dataset reader.
@@ -518,6 +516,42 @@ class File(Mapping):
         if self._owns_reader and self._reader is not None:
             self._reader.close()
 
+    def get_parallelism(self):
+        """Get the data variable chunk read parallelism configurations.
+
+        .. seealso:: `set_parallelism`
+
+        :Returns:
+
+            `dict`
+                For each data variable, the "thread_count" and
+                "cat_range_allowed" parameters to be used when
+                accessing the data. See `set_parallelism` for details.
+
+        """
+        variables = self.variables
+        return {
+            name: variables[name].get_parallelism()
+            for name in self.data_variables
+        }
+
+    def get_lazy_view(self, name) -> DataVariable:
+        """Return a lazy view of the data variable.
+
+        Simply returns the data variable object.
+
+        Provided for compatability with the `pyfive` API.
+
+        """
+        logger.info(
+            "get_lazy_view is not supported; returning normal variable view"
+        )
+        return self.variables[name]
+
+    def items(self):
+        """A set-like object providing a view on the dataset's items."""
+        return self.variables.items()
+
     def set_parallelism(self, max_thread_count=0, cat_range_allowed=True):
         """Configure data variable chunk read parallelism.
 
@@ -531,7 +565,7 @@ class File(Mapping):
                 variable. Ignored for non-local POSIX readers. If
                 ``0`` (the default) then the reading of data chunks
                 runs sequentially in the main thread. For each
-                varable, the number of threads is limited to the
+                varable, the number of threads is limited by the
                 number of data chunks.
 
             cat_range_allowed: `bool`, optional
@@ -547,33 +581,21 @@ class File(Mapping):
 
         """
         # Set parallelism on data variables
-        data_variables = self.data_variables
-        for name, var in self.variables.items():
-            if name not in data_variables:
-                continue
-
+        variables = self.variables
+        for name in self.data_variables:
+            var = variables[name]
             var.set_parallelism(max_thread_count, cat_range_allowed)
-
-    def items(self):
-        """TODO."""
-        return self.variables.items()
-
-    def to_reference_dict(self) -> dict[str, Any]:
-        """TODO."""
-        data_variables = self.data_variables
-        return {
-            "version": 1,
-            "path": self.filename,
-            "variables": {
-                name: variable.to_reference_dict()
-                for name, variable in self.variables.items()
-                if name in data_variables
-            },
-        }
 
 
 class DataVariableMetadata:
-    """TODO."""
+    """Creates metadata variables and data variable attributes.
+
+    Only metadata variables that do not already exist will be created.
+
+    The returned instance's `name`, `attrs`, and `DIMENSION_LIST`
+    attributes may be used to create a `DataVariable` instance.
+
+    """
 
     def __init__(
         self, data_variable_meta, variables, file_obj, cache, Netcdf4Dimid
@@ -673,7 +695,6 @@ class DataVariableMetadata:
             um_stash_source = None
 
         header_um_version, source = divmod(int_hdr[INDEX_LBSRCE], 10000)
-
         if header_um_version > 0 and int(um_version) == um_version:
             # Use version derived from from header
             model_um_version = header_um_version
@@ -712,6 +733,13 @@ class DataVariableMetadata:
         # ------------------------------------------------------------
         # Set the T, Z, Y and X axis codes. These are guaranteed to be
         # the same for all records in a variable.
+        #
+        # Note: The T, Z, Y, X axes most commonly map to the time,
+        #       height and horizontal Y and horizontal X physical
+        #       axes, but this is not always the case! The axiscodes
+        #       stored in `_it`, `_iz`, `_ix`, and `iy` tell the whole
+        #       story.
+        #
         # ------------------------------------------------------------
         if LBCODE == 1 or LBCODE == 2:
             # 1 = Unrotated regular lat/long grid
@@ -751,8 +779,8 @@ class DataVariableMetadata:
         #     LBNPT,
         #     int_hdr[INDEX_LBHEM],
         #     LBCODE,
-        #     int_hdr[INDEX_LBUSER7],
-        #     real_hdr[INDEX_BGOR],
+        #     # int_hdr[INDEX_LBUSER7],
+        #     BPLAT, BPLON, real_hdr[INDEX_BGOR],
         #     real_hdr[INDEX_BDX],
         #     real_hdr[INDEX_BZX],
         #     real_hdr[INDEX_BDY],
@@ -1007,17 +1035,7 @@ class DataVariableMetadata:
             else:
                 # Coordinates were not created for this axis, so use
                 # an appropriately sized dimension.
-                dim = f"dimension{size}"
-                if dim not in self.variables:
-                    # Create the dimension
-                    d = DimensionScale(
-                        name=dim,
-                        size=size,
-                        file_obj=self._file_obj,
-                        Netcdf4Dimid=self._Netcdf4Dimid,
-                    )
-                    self.add_to_variables(d)
-
+                dim = self.dimension("dimension", size)
                 dim_names.append(dim)
 
         self.DIMENSION_LIST = tuple((ncdim,) for ncdim in dim_names)
@@ -1131,6 +1149,7 @@ class DataVariableMetadata:
         :Parameters:
 
             axiscode: `int`
+                Defines the physical nature of the axis.
 
         :Returns:
 
@@ -1177,15 +1196,6 @@ class DataVariableMetadata:
                     # required Z-T-P aggregations.
                     toa_height = -1
 
-            if toa_height is None:
-                toa_height = bounds1_a.max()
-                if toa_height <= 0:
-                    toa_height = None
-            elif toa_height <= 0:
-                toa_height = None
-            else:
-                toa_height = np.float64(toa_height)
-
             array_a = np.array(array_a)
             bounds0_a = np.array(bounds0_a)
             bounds1_a = np.array(bounds1_a)
@@ -1195,6 +1205,15 @@ class DataVariableMetadata:
             bounds0_b = np.array(bounds0_b)
             bounds1_b = np.array(bounds1_b)
             bounds_b = self.bounds_array(bounds0_b, bounds1_b)
+
+            if toa_height is None:
+                toa_height = bounds1_a.max()
+                if toa_height <= 0:
+                    toa_height = None
+            elif toa_height <= 0:
+                toa_height = None
+            else:
+                toa_height = np.float64(toa_height)
 
             # atmosphere_hybrid_height_coordinate dimension coordinate
             if toa_height is None:
@@ -1310,6 +1329,7 @@ class DataVariableMetadata:
         :Parameters:
 
             axiscode: `int`
+                Defines the physical nature of the axis.
 
         :Returns:
 
@@ -1467,21 +1487,7 @@ class DataVariableMetadata:
                 The bounds dimension name.
 
         """
-        size = bounds.shape[-1]
-        name = f"bounds{size}"
-        if name in self.variables:
-            # Dimension name already exists
-            return name
-
-        # Create a new bounds dimension
-        b = DimensionScale(
-            name=name,
-            size=size,
-            file_obj=self._file_obj,
-            Netcdf4Dimid=self._Netcdf4Dimid,
-        )
-        name = self.add_to_variables(b)
-        return name
+        return self.dimension("bounds", bounds.shape[-1])
 
     def bz(self, rec):
         """Return Z coordinate information.
@@ -1605,15 +1611,48 @@ class DataVariableMetadata:
         if cell_methods:
             self.attrs["cell_methods"] = " ".join(cell_methods)
 
+    def dimension(self, basename, size):
+        """Get the name for a dimension, creating it if necessary.
+
+        :Parameters:
+
+            basename: `str`
+                The basename of the dimension. The actual dimension
+                will have name ``f"{basename}{size}"``.
+
+            size: `int`
+                The dimension size.
+
+        :Returns:
+
+            `str`
+                The bounds dimension name.
+
+        """
+        name = f"{basename}{size}"
+        if name in self.variables:
+            # Dimension name already exists
+            return name
+
+        # Create a new bounds dimension
+        d = DimensionScale(
+            name=name,
+            size=size,
+            file_obj=self._file_obj,
+            Netcdf4Dimid=self._Netcdf4Dimid,
+        )
+        name = self.add_to_variables(d)
+        return name
+
     def dtime(self, rec):
-        """Return data-time information.
+        """Return data-time information for a single record.
 
         Return the tuple (LBYRD, LBMOND, LBDATD, LBHRD, LBMIND) for
         the given record.
 
         :Parameters:
 
-            rec:
+            rec: `RecordInfo`
 
         :Returns:
 
@@ -1625,7 +1664,7 @@ class DataVariableMetadata:
         (1991, 2, 1, 0, 0)
 
         """
-        return tuple(rec.int_hdr[INDEX_LBYRD : INDEX_LBMIND + 1])
+        return tuple(rec.int_hdr[INDEX_LBYRD : INDEX_LBMIND + 1].tolist())
 
     def formula_terms(self, var, formula_terms):
         """Add a formula_terms attribute to a varable.
@@ -2032,6 +2071,7 @@ class DataVariableMetadata:
         :Parameters:
 
             axiscode: `int`
+                Defines the physical nature of the axis.
 
         :Returns:
 
@@ -2363,7 +2403,7 @@ class DataVariableMetadata:
 
         :Parameters:
 
-            rec:
+            rec: `RecordInfo`
 
         :Returns:
 
@@ -2397,14 +2437,14 @@ class DataVariableMetadata:
         return time
 
     def vtime(self, rec):
-        """Return validity-time information.
+        """Return validity-time information for a single record.
 
         Return the tuple (LBYR, LBMON, LBDAT, LBHR, LBMIN) for the
         given record.
 
         :Parameters:
 
-            rec:
+            rec: `RecordInfo`
 
         :Returns:
 
@@ -2416,7 +2456,7 @@ class DataVariableMetadata:
         (1991, 1, 1, 0, 0)
 
         """
-        return tuple(rec.int_hdr[INDEX_LBYR : INDEX_LBMIN + 1])
+        return tuple(rec.int_hdr[INDEX_LBYR : INDEX_LBMIN + 1].tolist())
 
     def xy_coordinate(self, axiscode, axis):
         """Create an X or Y dimension coordinate.
@@ -2424,6 +2464,7 @@ class DataVariableMetadata:
         :Parameters:
 
             axiscode: `int`
+                Defines the physical nature of the axis.
 
             axis: `str`
                 Which type of coordinate to create: ``'x'`` or
@@ -2431,7 +2472,8 @@ class DataVariableMetadata:
 
         :Returns:
 
-            (`str`, `DimensionCoordinate`)
+            `str`
+                The coordinate name.
 
         """
         real_hdr = self._real_hdr
@@ -2540,10 +2582,12 @@ class DataVariableMetadata:
         :Parameters:
 
             axiscode: `int`
+                Defines the physical nature of the axis.
 
         :Returns:
 
-            `DimensionCoordinate`
+            `str`
+                The coordinate name.
 
         """
         z_recs = self._z_recs

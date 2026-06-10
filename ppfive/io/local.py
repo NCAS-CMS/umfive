@@ -24,7 +24,7 @@ class LocalPosixReader(ByteReader):
 
         # Create a mock file system with selected attributes
         self.fs = MockFilesystem(protocol="file")
-        
+
     def _set_cache_policy(self) -> None:
         """TODO."""
         # Best effort hint for benchmarking without page cache on macOS.
@@ -69,7 +69,7 @@ class LocalPosixReader(ByteReader):
         """TODO."""
         if offset < 0:
             raise ValueError("offset must be >= 0")
-        
+
         if nbytes < 0:
             raise ValueError("nbytes must be >= 0")
 

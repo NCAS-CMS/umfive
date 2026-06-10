@@ -11,7 +11,8 @@ from ppfive.core.data import (
     get_record_packed_nbytes,
     read_record_array,
 )
-#from ppfive.io.fsspec_reader import FsspecReader
+
+# from ppfive.io.fsspec_reader import FsspecReader
 from .bytereader import ByteReader
 from .local import LocalPosixReader
 
@@ -145,9 +146,7 @@ class ChunkReadMixin:
             + get_record_packed_nbytes(rec, self._variable.file.word_size)
             for _, _, _, rec, _ in required
         ]
-        buffers = fs.cat_ranges(
-            [path] * len(required), starts, stops
-        )
+        buffers = fs.cat_ranges([path] * len(required), starts, stops)
         items = list(zip(required, buffers))
 
         def _decode_one(item):
@@ -190,7 +189,7 @@ class ChunkReadMixin:
             return
 
         if thread_count:
-            #if cat_range_allowed and isinstance(reader, FsspecReader):
+            # if cat_range_allowed and isinstance(reader, FsspecReader):
             #    fh = getattr(reader, "_fh", None)
             #    actual_fh = getattr(fh, "fh", fh)
             #    if (
