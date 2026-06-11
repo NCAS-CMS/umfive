@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
 
 import numpy as np
 
-# from ppfive.io.fsspec_reader import FsspecReader
 from ppfive.io.bytereader import ByteReader
 from ppfive.io.local import LocalPosixReader
 
@@ -57,11 +55,12 @@ from .models import RecordInfo
 
 
 def _float_key(val):
-    """TODO.
+    """Convert a value to a rounded `float`.
 
     :Parameters:
 
-        var: TODO
+        val:
+            The value to convert.
 
     :Returns:
 
@@ -72,17 +71,17 @@ def _float_key(val):
 
 
 def _between_var_key(rec):
-    """TODO.
+    """Key to discern records that belong in a group.
 
     :Parameters:
 
         rec: `RecordInfo`
-            The record.
+            The record from which to derive the key.
 
     :Returns:
 
         `tuple`
-            TODO
+            A tuple of values derived from the lookup header.
 
     """
     ih = rec.int_hdr
@@ -108,17 +107,19 @@ def _between_var_key(rec):
 
 
 def _within_var_key(rec):
-    """TODO.
+    """Key to discern records within a group.
+
+    THe group is defined by `_between_var_key`.
 
     :Parameters:
 
         rec: `RecordInfo`
-            The record.
+            The record from which to derive the key.
 
     :Returns:
 
         `tuple`
-            TODO
+            A tuple of values derived from the lookup header.
 
     """
     ih = rec.int_hdr
@@ -146,7 +147,7 @@ def _within_var_key(rec):
 
 
 def _record_is_skippable(rec):
-    """Whether or not the reord should be skipped.
+    """Whether or not the record should be skipped.
 
     Mirrors key skip logic in process_vars.c.
 
@@ -158,7 +159,7 @@ def _record_is_skippable(rec):
     :Returns:
 
         `bool`
-            True is the record is skippable, otherwise False.
+            `True` is the record is skippable, otherwise `False`.
 
     """
     ih = rec.int_hdr
@@ -200,7 +201,7 @@ def _dtype_name(rec):
 
 
 def _z_key(rec):
-    """TODO.
+    """Return a key for Z information.
 
     :Parameters:
 
@@ -210,7 +211,8 @@ def _z_key(rec):
     :Returns:
 
         `tuple`
-            TODO"""
+
+    """
     ih = rec.int_hdr
     pseudo = int(ih[INDEX_LBUSER5])
     if pseudo in (0, INT_MISSING_DATA):
@@ -221,7 +223,7 @@ def _z_key(rec):
 
 
 def _t_key(rec):
-    """TODO.
+    """Return a key for T information.
 
     :Parameters:
 
@@ -231,17 +233,23 @@ def _t_key(rec):
     :Returns:
 
         `tuple`
-            TODO"""
+
+    """
     return _within_var_key(rec)[:13]
 
 
-def _split_on_duplicate_tz_pairs(recs) -> list[list[RecordInfo]]:
+def _split_on_duplicate_tz_pairs_and_extra_data(
+    recs,
+) -> list[list[RecordInfo]]:
     """Split a grouped variable on duplicate (t,z) coordinate pairs.
 
     Split a grouped variable when (t,z) coordinate pairs are duplicated.
 
     This mirrors the key behavior of the legacy disambiguation index in
     process_vars.c for non-regular z/t record layouts.
+
+    Also split when extra data differs, after splitting duplicate
+    (t,z) coordinate pairs.
 
     :Parameters:
 
@@ -251,10 +259,11 @@ def _split_on_duplicate_tz_pairs(recs) -> list[list[RecordInfo]]:
     :Returns:
 
         `list`
-            TODO
+            Each element is a `list` of `RecordInfo`
+
     """
-    seen: dict[tuple[Any, Any], int] = defaultdict(int)
-    buckets: dict[int, list[RecordInfo]] = defaultdict(list)
+    seen = defaultdict(int)
+    buckets = defaultdict(list)
 
     for rec in recs:
         pair = (_t_key(rec), _z_key(rec))
@@ -265,30 +274,133 @@ def _split_on_duplicate_tz_pairs(recs) -> list[list[RecordInfo]]:
     if len(buckets) <= 1:
         return [recs]
 
-    return [buckets[index] for index in sorted(buckets)]
+    recs_tz = [buckets[index] for index in sorted(buckets)]
+
+    return _split_groups_by_extra_data(recs_tz)
+
+
+def _split_groups_by_extra_data(recs_tz):
+    """Split groups by extra data.
+
+    :Parameters:
+
+        recs_tz: `list` of `list`
+            Each of the groups derived from splitting on duplicate
+            (t,z) coordinate pairs.
+
+    :Returns:
+
+        `dict`
+            The new groups taking extra data into account.
+
+    """
+    out = []
+    for recs in recs_tz:
+        split = False
+        rec0 = recs[0]
+        for rec1 in recs[1:]:
+            if not _equal_extra_data(rec0, rec1):
+                split = True
+                break
+
+        if split:
+            out.extend([rec] for rec in recs)
+        else:
+            out.append(recs)
+
+    return out
+
+
+def _equal_extra_data(rec0, rec1):
+    """Whether the extra data of two records are equal.
+
+    :Parameters:
+
+        rec0: `RecordInfo`
+            The first record.
+
+        rec1: `RecordInfo`
+            The second record.
+
+    :Returns:
+
+        `bool`
+            Whether or not the records' extra data are equal.
+
+    """
+    extra0 = rec0.extra_data
+    extra1 = rec1.extra_data
+
+    if not extra0:
+        if not extra1:
+            return True
+
+        return False
+
+    if not extra1:
+        return False
+
+    if sorted(extra0.keys()) != sorted(extra1.keys()):
+        return False
+
+    for key, value0 in extra0.items():
+        value1 = extra1[key]
+
+        kind = value0.dtype.kind
+        if kind == "f":
+            itemsize = value0.dtype.itemsize
+            if itemsize == 4:
+                rtol = 1e-5
+            elif itemsize == 8:
+                rtol = 1e-13
+
+            if not np.allclose(value0, value1, atol=0, rtol=rtol):
+                return False
+
+        elif kind in "iSUT":
+            if not np.array_equal(value0, value1):
+                return False
+
+        else:
+            raise ValueError(
+                "Invalid data type for extra data key "
+                f"{key!r}: {value0.dtype!r}"
+            )
+
+    return True
 
 
 def build_data_variable_index(
     records: list[RecordInfo],
     reader,
-#    word_size: int,
-#    byte_order: str,
-    parallelism: dict[str, Any] | None = None,
-) -> dict[int, dict[str, Any]]:
-    """TODO.
-    
+    #    word_size: int,
+    #    byte_order: str,
+    parallelism,
+):
+    """Create a dictionary of data variable descriptions.
+
     :Parameters:
 
         records: sequence of `RecordInfo`
-            The records.
+            All records from a file.
 
         reader: `ByteReader`
             The file reader.
 
+        parallelism: `dict`
+            A dictionary of read-parallelism configuration
+            options. These are passed to the data-loader function
+            (`load`) at data-read time.
+
     :Returns:
 
-        `dict`
-            TODO"""
+        `list` of `dict`
+            A dictionary describing each data variable. Each
+            dictionary contains all of the information needed to
+            create a `DataVariable` instance and its associated
+            `DimensionScale` and `Variable` instances.
+
+    """
     if parallelism is None:
         parallelism = {}
 
@@ -301,16 +413,14 @@ def build_data_variable_index(
     for rec in ordered:
         grouped[_between_var_key(rec)].append(rec)
 
-    grouped = split_groups_by_extra_data(grouped)
-
     variable_index = []
 
     # Assign a unique integer code to each data variable. This is used
     # as the key in the 'variable_index' dictionary.
     int_code = 0
 
-    for _, recs in grouped.items():
-        for recs_split in _split_on_duplicate_tz_pairs(recs):
+    for recs in grouped.values():
+        for recs_split in _split_on_duplicate_tz_pairs_and_extra_data(recs):
             first = recs_split[0]
 
             # Relevant LBVC codes
@@ -405,7 +515,7 @@ def build_data_variable_index(
 
                     out = np.empty(out_shape, dtype=_dtype)
                     out.fill(np.nan if _dtype.kind == "f" else 0)
-                    
+
                     # Strategy A: fsspec bulk range reads for unpacked
                     #             records.
                     if (
@@ -419,7 +529,7 @@ def build_data_variable_index(
                             starts = [rec.data_offset for rec in group_recs]
                             stops = [
                                 rec.data_offset
-                                + get_record_packed_nbytes(rec) #, word_size)
+                                + get_record_packed_nbytes(rec)  # , word_size)
                                 for rec in group_recs
                             ]
                             buffers = fs.cat_ranges(
@@ -433,7 +543,7 @@ def build_data_variable_index(
                                 ti = _t_index[_t_key(rec)]
                                 zi = _z_index[_z_key(rec)]
                                 values = decode_record_array_from_raw(
-                                    raw, rec #, word_size, byte_order
+                                    raw, rec  # , word_size, byte_order
                                 )
                                 return ti, zi, values
 
@@ -467,7 +577,9 @@ def build_data_variable_index(
                         def _read_one(rec):
                             ti = _t_index[_t_key(rec)]
                             zi = _z_index[_z_key(rec)]
-                            values = read_record_array(reader, rec) #, word_size, byte_order
+                            values = read_record_array(
+                                reader, rec
+                            )  # , word_size, byte_order
                             return ti, zi, values
 
                         with ThreadPoolExecutor(
@@ -488,7 +600,9 @@ def build_data_variable_index(
                     for rec in group_recs:
                         ti = _t_index[_t_key(rec)]
                         zi = _z_index[_z_key(rec)]
-                        values = read_record_array(reader, rec) #, word_size, byte_order
+                        values = read_record_array(
+                            reader, rec
+                        )  # , word_size, byte_order
                         out[ti, zi, :, :] = values.reshape((_ny, _nx))
 
                     if not _has_z_axis:
@@ -535,92 +649,3 @@ def build_data_variable_index(
             int_code += 1
 
     return variable_index
-
-
-def split_groups_by_extra_data(grouped):
-    """Split groups by extra data.
-
-    :Parameters:
-
-        groups: `dict`
-            The groups derived with ignoring extra data.
-
-    :Returns:
-
-        `dict`
-            The new groups taking extra data into account.
-
-    """
-    new_grouped = {}
-
-    for key, recs in grouped.items():
-        split = False
-
-        rec0 = recs[0]
-        for rec1 in recs[1:]:
-            if not equal_extra_data(rec0, rec1):
-                split = True
-                break
-
-        if split:
-            # This group doesn't form a complete nz x nt matrix,
-            # so split it up into 1 x 1 groups.
-            for i, rec in enumerate(recs):
-                new_grouped[key + (f"extra_data_{i}")] = [rec]
-        else:
-            new_grouped[key] = recs
-
-    return new_grouped
-
-
-def equal_extra_data(rec0, rec1):
-    """Whether two sets of record extra data are equal.
-
-    :Parameters:
-
-        rec0: `RecordInfo`
-            The first record.
-
-        rec1: `RecordInfo`
-            The second record.
-
-    :Returns:
-
-        `bool`
-            Whether or not the records' extra data are equal.
-
-    """
-    extra0 = rec0.extra_data
-    extra1 = rec0.extra_data
-
-    if extra0 is None:
-        if extra1 is None:
-            return True
-
-        return False
-
-    if extra1 is None:
-        return False
-
-    if sorted(extra0.keys()) != sorted(extra1.keys()):
-        return False
-
-    for key, value0 in extra0.items():
-        value1 = extra1[key]
-
-        kind = value0.dtype.kind
-        if kind == "f":
-            itemsize = value0.dtype.itemsize
-            if itemsize == 4:
-                rtol = 1e-5
-            elif itemsize == 8:
-                rtol = 1e-13
-
-            if not np.allclose(value0, value1, atol=0, rtol=rtol):
-                return False
-
-        elif kind in "iSUT":
-            if not np.array_equal(value0, value1):
-                return False
-
-    return True

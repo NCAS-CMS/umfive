@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .bytereader import ByteReader
 from .mock_filesystem import MockFilesystem
 
@@ -8,7 +6,14 @@ class FileObjReader(ByteReader):
     """ByteReader adapter for seekable/readable file-like objects."""
 
     def __init__(self, fileobj):
-        """TODO."""
+        """**Initialisation**
+
+        :Parameters:
+
+            fileobj:
+                The file-like object to wrap.
+
+        """
         if not hasattr(fileobj, "read") or not callable(fileobj.read):
             raise ValueError("fileobj must provide a callable read method")
 
@@ -32,14 +37,35 @@ class FileObjReader(ByteReader):
             # Create a mock file system with selected attributes
             self.fs = MockFilesystem(protocol="file")
 
-    def close(self) -> None:
-        """TODO."""
+    def close(self):
+        """Close the underlying file-like object.
+
+        :Returns:
+
+            `None`
+
+        """
         close = getattr(self.fileobj, "close", None)
         if callable(close):
             close()
 
-    def read_at(self, offset: int, nbytes: int) -> bytes:
-        """TODO."""
+    def read_at(self, offset, nbytes):
+        """Read from the file.
+
+        :Parameters:
+
+            offset: `int`
+                Start reading at this byte address.
+
+            nbytes: `int`
+                Read this many bytes.
+
+        :Returns:
+
+            `bytes`
+                The read bytes.
+
+        """
         if offset < 0:
             raise ValueError("offset must be >= 0")
 

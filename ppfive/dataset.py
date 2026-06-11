@@ -91,8 +91,8 @@ class File(Mapping):
         :Parameters:
 
             filename:
-                The definition of the PP or UM dataset to be
-                read. Must either be a string-like (such as `str` or
+                The definition of the PP or UM dataset to be read.
+                Must either be a string-like (such as `str` or
                 `pathlib.Path`) or a file-like (such as
                 `io.BufferedReader`, the result of an `fsspec` file
                 system open, or a subclass of `ppfive.ByteReader`).
@@ -289,8 +289,8 @@ class File(Mapping):
             _data_variable_index = build_data_variable_index(
                 records,
                 self._reader,
-#                self.word_size,
-#                self.byte_order,
+                #                self.word_size,
+                #                self.byte_order,
                 parallelism=parallelism,
             )
 
@@ -2155,7 +2155,6 @@ class DataVariableMetadata:
                     dc.setattr("bounds", bounds_ncvar)
 
             self._cache[key] = dim_ncvar
-
         else:
             self._axis["t"] = dim_ncvar
 
@@ -2193,39 +2192,55 @@ class DataVariableMetadata:
             bounds = self.bounds_array(lower_bounds, upper_bounds)
             array = np.average(bounds, axis=1)
 
-            ac = Variable(
-                name=standard_name,
-                data=array,
-                attrs={
-                    "standard_name": standard_name,
-                    "long_name": "region limit",
-                    "units": units,
-                },
-                DIMENSION_LIST=((self._axis[axis],),),
+            key = (
+                "site_coordinates_from_extra_data",
+                site_axis,
+                tuple(array.tolist()),
+                tuple(lower_bounds.tolist()),
+                tuple(upper_bounds.tolist()),
             )
-            aux_ncvar = self.add_to_variables(ac)
+            aux_ncvar = self._cache.get(key)
+            if aux_ncvar is None:
+                ac = Variable(
+                    name=standard_name,
+                    data=array,
+                    attrs={
+                        "standard_name": standard_name,
+                        "long_name": "region limit",
+                        "units": units,
+                    },
+                    DIMENSION_LIST=((self._axis[axis],),),
+                )
+                aux_ncvar = self.add_to_variables(ac)
 
-            bounds_dim = self.bounds_dim(bounds)
-            ac_bounds = Variable(
-                name=f"{aux_ncvar}_bounds",
-                data=bounds,
-                DIMENSION_LIST=((self._axis[axis],), (bounds_dim,)),
-            )
-            ac_bounds_ncvar = self.add_to_variables(ac_bounds)
+                bounds_dim = self.bounds_dim(bounds)
+                ac_bounds = Variable(
+                    name=f"{aux_ncvar}_bounds",
+                    data=bounds,
+                    DIMENSION_LIST=((self._axis[axis],), (bounds_dim,)),
+                )
+                ac_bounds_ncvar = self.add_to_variables(ac_bounds)
 
-            ac.setattr("bounds", ac_bounds_ncvar)
+                ac.setattr("bounds", ac_bounds_ncvar)
+
+                self._cache[key] = aux_ncvar
 
             self.add_to_coordinates(aux_ncvar)
 
         array = self.extra.get("domain_title")
         if array is not None:
-            ac = Variable(
-                name="region",
-                data=array,
-                DIMENSION_LIST=((self._axis[axis],),),
-            )
-            aux__ncvar = self.add_to_variables(ac)
-            self.add_to_coordinates(aux__ncvar)
+            key = ("region_coordinate", tuple(array.tolist()))
+            aux_ncvar = self._cache.get(key)
+            if aux_ncvar is None:
+                ac = Variable(
+                    name="region",
+                    data=array,
+                    DIMENSION_LIST=((self._axis[axis],),),
+                )
+                aux_ncvar = self.add_to_variables(ac)
+                self._cache[key] = aux_ncvar
+
+            self.add_to_coordinates(aux_ncvar)
 
     def time_coordinate_from_extra_data(self, axiscode, axis):
         """Create the time coordinate from extra data and return it.
@@ -2241,6 +2256,14 @@ class DataVariableMetadata:
         lower_bounds = extra.get(f"{axis}_lower_bound")
         upper_bounds = extra.get(f"{axis}_lupper_bound")
 
+        lbounds = lower_bounds
+        if lbounds is not None:
+            lbounds = tuple(lower_bounds.tolist())
+
+        ubounds = upper_bounds
+        if ubounds is not None:
+            ubounds = tuple(upper_bounds.tolist())
+
         calendar = self._calendar
         if calendar == "360_day":
             units = "days since 0-1-1"
@@ -2249,30 +2272,45 @@ class DataVariableMetadata:
         elif calendar == "365_day":
             units = "days since 1752-09-13"
 
-        # Create time domain axis
-        dc = DimensionScale(
-            data=array,
-            axiscode=axiscode,
-            attrs={"units": units, "calendar": calendar},
-            file_obj=self._file_obj,
-            Netcdf4Dimid=self._Netcdf4Dimid,
+        key = (
+            "time_coordinate_from_extra_data",
+            units,
+            calendar,
+            tuple(array.tolist()),
+            lbounds,
+            ubounds,
         )
-        dim_ncvar = self.add_to_variables(dc)
 
-        self._axis[axis] = dim_ncvar
-        self._time_axis = dim_ncvar
-
-        if lower_bounds is not None and upper_bounds is not None:
-            bounds = self.bounds_array(lower_bounds, upper_bounds)
-            bounds_dim = self.bounds_dim(bounds)
-            dc_bounds = Variable(
-                name=f"{dim_ncvar}_bounds",
-                data=bounds,
-                DIMENSION_LIST=((self._axis[axis],), (bounds_dim,)),
+        dim_ncvar = self._cache.get(key)
+        if dim_ncvar is None:
+            # Create time domain axis
+            dc = DimensionScale(
+                data=array,
+                axiscode=axiscode,
+                attrs={"units": units, "calendar": calendar},
+                file_obj=self._file_obj,
+                Netcdf4Dimid=self._Netcdf4Dimid,
             )
-            dc_bounds_ncvar = self.add_to_variables(dc_bounds)
+            dim_ncvar = self.add_to_variables(dc)
 
-            dc.setattr("bounds", dc_bounds_ncvar)
+            self._axis[axis] = dim_ncvar
+            self._time_axis = dim_ncvar
+
+            if lower_bounds is not None and upper_bounds is not None:
+                bounds = self.bounds_array(lower_bounds, upper_bounds)
+                bounds_dim = self.bounds_dim(bounds)
+                dc_bounds = Variable(
+                    name=f"{dim_ncvar}_bounds",
+                    data=bounds,
+                    DIMENSION_LIST=((self._axis[axis],), (bounds_dim,)),
+                )
+                dc_bounds_ncvar = self.add_to_variables(dc_bounds)
+
+                dc.setattr("bounds", dc_bounds_ncvar)
+
+            self._cache[key] = dim_ncvar
+        else:
+            self._axis[axis] = dim_ncvar
 
         self.add_to_coordinates(dim_ncvar)
         return dim_ncvar

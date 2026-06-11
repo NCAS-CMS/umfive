@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import os
 import platform
 import shutil
@@ -13,10 +11,21 @@ from .mock_filesystem import MockFilesystem
 class LocalPosixReader(ByteReader):
     """POSIX file reader using pread-style absolute reads."""
 
-    def __init__(
-        self, path: str | os.PathLike[str], local_os_cache: bool = True
-    ):
-        """TODO."""
+    def __init__(self, path: str | os.PathLike[str], local_os_cache=True):
+        """**Initialisation**
+
+        :Parameters:
+
+            path: string-like
+                The definition of the PP or UM dataset to be read.
+
+            local_os_cache: `bool`, optional
+                 If True (the default) then use the local operating
+                 system cache for local POSIX dataset access when
+                 *filename* is a string-like. If False then this
+                 caching is disabled in this case.
+
+        """
         self.path = str(Path(path))
         self._fd = os.open(self.path, os.O_RDONLY)
         self._local_os_cache = local_os_cache
@@ -26,7 +35,13 @@ class LocalPosixReader(ByteReader):
         self.fs = MockFilesystem(protocol="file")
 
     def _set_cache_policy(self) -> None:
-        """TODO."""
+        """Set the cache policy.
+
+        :Returns:
+
+            `None`
+
+        """
         # Best effort hint for benchmarking without page cache on macOS.
         if self._local_os_cache:
             return
@@ -43,8 +58,20 @@ class LocalPosixReader(ByteReader):
                 # Cache hint is optional; do not fail reads if unsupported.
                 pass
 
+    def close(self):
+        """Close the underlying file-like object.
+
+        :Returns:
+
+            `None`
+
+        """
+        if self._fd is not None:
+            os.close(self._fd)
+            self._fd = None
+
     @staticmethod
-    def drop_os_cache_best_effort() -> bool:
+    def drop_os_cache_best_effort():
         """Best-effort cache drop for local benchmarking.
 
         On macOS this tries the `purge` command when available.
@@ -65,8 +92,23 @@ class LocalPosixReader(ByteReader):
 
         return False
 
-    def read_at(self, offset: int, nbytes: int) -> bytes:
-        """TODO."""
+    def read_at(self, offset, nbytes):
+        """Read from the file.
+
+        :Parameters:
+
+            offset: `int`
+                Start reading at this byte address.
+
+            nbytes: `int`
+                Read this many bytes.
+
+        :Returns:
+
+            `bytes`
+                The read bytes.
+
+        """
         if offset < 0:
             raise ValueError("offset must be >= 0")
 
@@ -78,9 +120,3 @@ class LocalPosixReader(ByteReader):
             self._set_cache_policy()
 
         return os.pread(self._fd, nbytes, offset)
-
-    def close(self) -> None:
-        """TODO."""
-        if self._fd is not None:
-            os.close(self._fd)
-            self._fd = None

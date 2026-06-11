@@ -4,4 +4,4 @@ from .fileobj import FileObjReader
 # from .fsspec_reader import FsspecReader
 from .local import LocalPosixReader
 
-__all__ = ["ByteReader", "LocalPosixReader", "FsspecReader", "FileObjReader"]
+__all__ = ["ByteReader", "LocalPosixReader", "FileObjReader"]

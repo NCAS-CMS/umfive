@@ -35,7 +35,7 @@ class RecordInfo:
 
     **Initialisation**
 
-    :Paramaeters:
+    :Parameters:
 
         int_hdr: `numpy.ndarray`
             The 1-d array of the integer lookup header.
@@ -81,7 +81,7 @@ class StoreInfo:
 
     **Initialisation**
 
-    :Paramaeters:
+    :Parameters:
 
         chunk_offset: `tuple` of `int`
             The chunk index (e.g. ``(1, 4, 0, 0)``).
