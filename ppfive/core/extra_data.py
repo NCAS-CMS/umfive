@@ -23,7 +23,31 @@ _codes = {
 def read_extra_data(
     reader, extra_data_offset, extra_data_length, word_size, byte_order
 ):
-    """TODO."""
+    """Read extra data into dictionary.
+
+    :Parameters:
+
+        reader: `ByteReader`
+            The file reader.
+
+        extra_data_offset: `int`
+            The byte address of the start of the extra data in the
+            file.
+
+        extra_data_length: `int`
+            The length in bytes of the extra data.
+
+        word_size: `int`
+            The word size (``4`` or ``8``).
+
+        byte_order: `str`
+            The word byte order (``'little'`` or ``'big'``).
+
+    :Returns:
+
+        `dict`
+
+    """
     if not extra_data_length:
         return {}
 
@@ -33,86 +57,118 @@ def read_extra_data(
 
 
 class ExtraDataUnpacker:
-    """TODO."""
-
-    _int_types = {4: np.int32, 8: np.int64}
-    _float_types = {4: np.float32, 8: np.float64}
+    """Extra data unpacker."""
 
     def __init__(self, raw_extra_data, word_size, byte_order):
-        """TODO."""
-        self.rdata = raw_extra_data
-        self.ws = word_size
-        self.itype = self._int_types[word_size]
-        self.ftype = self._float_types[word_size]
-        self.is_swapped = not byte_order == sys.byteorder
+        """**Initialisation**
 
-    def next_words(self, n):
-        """Return words as bytes.
+        :Parameters:
 
-        Return next n words as raw data string, and pop them off the
-        front of the string.
+            raw_extra_data: `bytes`
+                The raw bytes of the packed extra data.
+
+            word_size: `int`
+                The word size (``4`` or ``8``).
+
+            byte_order: `str`
+                The word byte order (``'little'`` or ``'big'``).
 
         """
-        ws = self.ws
+        self.raw_data = raw_extra_data
+        self.word_size = word_size
+
+        if word_size == 4:
+            self.itype = np.int32
+            self.ftype = np.float32
+        elif word_size == 8:
+            self.itype = np.int64
+            self.ftype = np.float64
+
+        self.is_swapped = not byte_order == sys.byteorder
+
+    def next_words_as_bytes(self, n):
+        """Return words as bytes.
+
+        Returns the next *n* words as raw bytes, and pop them off the
+        front `raw_data`.
+
+        :Parameters:
+
+            n: `int`
+                 The number of words to return as bytes
+
+        :Returns:
+
+            `bytes`
+
+        """
+        word_size = self.word_size
         is_swapped = self.is_swapped
-        rdata = self.rdata
-        pos = n * ws
+        rdata = self.raw_data
+        pos = n * word_size
         rv = b""
         for i in range(n):
-            x = rdata[i * ws : (i + 1) * ws]
+            x = rdata[i * word_size : (i + 1) * word_size]
             if is_swapped:
                 x = x[::-1]
 
             rv += x
 
         assert len(rv) == pos
-        self.rdata = rdata[pos:]
+        self.raw_data = rdata[pos:]
         return rv
 
-    def convert_bytes_to_string(self, st):
-        """Convert bytes to string.
+    def convert_bytes_to_string(self, raw):
+        """Convert bytes to a string.
+
+        :Parameters:
+
+            raw: `bytes`
+                The bytes.
 
         :Returns:
 
             `str`
+                The decoded string.
 
         """
-        ws = self.ws
+        word_size = self.word_size
         if self.is_swapped:
             indices = slice(None, None, -1)
         else:
             indices = slice(None)
 
-        st = "".join(
+        raw = "".join(
             [
-                st[pos : pos + ws][indices].decode("utf-8")
-                for pos in range(0, len(st), ws)
+                raw[pos : pos + word_size][indices].decode("utf-8")
+                for pos in range(0, len(raw), word_size)
             ]
         )
 
-        while st.endswith("\x00"):
-            st = st[:-1]
+        while raw.endswith("\x00"):
+            raw = raw[:-1]
 
-        return st
+        return raw
 
     def get_data(self):
-        """Get the (key, value) pairs for extra data.
+        """Get the extra data in a dictionary.
 
         :Returns:
 
-            `ExtraData`
+            `dict`
+                The extra data.
 
         """
         d = {}
-        while self.rdata:
-            i = np.frombuffer(self.next_words(1), self.itype)[0]
+        while self.raw_data:
+            i = np.frombuffer(self.next_words_as_bytes(1), self.itype)[0]
             if i == 0:
                 break
 
             ia, ib = divmod(i, 1000)
             key, etype = _codes[ib]
 
-            rawvals = self.next_words(ia)
+            rawvals = self.next_words_as_bytes(ia)
             if etype == float:
                 vals = np.frombuffer(rawvals, self.ftype)
             elif etype == str:

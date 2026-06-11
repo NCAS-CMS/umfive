@@ -98,8 +98,8 @@ class ChunkReadMixin:
             chunk_data = read_record_array(
                 self._variable.file._reader,
                 rec,
-                self._variable.file.word_size,
-                self._variable.file.byte_order,
+                #                self._variable.file.word_size,
+                #                self._variable.file.byte_order,
             ).reshape(chunk_shape)
             decoded_chunks.append(
                 (chunk_offset, chunk_selection, out_selection, chunk_data)
@@ -119,8 +119,8 @@ class ChunkReadMixin:
             chunk_data = read_record_array(
                 self._variable.file._reader,
                 rec,
-                self._variable.file.word_size,
-                self._variable.file.byte_order,
+                #                self._variable.file.word_size,
+                #                self._variable.file.byte_order,
             ).reshape(chunk_shape)
             return chunk_offset, chunk_selection, out_selection, chunk_data
 

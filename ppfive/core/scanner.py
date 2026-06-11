@@ -205,6 +205,8 @@ def scan_pp_headers(reader, file_type):
                 data_offset=data_offset,
                 disk_length=data_record_len,
                 extra_data=extra_data,
+                word_size=word_size,
+                byte_order=byte_order,
             )
         )
         pos = after_data
@@ -314,6 +316,8 @@ def scan_ff_headers(reader, file_type):
                 data_offset=data_offset,
                 disk_length=disk_length,
                 extra_data=extra_data,
+                word_size=word_size,
+                byte_order=byte_order,
             )
         )
 

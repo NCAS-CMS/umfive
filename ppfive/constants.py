@@ -1,11 +1,14 @@
 from sys import float_info
 
+# The value of the CF "Conventions" attribute.
 CF_CONVENTIONS = "CF-1.13"
 
+# Sizes (in words) of the lookup header
 N_INT_HDR = 45
 N_REAL_HDR = 19
 N_HDR = N_INT_HDR + N_REAL_HDR
 
+# Integer lookup header indices
 (
     INDEX_LBYR,
     INDEX_LBMON,
@@ -54,6 +57,7 @@ N_HDR = N_INT_HDR + N_REAL_HDR
     INDEX_LBUSER7,
 ) = tuple(range(45))
 
+# Real lookup header indices
 (
     INDEX_BRSVD1,
     INDEX_BRSVD2,
@@ -84,9 +88,11 @@ PP_RMDI = -1.0e30
 # No no-missing-data value of BMDI (as described in UMDP F3 v805)
 BMDI_no_missing_data_value = -1.0e30
 
-# Reference surface pressure in Pascals
+# Reference surface pressure in Pascals, used in the creation of
+# atmosphere_hybrid_sigma_pressure_coordinate values.
 PSTAR = 1.0e5
 
+# Tolerances for floating point comparisons
 ATOL = float_info.epsilon
 RTOL = ATOL
 

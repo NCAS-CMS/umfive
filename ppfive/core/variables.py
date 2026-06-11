@@ -56,13 +56,35 @@ from .interpret import get_type
 from .models import RecordInfo
 
 
-def _float_key(val) -> float:
-    """TODO."""
+def _float_key(val):
+    """TODO.
+
+    :Parameters:
+
+        var: TODO
+
+    :Returns:
+
+        `float`
+
+    """
     return round(float(val), 9)
 
 
-def _between_var_key(rec: RecordInfo) -> tuple:
-    """TODO."""
+def _between_var_key(rec):
+    """TODO.
+
+    :Parameters:
+
+        rec: `RecordInfo`
+            The record.
+
+    :Returns:
+
+        `tuple`
+            TODO
+
+    """
     ih = rec.int_hdr
     rh = rec.real_hdr
     return (
@@ -85,7 +107,20 @@ def _between_var_key(rec: RecordInfo) -> tuple:
     )
 
 
-def _within_var_key(rec: RecordInfo) -> tuple:
+def _within_var_key(rec):
+    """TODO.
+
+    :Parameters:
+
+        rec: `RecordInfo`
+            The record.
+
+    :Returns:
+
+        `tuple`
+            TODO
+
+    """
     ih = rec.int_hdr
     rh = rec.real_hdr
     lblev = int(ih[INDEX_LBLEV])
@@ -110,13 +145,27 @@ def _within_var_key(rec: RecordInfo) -> tuple:
     )
 
 
-def _record_is_skippable(rec: RecordInfo) -> bool:
-    """TODO."""
+def _record_is_skippable(rec):
+    """Whether or not the reord should be skipped.
+
+    Mirrors key skip logic in process_vars.c.
+
+    :Parameters:
+
+        rec: `RecordInfo`
+            The record.
+
+    :Returns:
+
+        `bool`
+            True is the record is skippable, otherwise False.
+
+    """
     ih = rec.int_hdr
 
-    # Mirrors key skip logic in process_vars.c
     if int(ih[INDEX_LBNPT]) == INT_MISSING_DATA:
         return True
+
     if int(ih[INDEX_LBROW]) == INT_MISSING_DATA:
         return True
 
@@ -127,17 +176,41 @@ def _record_is_skippable(rec: RecordInfo) -> bool:
     return False
 
 
-def _dtype_name(first: RecordInfo, word_size: int) -> str:
-    """TODO."""
-    kind = get_type(first.int_hdr)
+def _dtype_name(rec):
+    """The data type of the record data array.
+
+    :Parameters:
+
+        rec: `RecordInfo`
+            The record.
+
+    :Returns:
+
+        `str`
+            The data type.
+
+    """
+    word_size = rec.word_size
+
+    kind = get_type(rec.int_hdr)
     if kind == "integer":
         return "int32" if word_size == 4 else "int64"
 
     return "float32" if word_size == 4 else "float64"
 
 
-def _z_key(rec: RecordInfo) -> tuple:
-    """TODO."""
+def _z_key(rec):
+    """TODO.
+
+    :Parameters:
+
+        rec: `RecordInfo`
+            The record.
+
+    :Returns:
+
+        `tuple`
+            TODO"""
     ih = rec.int_hdr
     pseudo = int(ih[INDEX_LBUSER5])
     if pseudo in (0, INT_MISSING_DATA):
@@ -147,14 +220,22 @@ def _z_key(rec: RecordInfo) -> tuple:
     return (pseudo, within[13], within[14], within[15])
 
 
-def _t_key(rec: RecordInfo) -> tuple:
-    """TODO."""
+def _t_key(rec):
+    """TODO.
+
+    :Parameters:
+
+        rec: `RecordInfo`
+            The record.
+
+    :Returns:
+
+        `tuple`
+            TODO"""
     return _within_var_key(rec)[:13]
 
 
-def _split_on_duplicate_tz_pairs(
-    recs: list[RecordInfo],
-) -> list[list[RecordInfo]]:
+def _split_on_duplicate_tz_pairs(recs) -> list[list[RecordInfo]]:
     """Split a grouped variable on duplicate (t,z) coordinate pairs.
 
     Split a grouped variable when (t,z) coordinate pairs are duplicated.
@@ -162,6 +243,15 @@ def _split_on_duplicate_tz_pairs(
     This mirrors the key behavior of the legacy disambiguation index in
     process_vars.c for non-regular z/t record layouts.
 
+    :Parameters:
+
+        recs: sequence of `RecordInfo`
+            The records.
+
+    :Returns:
+
+        `list`
+            TODO
     """
     seen: dict[tuple[Any, Any], int] = defaultdict(int)
     buckets: dict[int, list[RecordInfo]] = defaultdict(list)
@@ -181,11 +271,24 @@ def _split_on_duplicate_tz_pairs(
 def build_data_variable_index(
     records: list[RecordInfo],
     reader,
-    word_size: int,
-    byte_order: str,
+#    word_size: int,
+#    byte_order: str,
     parallelism: dict[str, Any] | None = None,
 ) -> dict[int, dict[str, Any]]:
-    """TODO."""
+    """TODO.
+    
+    :Parameters:
+
+        records: sequence of `RecordInfo`
+            The records.
+
+        reader: `ByteReader`
+            The file reader.
+
+    :Returns:
+
+        `dict`
+            TODO"""
     if parallelism is None:
         parallelism = {}
 
@@ -257,7 +360,7 @@ def build_data_variable_index(
             )
             has_z_axis = not is_single_level_surface
 
-            dtype = np.dtype(_dtype_name(first, word_size))
+            dtype = np.dtype(_dtype_name(first))
 
             # # Digit N1 of LBPACK = N5N4N3N2N1
             # packing_modes = sorted(
@@ -302,7 +405,7 @@ def build_data_variable_index(
 
                     out = np.empty(out_shape, dtype=_dtype)
                     out.fill(np.nan if _dtype.kind == "f" else 0)
-
+                    
                     # Strategy A: fsspec bulk range reads for unpacked
                     #             records.
                     if (
@@ -316,7 +419,7 @@ def build_data_variable_index(
                             starts = [rec.data_offset for rec in group_recs]
                             stops = [
                                 rec.data_offset
-                                + get_record_packed_nbytes(rec, word_size)
+                                + get_record_packed_nbytes(rec) #, word_size)
                                 for rec in group_recs
                             ]
                             buffers = fs.cat_ranges(
@@ -330,7 +433,7 @@ def build_data_variable_index(
                                 ti = _t_index[_t_key(rec)]
                                 zi = _z_index[_z_key(rec)]
                                 values = decode_record_array_from_raw(
-                                    raw, rec, word_size, byte_order
+                                    raw, rec #, word_size, byte_order
                                 )
                                 return ti, zi, values
 
@@ -364,9 +467,7 @@ def build_data_variable_index(
                         def _read_one(rec):
                             ti = _t_index[_t_key(rec)]
                             zi = _z_index[_z_key(rec)]
-                            values = read_record_array(
-                                reader, rec, word_size, byte_order
-                            )
+                            values = read_record_array(reader, rec) #, word_size, byte_order
                             return ti, zi, values
 
                         with ThreadPoolExecutor(
@@ -387,9 +488,7 @@ def build_data_variable_index(
                     for rec in group_recs:
                         ti = _t_index[_t_key(rec)]
                         zi = _z_index[_z_key(rec)]
-                        values = read_record_array(
-                            reader, rec, word_size, byte_order
-                        )
+                        values = read_record_array(reader, rec) #, word_size, byte_order
                         out[ti, zi, :, :] = values.reshape((_ny, _nx))
 
                     if not _has_z_axis:
@@ -413,7 +512,7 @@ def build_data_variable_index(
                 {
                     "attrs": {},
                     "shape": shape,
-                    "dtype": _dtype_name(first, word_size),
+                    "dtype": _dtype_name(first),
                     "chunk_shape": chunk_shape,
                     "records": recs_split,
                     "chunk_records": chunk_records,

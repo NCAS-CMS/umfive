@@ -934,12 +934,12 @@ class DataVariable(_Mixin):
 
             max_thread_count: `int`, optional
                 The maximum number of concurrent worker threads to use
-                for reading the local POSIX data chunks of the
-                variable. Ignored for non-local POSIX readers. If
-                ``0`` (the default) then the reading of data chunks
-                runs sequentially in the main thread. The number of
-                threads is limited by the number of data
-                chunks.
+                for reading the data chunks of the variable. If ``0``
+                (the default) then the reading of data chunks runs
+                sequentially in the main thread. The number of threads
+                actually used will never be greater than the number of
+                data chunks, regardless of the value of
+                *max_thread_count*.
 
             cat_range_allowed: `bool`, optional
                 If True (the default), uses fsspec's bulk range

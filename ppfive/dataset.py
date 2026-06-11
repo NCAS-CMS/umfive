@@ -289,8 +289,8 @@ class File(Mapping):
             _data_variable_index = build_data_variable_index(
                 records,
                 self._reader,
-                self.word_size,
-                self.byte_order,
+#                self.word_size,
+#                self.byte_order,
                 parallelism=parallelism,
             )
 
@@ -561,12 +561,12 @@ class File(Mapping):
 
             max_thread_count: `int`, optional
                 The number of concurrent worker threads to use for
-                reading the local POSIX data chunks of each
-                variable. Ignored for non-local POSIX readers. If
-                ``0`` (the default) then the reading of data chunks
-                runs sequentially in the main thread. For each
-                varable, the number of threads is limited by the
-                number of data chunks.
+                reading the data chunks of each variable. If ``0``
+                (the default) then the reading of data chunks runs
+                sequentially in the main thread. For each varable, the
+                number of threads actually used will never be greater
+                than the number of data chunks, regardless of the
+                value of *max_thread_count*.
 
             cat_range_allowed: `bool`, optional
                 If True (the default), uses fsspec's bulk range

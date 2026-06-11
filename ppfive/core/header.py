@@ -1,14 +1,21 @@
-from __future__ import annotations
-
 import numpy as np
-
-from ppfive.io.bytereader import ByteReader
 
 from ..constants import N_HDR, N_INT_HDR, N_REAL_HDR
 
 
-def _endian_prefix(byte_order: str) -> str:
-    """TODO."""
+def endian_prefix(byte_order: str) -> str:
+    """Return the '>' or '<' prefix for the byte_order.
+
+    :Parameter:
+
+        byte_order: `str`
+            The word byte order (``'little'`` or ``'big'``).
+
+    :Returns:
+
+        `str`
+
+    """
     if byte_order == "little":
         return "<"
 
@@ -18,9 +25,23 @@ def _endian_prefix(byte_order: str) -> str:
     raise ValueError(f"Unsupported byte_order: {byte_order!r}")
 
 
-def _int_dtype(word_size: int, byte_order: str):
-    """TODO."""
-    prefix = _endian_prefix(byte_order)
+def _int_dtype(word_size, byte_order):
+    """Return an integer real numpy.dtype`.
+
+    :Parameter:
+
+        word_size: `int`
+            The word size (``4`` or ``8``).
+
+        byte_order: `str`
+            The word byte order (``'little'`` or ``'big'``).
+
+    :Returns:
+
+        `numpy.dtype
+
+    """
+    prefix = endian_prefix(byte_order)
     if word_size == 4:
         return np.dtype(f"{prefix}i4")
 
@@ -30,9 +51,23 @@ def _int_dtype(word_size: int, byte_order: str):
     raise ValueError(f"Unsupported word_size: {word_size!r}")
 
 
-def _real_dtype(word_size: int, byte_order: str):
-    """TODO."""
-    prefix = _endian_prefix(byte_order)
+def _real_dtype(word_size, byte_order):
+    """Return a real numpy.dtype`.
+
+    :Parameter:
+
+        word_size: `int`
+            The word size (``4`` or ``8``).
+
+        byte_order: `str`
+            The word byte order (``'little'`` or ``'big'``).
+
+    :Returns:
+
+        `numpy.dtype`
+
+    """
+    prefix = endian_prefix(byte_order)
     if word_size == 4:
         return np.dtype(f"{prefix}f4")
 
@@ -42,10 +77,26 @@ def _real_dtype(word_size: int, byte_order: str):
     raise ValueError(f"Unsupported word_size: {word_size!r}")
 
 
-def decode_header_from_bytes(
-    header_bytes: bytes, word_size: int, byte_order: str
-):
-    """TODO."""
+def decode_header_from_bytes(header_bytes, word_size, byte_order):
+    """Decode lookup header bytes into `numpy` arrays.
+
+    :Parameter:
+
+        header_bytes: `bytes`
+            The raw bytes of the lookup header.
+
+        word_size: `int`
+            The word size (``4`` or ``8``).
+
+        byte_order: `str`
+            The word byte order (``'little'`` or ``'big'``).
+
+    :Returns:
+
+        `numpy.ndarray`, `numpy.ndarray`
+            The integer and real lookup header arrays.
+
+    """
     expected = N_HDR * word_size
     if len(header_bytes) < expected:
         raise ValueError("Header bytes shorter than required 64-word header")
@@ -64,9 +115,29 @@ def decode_header_from_bytes(
     return int_hdr, real_hdr
 
 
-def read_header(
-    reader: ByteReader, header_offset: int, word_size: int, byte_order: str
-):
-    """TODO."""
+def read_header(reader, header_offset, word_size, byte_order):
+    """Read a lookup header into `numpy` arrays.
+
+    :Parameters:
+
+        reader: `ByteReader`
+            The file reader.
+
+        header_offset: `int`
+            The byte address of the start of the integer header in the
+            file.
+
+        word_size: `int`
+            The word size (``4`` or ``8``).
+
+        byte_order: `str`
+            The word byte order (``'little'`` or ``'big'``).
+
+    :Returns:
+
+        `numpy.ndarray`, `numpy.ndarray`
+            The integer and real lookup header arrays.
+
+    """
     header_bytes = reader.read_at(header_offset, N_HDR * word_size)
     return decode_header_from_bytes(header_bytes, word_size, byte_order)

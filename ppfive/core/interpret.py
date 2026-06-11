@@ -11,8 +11,19 @@ from ..constants import (
 )
 
 
-def get_type(int_hdr) -> str:
-    """TODO."""
+def get_type(int_hdr):
+    """A description of the data array data type.
+
+    :Parameters:
+
+        int_hdr: `numpy.ndarray`
+            The integer lookup header.
+
+    :Returns:
+
+        `str`
+
+    """
     match int(int_hdr[INDEX_LBUSER1]):
         case 1:
             return "real"
@@ -28,8 +39,22 @@ def get_type(int_hdr) -> str:
             return "real"
 
 
-def get_extra_data_length(int_hdr, word_size: int) -> int:
-    """TODO."""
+def get_extra_data_length(int_hdr, word_size):
+    """The size in bytes of the extra data.
+
+    :Parameters:
+
+        int_hdr: `numpy.ndarray`
+            The integer lookup header.
+
+        word_size: `int`
+            The word size (``4`` or ``8``).
+
+    :Returns:
+
+        `int`
+
+    """
     LBEXT = int_hdr[INDEX_LBEXT]
     if LBEXT > 0:
         return int(LBEXT) * word_size
@@ -37,8 +62,22 @@ def get_extra_data_length(int_hdr, word_size: int) -> int:
     return 0
 
 
-def get_num_data_words(int_hdr, word_size: int) -> int:
-    """TODO."""
+def get_num_data_words(int_hdr, word_size):
+    """The number of words in the unpacked data array.
+
+    :Parameters:
+
+        int_hdr: `numpy.ndarray`
+            The integer lookup header.
+
+        word_size: `int`
+            The word size (``4`` or ``8``).
+
+    :Returns:
+
+        `int`
+
+    """
     LBROW = int_hdr[INDEX_LBROW]
     LBNPT = int_hdr[INDEX_LBNPT]
     if int_hdr[INDEX_LBPACK] != 0 and LBROW > 0 and LBNPT > 0:
@@ -49,15 +88,52 @@ def get_num_data_words(int_hdr, word_size: int) -> int:
     )
 
 
-def get_type_and_num_words(int_hdr, word_size: int):
-    """TODO."""
-    return get_type(int_hdr), get_num_data_words(int_hdr, word_size)
+# ef get_type_and_num_words(int_hdr, word_size):
+#   """TODO.
+#
+#   :Parameters:
+#
+#       int_hdr: `numpy.ndarray`
+#           The integer lookup header.
+#
+#       word_size: `int`
+#           The word size (``4`` or ``8``).
+#
+#   :Returns:
+#
+#       `str`, `int`
+#           The data array type, and the  TODO
+#
+#   """
+#   return get_type(int_hdr), get_num_data_words(int_hdr, word_size)
 
 
 def get_extra_data_offset_and_length(
-    int_hdr, data_offset: int, disk_length: int, word_size: int
+    int_hdr, data_offset, disk_length, word_size
 ):
-    """TODO."""
+    """The position and size of the extra data.
+
+    :Parameters:
+
+        int_hdr: `numpy.ndarray`
+            The integer lookup header.
+
+        data_offset: `int`
+            The byte address of the start of the data in the file.
+
+        data_length: `int`
+            The length in bytes of the data, including any extra data.
+
+        word_size: `int`
+            The word size (``4`` or ``8``).
+
+    :Returns:
+
+        `int`, `int`
+            The byte address of the start of the extra data in the
+            file, and the size in bytes of the extra data in the file.
+
+    """
     extra_data_length = get_extra_data_length(int_hdr, word_size)
     if int_hdr[INDEX_LBPACK] != 0:
         extra_data_offset = data_offset + disk_length - extra_data_length
@@ -69,8 +145,22 @@ def get_extra_data_offset_and_length(
     return extra_data_offset, extra_data_length
 
 
-def get_ff_disk_length(int_hdr, word_size: int):
-    """TODO."""
+def get_ff_disk_length(int_hdr, word_size):
+    """The size in bytes of the data in the file.
+
+    :Parameters:
+
+        int_hdr: `numpy.ndarray`
+            The integer lookup header.
+
+        word_size: `int`
+            The word size (``4`` or ``8``).
+
+    :Returns:
+
+        `int`
+
+    """
     LBPACK = int(int_hdr[INDEX_LBPACK])
     LBNREC = int_hdr[INDEX_LBNREC]
     if LBPACK != 0 and LBNREC != 0:

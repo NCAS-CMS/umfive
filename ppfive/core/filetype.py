@@ -41,9 +41,32 @@ def _is_alternating_zeros(vals: list[int], num_pairs: int) -> bool:
     return True
 
 
-def _unpack_many(fmt: str, buf: bytes, offset: int, count: int) -> list[int]:
-    """TODO."""
+def _unpack_many(fmt, buf, offset, count):
+    """Unpack a number of words from a byte string.
+
+    :Parameters:
+
+        fmt: `str`
+            The word format to unpack into (e.g. ``'<i'``, ``'>i'``,
+            ``'<q'``, ``'>q'``).
+
+        buf: `bytes`
+            The bytes to unpack. Only the bytes for the *count* number
+            of wards are unpacked.
+    
+        offset: `int`
+
+        count: `int`
+            The number of words (each defined by *fmt*) to unpack.
+
+    :Returns:
+
+        `list`
+            The list of unpacked words.
+
+    """
     size = struct.calcsize(fmt)
+    print(fmt, size)
     return [
         struct.unpack(fmt, buf[offset + i * size : offset + (i + 1) * size])[0]
         for i in range(count)
