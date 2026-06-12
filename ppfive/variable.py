@@ -104,9 +104,7 @@ class DataVariableID(ChunkReadMixin):
                     byte_offset=int(rec.data_offset),
                     size=int(
                         rec.disk_length
-                        - get_extra_data_length(
-                            rec.int_hdr, self._variable.file.word_size
-                        )
+                        - get_extra_data_length(rec.int_hdr, rec.word_size)
                     ),
                 )
                 index[chunk_offset] = info
@@ -302,11 +300,7 @@ class DataVariableID(ChunkReadMixin):
         if rec is None:
             raise OSError("Chunk coordinates must lie on chunk boundaries")
 
-        raw = read_record_raw(
-            self._variable.file._reader,
-            rec,
-            self._variable.file.word_size,
-        )
+        raw = read_record_raw(self._variable.file._reader, rec)
         return 0, raw
 
 
@@ -425,7 +419,18 @@ class _Mixin:
 
 
 class DimensionScale(_Mixin):
-    """Internal pyfive-like dimension-scale dataset."""
+    """Internal pyfive-like dimension-scale dataset.
+
+    This class is registered as a virtual subclass of
+    `pyfive.Dataset`, meaning it implements the core abstract methods
+    required to safely mimic a native pyfive file layout.
+
+    .. note:: Because this class is registered via
+              `pyfive.File.register(Dataset)`, runtime type-checking
+              using ``isinstance(instance, pyfive.Dataset)`` will
+              evaluate to `True`.
+
+    """
 
     def __init__(
         self,
@@ -562,6 +567,15 @@ class Variable(_Mixin):
     represented by a `DimensionScale` instance, and a data variable is
     represented by a `DataVariable` instance.
 
+    This class is registered as a virtual subclass of
+    `pyfive.Dataset`, meaning it implements the core abstract methods
+    required to safely mimic a native pyfive file layout.
+
+    .. note:: Because this class is registered via
+              `pyfive.File.register(Dataset)`, runtime type-checking
+              using ``isinstance(instance, pyfive.Dataset)`` will
+              evaluate to `True`.
+
     """
 
     def __init__(
@@ -631,7 +645,18 @@ class Variable(_Mixin):
 
 @dataclass(repr=False)
 class DataVariable(_Mixin):
-    """Minimal pyfive-like variable for PP/Fields data."""
+    """Minimal pyfive-like variable for PP/Fields data.
+
+    This class is registered as a virtual subclass of
+    `pyfive.Dataset`, meaning it implements the core abstract methods
+    required to safely mimic a native pyfive file layout.
+
+    .. note:: Because this class is registered via
+              `pyfive.File.register(Dataset)`, runtime type-checking
+              using ``isinstance(instance, pyfive.Dataset)`` will
+              evaluate to `True`.
+
+    """
 
     name: str
     attrs: dict[str, Any] = field(default_factory=dict)

@@ -373,8 +373,6 @@ def _equal_extra_data(rec0, rec1):
 def build_data_variable_index(
     records: list[RecordInfo],
     reader,
-    #    word_size: int,
-    #    byte_order: str,
     parallelism,
 ):
     """Create a dictionary of data variable descriptions.
@@ -528,8 +526,7 @@ def build_data_variable_index(
                             path = reader.path
                             starts = [rec.data_offset for rec in group_recs]
                             stops = [
-                                rec.data_offset
-                                + get_record_packed_nbytes(rec)  # , word_size)
+                                rec.data_offset + get_record_packed_nbytes(rec)
                                 for rec in group_recs
                             ]
                             buffers = fs.cat_ranges(
@@ -542,9 +539,7 @@ def build_data_variable_index(
                                 rec, raw = item
                                 ti = _t_index[_t_key(rec)]
                                 zi = _z_index[_z_key(rec)]
-                                values = decode_record_array_from_raw(
-                                    raw, rec  # , word_size, byte_order
-                                )
+                                values = decode_record_array_from_raw(raw, rec)
                                 return ti, zi, values
 
                             if thread_count > 1:
@@ -577,9 +572,7 @@ def build_data_variable_index(
                         def _read_one(rec):
                             ti = _t_index[_t_key(rec)]
                             zi = _z_index[_z_key(rec)]
-                            values = read_record_array(
-                                reader, rec
-                            )  # , word_size, byte_order
+                            values = read_record_array(reader, rec)
                             return ti, zi, values
 
                         with ThreadPoolExecutor(
@@ -600,9 +593,7 @@ def build_data_variable_index(
                     for rec in group_recs:
                         ti = _t_index[_t_key(rec)]
                         zi = _z_index[_z_key(rec)]
-                        values = read_record_array(
-                            reader, rec
-                        )  # , word_size, byte_order
+                        values = read_record_array(reader, rec)
                         out[ti, zi, :, :] = values.reshape((_ny, _nx))
 
                     if not _has_z_axis:

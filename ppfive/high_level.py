@@ -73,7 +73,29 @@ _cache_date2num = {}
 
 
 class File(Mapping):
-    """A pyfive-style file handle exposing variables as a Mapping."""
+    """Read a PP file or UM fields file.
+
+    32-bit and 64-bit PP and UM fields files of any endian-ness can be
+    read.
+    
+    2-d "slices" within a single file are always combined, where
+    possible, into fields with 3-d, 4-d or 5-d data.
+
+    The read is lazy in that only the metadata (i.e. the lookup header
+    and any extra data) are accessed during the initial read. The
+    files arrays are then accessed on demand, and then only for the
+    part of the field array requested by the indexing.
+
+    This class is registered as a virtual subclass of `pyfive.File`,
+    meaning it implements the core abstract methods required to safely
+    mimic a native pyfive file layout.
+
+    .. note:: Because this class is registered via
+              `pyfive.File.register(File)`, runtime type-checking
+              using ``isinstance(instance, pyfive.File)`` will
+              evaluate to `True`.
+
+    """
 
     def __init__(
         self,
@@ -201,8 +223,8 @@ class File(Mapping):
                     "filename is not None"
                 )
 
-            # Initialise the reader to None - it'll get set to an
-            # actual reader later.
+            # Initialise the reader to None - in this case it'll get
+            # set to an actual reader later.
             self._reader = None
 
         if filename is not None:
@@ -289,8 +311,6 @@ class File(Mapping):
             _data_variable_index = build_data_variable_index(
                 records,
                 self._reader,
-                #                self.word_size,
-                #                self.byte_order,
                 parallelism=parallelism,
             )
 
@@ -312,12 +332,33 @@ class File(Mapping):
 
         # E.g.
         #
-        # {('grid_mapping', np.float32(38.0), np.float32(190.0)): 'rotated_latitude_longitude',
-        #  ('time_coordinate', 'days since 1979-1-1', 'gregorian', np.int32(121), (np.int64(120), np.int64(121), np.int64(122)), (np.int64(121), np.int64(122), np.int64(123))): 'time',
-        #  ('time_coordinate', 'days since 1979-1-1', 'gregorian', np.int32(121), (np.int64(123), np.int64(124), np.int64(125)), (np.int64(124), np.int64(125), np.int64(126))): 'time_1',
-        #  ('x_coordinate', np.int32(101), np.int32(3), np.int32(106), np.float32(38.0), np.float32(190.0), np.float32(0.0), np.float32(339.02), np.float32(0.44)): 'grid_longitude',
-        #  ('y_coordinate', np.int32(101), np.int32(3), np.int32(110), np.float32(38.0), np.float32(190.0), np.float32(0.0), np.float32(23.76), np.float32(-0.44)): 'grid_latitude',
-        #  ('z_coordinate', np.int32(8), (np.float32(850.00006), np.float32(700.00006), np.float32(500.00003), np.float32(250.00002), np.float32(50.000004)), (np.float32(0.0), np.float32(0.0), np.float32(0.0), np.float32(0.0), np.float32(0.0)), (np.float32(0.0), np.float32(0.0), np.float32(0.0), np.float32(0.0), np.float32(0.0))): 'air_pressure'}
+        # {('grid_mapping',
+        #   np.float32(38.0), np.float32(190.0)): 'rotated_latitude_longitude',
+        #  ('time_coordinate',
+        #   'days since 1979-1-1', 'gregorian', np.int32(121),
+        #   (np.int64(120), np.int64(121), np.int64(122)),
+        #   (np.int64(121), np.int64(122), np.int64(123))): 'time',
+        #  ('time_coordinate',
+        #   'days since 1979-1-1', 'gregorian', np.int32(121),
+        #   (np.int64(123), np.int64(124), np.int64(125)),
+        #   (np.int64(124), np.int64(125), np.int64(126))): 'time_1',
+        #  ('x_coordinate',
+        #   np.int32(101), np.int32(3), np.int32(106),
+        #   np.float32(38.0), np.float32(190.0), np.float32(0.0),
+        #   np.float32(339.02), np.float32(0.44)): 'grid_longitude',
+        #  ('y_coordinate',
+        #   np.int32(101), np.int32(3), np.int32(110),
+        #   np.float32(38.0), np.float32(190.0), np.float32(0.0),
+        #   np.float32(23.76), np.float32(-0.44)): 'grid_latitude',
+        #  ('z_coordinate',
+        #   np.int32(8),
+        #   (np.float32(850.00006), np.float32(700.00006),
+        #    np.float32(500.00003), np.float32(250.00002),
+        #    np.float32(50.000004)),
+        #   (np.float32(0.0), np.float32(0.0), np.float32(0.0),
+        #    np.float32(0.0), np.float32(0.0)),
+        #   (np.float32(0.0), np.float32(0.0), np.float32(0.0),
+        #    np.float32(0.0), np.float32(0.0))): 'air_pressure'}
         cache = {}
 
         # Initialise the _Netcdf4Dimid attribute of DimensionScale
@@ -326,6 +367,7 @@ class File(Mapping):
         Netcdf4Dimid = [np.int32(0)]
 
         # Populate the 'all_variables' dictionary
+        _xxx = {}
         for meta in _data_variable_index:
             # Add any new metadata variable entries required by this
             # data variable
@@ -337,9 +379,14 @@ class File(Mapping):
             if name is None:
                 continue
 
+            _xxx[name] =  data_variable 
+
+
+        for name, data_variable  in _xxx.items():
             attrs = data_variable.attrs
             DIMENSION_LIST = data_variable.DIMENSION_LIST
-
+            meta = data_variable.meta
+            
             # Add a new entry for this data variable
             all_variables[name] = DataVariable(
                 name=name,
@@ -633,6 +680,7 @@ class DataVariableMetadata:
         self.name = None
 
         self.variables = variables
+        self.data_variable_meta = meta
 
         self._file_obj = file_obj
         self._height_at_top_of_model = file_obj._height_at_top_of_model
@@ -773,19 +821,18 @@ class DataVariableMetadata:
 
         self._cf_info = {}
 
-        # A key defining the XY grid (not currently used)
-        # self._XY = (
-        #     LBROW,
-        #     LBNPT,
-        #     int_hdr[INDEX_LBHEM],
-        #     LBCODE,
-        #     # int_hdr[INDEX_LBUSER7],
-        #     BPLAT, BPLON, real_hdr[INDEX_BGOR],
-        #     real_hdr[INDEX_BDX],
-        #     real_hdr[INDEX_BZX],
-        #     real_hdr[INDEX_BDY],
-        #     real_hdr[INDEX_BZY],
-        # )
+        # A key defining the X-Y grid
+        self._XY = (
+            LBROW,
+            LBNPT,
+            int_hdr[INDEX_LBHEM],
+            LBCODE,
+            BPLAT, BPLON, real_hdr[INDEX_BGOR],
+            real_hdr[INDEX_BDX],
+            real_hdr[INDEX_BZX],
+            real_hdr[INDEX_BDY],
+            real_hdr[INDEX_BZY],
+        )
 
         # The STASH code has been set in the PP header, so try to find
         # its standard_name from the conversion table

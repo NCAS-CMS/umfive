@@ -1,10 +1,5 @@
-from __future__ import annotations
-
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
-
-import numpy as np
 
 from ppfive.core.data import (
     decode_record_array_from_raw,
@@ -27,8 +22,20 @@ class ChunkReadMixin:
 
     """
 
-    def _get_required_chunks(self, indexer) -> list[tuple[Any, ...]]:
-        """TODO."""
+    def _get_required_chunks(self, indexer):
+        """Walk *indexer* and return a list of ``(chunk_coords,
+        chunk_selection, out_selection, storeinfo)`` tuples for every
+        chunk needed to satisfy the selection.
+
+        :Parameters:
+
+            indexer:
+
+        :Returns:
+
+            `list` of `tuple`
+
+        """
         required = []
         for chunk_coords, chunk_selection, out_selection in indexer:
             chunk_offset = tuple(
@@ -64,19 +71,42 @@ class ChunkReadMixin:
 
         return required
 
-    def _decode_chunk_buffer(
-        self, raw: bytes, rec, chunk_shape: tuple[int, ...]
-    ) -> np.ndarray:
-        """TODO."""
-        return decode_record_array_from_raw(
-            raw,
-            rec,
-            self._variable.file.word_size,
-            self._variable.file.byte_order,
-        ).reshape(chunk_shape)
+    def _decode_chunk_buffer(self, raw, rec, chunk_shape):
+        """Apply the filter pipeline (if any).
 
-    def _store_and_assign(self, decoded_chunks, out: np.ndarray) -> None:
-        """TODO."""
+        :Parameter:
+
+            raw: `bytes`
+                The raw bytes of the packed data.
+
+            rec: `RecordInfo`
+                The record for the data array.
+
+            chunk_shape: `tuple` of `int`
+                The chunks shape.
+
+        :Returns:
+
+            `numpy.ndarray`
+                The array with the same shape as the chunk shape.
+
+        """
+        return decode_record_array_from_raw(raw, rec).reshape(chunk_shape)
+
+    def _store_and_assign(self, decoded_chunks, out):
+        """Put data values into *out*.
+
+        :Parameters:
+
+            decoded_chunks:
+
+            out: `nump.ndarray`
+
+        :Returns:
+
+            `None`
+
+        """
         for (
             _chunk_offset,
             chunk_selection,
@@ -85,8 +115,20 @@ class ChunkReadMixin:
         ) in decoded_chunks:
             out[out_selection] = chunk_data[chunk_selection]
 
-    def _read_serial_chunks(self, required, out: np.ndarray) -> None:
-        """TODO."""
+    def _read_serial_chunks(self, required, out):
+        """Read one chunk at a time (safe for any file-like object).
+
+        :Parameters:
+
+            required:
+
+            out: `nump.ndarray`
+
+        :Returns:
+
+            `None`
+
+        """
         decoded_chunks = []
         for (
             chunk_offset,
@@ -98,8 +140,6 @@ class ChunkReadMixin:
             chunk_data = read_record_array(
                 self._variable.file._reader,
                 rec,
-                #                self._variable.file.word_size,
-                #                self._variable.file.byte_order,
             ).reshape(chunk_shape)
             decoded_chunks.append(
                 (chunk_offset, chunk_selection, out_selection, chunk_data)
@@ -107,10 +147,25 @@ class ChunkReadMixin:
 
         self._store_and_assign(decoded_chunks, out)
 
-    def _read_parallel_local_chunks(
-        self, required, out: np.ndarray, thread_count: int
-    ) -> None:
-        """TODO."""
+    def _read_parallel_local_chunks(self, required, out, thread_count):
+        """Thread-parallel read via `os.pread`.
+
+        `os.pread` does not advance the file-position pointer, so all
+        worker threads share a single open file descriptor safely.
+
+        :Parameters:
+
+            required:
+
+            out: `nump.ndarray`
+
+            thread_count: `int`
+
+        :Returns:
+
+            `None`
+
+        """
 
         def _read_one(item):
             chunk_offset, chunk_selection, out_selection, rec, chunk_shape = (
@@ -119,8 +174,6 @@ class ChunkReadMixin:
             chunk_data = read_record_array(
                 self._variable.file._reader,
                 rec,
-                #                self._variable.file.word_size,
-                #                self._variable.file.byte_order,
             ).reshape(chunk_shape)
             return chunk_offset, chunk_selection, out_selection, chunk_data
 
@@ -133,17 +186,33 @@ class ChunkReadMixin:
             ) in executor.map(_read_one, required):
                 out[out_selection] = chunk_data[chunk_selection]
 
-    def _read_bulk_fsspec_chunks(
-        self, required, out: np.ndarray, thread_count: int
-    ) -> None:
-        """TODO."""
+    def _read_bulk_fsspec_chunks(self, required, out, thread_count):
+        """Bulk read via `fsspec` cat_ranges.
+
+        Issues a single pipelined request for all required byte-ranges,
+        which on object stores typically translates to a small number of
+        HTTP range requests rather than one round-trip per chunk
+        (reaching through the MetadataBufferingWrapper).
+
+        :Parameters:
+
+            required:
+
+            out: `nump.ndarray`
+
+            thread_count: `int`
+
+        :Returns:
+
+            `None`
+
+        """
         reader = self._variable.file._reader
         path = reader.path
         fs = reader.fs
         starts = [rec.data_offset for _, _, _, rec, _ in required]
         stops = [
-            rec.data_offset
-            + get_record_packed_nbytes(rec, self._variable.file.word_size)
+            rec.data_offset + get_record_packed_nbytes(rec)
             for _, _, _, rec, _ in required
         ]
         buffers = fs.cat_ranges([path] * len(required), starts, stops)
@@ -171,8 +240,23 @@ class ChunkReadMixin:
 
         self._store_and_assign(decoded_iter, out)
 
-    def _select_chunks(self, indexer, out: np.ndarray) -> None:
-        """TODO."""
+    def _select_chunks(self, indexer, out):
+        """Collect required chunks and dispatch I/O to the best
+        strategy.
+
+        Called by `_get_selection_via_chunks` in place of the serial loop.
+
+        :Parameters:
+
+            indexer:
+
+            out: `nump.ndarray`
+
+        :Returns:
+
+            `None`
+
+        """
         file_obj = self._variable.file
         reader = file_obj._reader
         thread_count = int(getattr(file_obj, "_thread_count", 0) or 0)

@@ -5,27 +5,6 @@ from ..wgdos import unpack_wgdos
 from .header import endian_prefix
 from .interpret import get_extra_data_length, get_num_data_words, get_type
 
-# def _endian_prefix(byte_order):
-#    """Return the '>' or '<' prefix for the byte_order.
-#
-#    :Parameter:
-#
-#        byte_order: `str`
-#            The word byte order (``'little'`` or ``'big'``).
-#
-#    :Returns:
-#
-#        `str`
-#
-#    """
-#    if byte_order == "little":
-#        return "<"
-#
-#    if byte_order == "big":
-#        return ">"
-#
-#    raise ValueError(f"Unsupported byte_order: {byte_order!r}")
-
 
 def _dtype_for_record(rec):
     """The datatype of the data array.
@@ -209,8 +188,8 @@ def decode_record_array_from_raw(raw, rec):
 
     :Returns:
 
-        `int`
-            The size in bytes.
+        `nump.ndarray`
+            The 1-d array of the decoded data.
 
     """
     word_size = rec.word_size
@@ -258,9 +237,9 @@ def read_record_array(reader, rec):
 
     :Returns:
 
-        `int`
-            `numpy.ndarray`
+        `nump.ndarray`
+            The 1-d array of the decoded data.
 
     """
-    raw = read_record_raw(reader, rec)  # , word_size)
-    return decode_record_array_from_raw(raw, rec)  # , word_size, byte_order)
+    raw = read_record_raw(reader, rec)
+    return decode_record_array_from_raw(raw, rec)
