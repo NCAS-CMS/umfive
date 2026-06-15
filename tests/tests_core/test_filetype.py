@@ -16,7 +16,7 @@ def test_detect_file_type_pp32_le(tmp_path):
 
     assert file_type.fmt == "PP"
     assert file_type.word_size == 4
-    assert file_type.byte_ordering == "little_endian"
+    assert file_type.byte_order == "little"
 
 
 def test_detect_file_type_ff32_le(tmp_path):
@@ -30,4 +30,4 @@ def test_detect_file_type_ff32_le(tmp_path):
 
     assert file_type.fmt == "FF"
     assert file_type.word_size == 4
-    assert file_type.byte_ordering == "little_endian"
+    assert file_type.byte_order == "little"

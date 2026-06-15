@@ -1,7 +1,7 @@
 from sys import float_info
 
 # The value of the CF "Conventions" attribute.
-CF_CONVENTIONS = "CF-1.13"
+CF_CONVENTIONS = "CF-1.14"
 
 # Sizes (in words) of the lookup header
 N_INT_HDR = 45

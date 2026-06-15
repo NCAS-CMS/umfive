@@ -493,9 +493,12 @@ def build_data_variable_index(
                 else:
                     chunk_coords = (ti, 0, 0)
 
-                chunk_records.append(
-                    {"record": rec, "chunk_coords": chunk_coords}
-                )
+                rec.chunk_coords = chunk_coords
+
+                # chunk_records.append(
+                #    {"record": rec} # "chunk_coords": chunk_coords}
+                # )
+                chunk_records.append(rec)
 
             def _make_loader(
                 group_recs,

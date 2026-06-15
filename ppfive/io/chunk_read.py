@@ -23,8 +23,10 @@ class ChunkReadMixin:
     """
 
     def _get_required_chunks(self, indexer):
-        """Walk *indexer* and return a list of ``(chunk_coords,
-        chunk_selection, out_selection, storeinfo)`` tuples for every
+        """Get chunk information for the indexer.
+
+        Walk *indexer* and return a list of ``(chunk_coords,
+        chunk_selection, out_selection, storeinfo)246`` tuples for every
         chunk needed to satisfy the selection.
 
         :Parameters:
@@ -137,10 +139,12 @@ class ChunkReadMixin:
             rec,
             chunk_shape,
         ) in required:
-            chunk_data = read_record_array(
-                self._variable.file._reader,
-                rec,
-            ).reshape(chunk_shape)
+            #            chunk_data = read_record_array(
+            #                self._variable.file._reader,
+            #                rec,
+            #            ).reshape(chunk_shape)
+            chunk_data = read_record_array(self._variable.file._reader, rec)
+            chunk_data = chunk_data.reshape(chunk_shape)
             decoded_chunks.append(
                 (chunk_offset, chunk_selection, out_selection, chunk_data)
             )
@@ -241,8 +245,7 @@ class ChunkReadMixin:
         self._store_and_assign(decoded_iter, out)
 
     def _select_chunks(self, indexer, out):
-        """Collect required chunks and dispatch I/O to the best
-        strategy.
+        """Get required chunks and dispatch I/O to the best strategy.
 
         Called by `_get_selection_via_chunks` in place of the serial loop.
 

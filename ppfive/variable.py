@@ -20,6 +20,8 @@ from .core.interpret import get_extra_data_length
 from .core.models import StoreInfo
 from .io.chunk_read import ChunkReadMixin
 
+np.set_printoptions(floatmode="maxprec")
+
 
 class _PyfiveAttrs(dict):
     """Attribute mapping tuned for cfdm/p5netcdf compatibility.
@@ -46,7 +48,18 @@ class _PyfiveAttrs(dict):
 class AstypeContext:
     """Context manager to cast reads from a variable."""
 
-    def __init__(self, variable: "Variable", dtype: str | np.dtype):
+    def __init__(self, variable, dtype):
+        """**Initialisation**
+
+        :Parameters:
+
+            variable: `DataVariable`
+                The data variable instance.
+
+            dtype: data-type, optional
+                Typecode or data-type to which the array is cast.
+
+        """
         self._variable = variable
         self._dtype = np.dtype(dtype)
 
@@ -95,9 +108,11 @@ class DataVariableID(ChunkReadMixin):
         if self._index_cache is None:
             index = {}
             record_cache = {}
-            for item in self._variable.chunk_records:
-                rec = item["record"]
-                chunk_offset = tuple(int(x) for x in item["chunk_coords"])
+            #            for item in self._variable.chunk_records:
+            for rec in self._variable.chunk_records:
+                #                rec = item["record"]
+                #                chunk_offset = tuple(int(x) for x in item["chunk_coords"])
+                chunk_offset = tuple(int(x) for x in rec.chunk_coords)
                 info = StoreInfo(
                     chunk_offset=chunk_offset,
                     filter_mask=0,
@@ -261,9 +276,16 @@ class DataVariableID(ChunkReadMixin):
         return 0
 
     def get_chunk_info(self, index):
-        """Retrieve storage information about a chunk specified by its
-        index."""
+        """Get storage information about a chunk.
+
+        :Parameters:
+
+            index: `int`
+                The position of the chunk, e.g. ``2``.
+
+        """
         if self.__chunk_init_check():
+            print(self._index_cache[(0, 1, 0, 0)])
             return self._index_cache[self._nthindex[index]]
 
         raise TypeError("Dataset is not chunked ")
@@ -292,9 +314,10 @@ class DataVariableID(ChunkReadMixin):
             raise OSError("Chunk coordinates must lie on chunk boundaries")
 
         rec = None
-        for item in self._variable.chunk_records:
-            if tuple(item["chunk_coords"]) == chunk_position:
-                rec = item["record"]
+        for r in self._variable.chunk_records:
+            #            if tuple(item["chunk_coords"]) == chunk_position:
+            if tuple(r.chunk_coords) == chunk_position:
+                rec = r  # ["record"]
                 break
 
         if rec is None:
@@ -363,6 +386,9 @@ class _Mixin:
     def _setattrs_from_axiscode(self, axiscode):
         """Set attributes according to a PP axis code.
 
+        If there is a standard name, than the variable `name` will be
+        set to it.
+
         :Parameters:
 
             axiscode: `int` or `None`
@@ -379,25 +405,87 @@ class _Mixin:
 
         name = _coord_standard_name.get(axiscode)
         if name is not None:
-            self.setattr("standard_name", name)
+            self.attrs["standard_name"] = name
             if self.name is None:
                 self.name = name
         else:
             name = _coord_long_name.get(axiscode)
             if name is not None:
-                self.setattr("long_name", name)
+                self.attrs["long_name"] = name
 
         axis = _coord_axis.get(axiscode)
         if axis is not None:
-            self.setattr("axis", axis)
+            self.attrs["axis"] = axis
 
         positive = _coord_positive.get(axiscode)
         if positive is not None:
-            self.setattr("positive", positive)
+            self.attrs["positive"] = positive
 
         units = _axiscode_to_units.get(axiscode)
         if units:
-            self.setattr("units", units)
+            self.attrs["units"] = units
+
+    def dump(self, display=True, data=False, _level=0):
+        """A full description of the variable.
+
+        :Parameters:
+
+            display: `bool`, optional
+                If False then return the description as a string. By
+                default the description is printed.
+
+            data: `bool`, optional
+                If True then include a summary of the variable's data
+                array. If False (the default) then don't include a
+                data summary.
+
+        :Returns:
+
+            `None` or `str`
+                The description. If *display* is True then the
+                description is printed and `None` is
+                returned. Otherwise the description is returned as a
+                string.
+
+        """
+        indent = "    "
+        i0 = indent * _level
+        i1 = indent * (_level + 1)
+        i2 = indent * (_level + 2)
+
+        lines = [f"{i0}{self!r}"]
+
+        if data:
+            # Set numpy linewidth
+            linewidth0 = np.get_printoptions()["linewidth"]
+            np.set_printoptions(linewidth=len(lines[0]))
+
+        if self.attrs:
+            lines.append(f"{i1}Attributes:")
+            lines.extend(
+                f"{i2}{name}: {value!r}" for name, value in self.attrs.items()
+            )
+
+        if data:
+            try:
+                array = self[...]
+            except Exception:
+                array = None
+
+            if array is not None:
+                lines.append(f"{i1}Data {self.dtype.name}:")
+                lines.append(
+                    f"{i2}{np.array2string(array, separator=', ', prefix=i2)}"
+                )
+
+            # Reset numpy linewidth
+            np.set_printoptions(linewidth=linewidth0)
+
+        out = "\n".join(lines)
+        if not display:
+            return out
+
+        print(out)
 
     def setattr(self, name, value):
         """Set an attribute.
@@ -415,7 +503,10 @@ class _Mixin:
             `None`
 
         """
-        self.attrs[name] = value
+        #        self.attrs[name] = value
+        attrs = self.attrs
+        attrs[name] = value
+        self.attrs = {name: value for name, value in sorted(attrs.items())}
 
 
 class DimensionScale(_Mixin):
@@ -516,6 +607,10 @@ class DimensionScale(_Mixin):
             hdf5_attrs["NAME"] = b"netCDF dimension coordinate variable"
 
         self.attrs.update(hdf5_attrs)
+
+        self.attrs = {
+            name: value for name, value in sorted(self.attrs.items())
+        }
 
     def __getitem__(self, key):
         """Return self[key]."""
@@ -638,6 +733,10 @@ class Variable(_Mixin):
 
         self.setattr("DIMENSION_LIST", DIMENSION_LIST)
 
+        self.attrs = {
+            name: value for name, value in sorted(self.attrs.items())
+        }
+
     def __getitem__(self, key):
         """Return self[key]."""
         return self._data[key]
@@ -656,20 +755,60 @@ class DataVariable(_Mixin):
               using ``isinstance(instance, pyfive.Dataset)`` will
               evaluate to `True`.
 
+    **Initialisation**
+
+    :Parameters:
+
+        name: `str`
+            The name of the data variable, e.g.
+            ``'UM_m01s30i201_vn1100:'``.
+
+        attrs: `dict`
+            The data variable attributes.
+
+        shape: `tuple` of `int`
+            The shape of the data array, e.g. ``(12, 17, 110, 106)``.
+
+        dtype: data-type, optional
+            The data type of the data array.
+
+        chunk_shape: `tuple` of `int`
+            The shape of each data chunk, e.g. ``(1, 1, 110, 106)``.
+
+        data_loader: callable
+            The function that retrieves parts of the data array from
+            the data chunks.
+
+        data_loader_options: `dict` or `None`, optional
+            Keyword arguments for configuring the *data_loader* function.
+
+        file: `File`
+            The parent `File` object.
+
+        chunk_records: `tuple` of `RecordInfo`
+            The lookup header record and associated information for
+            each chunk.
+
+        DIMENSION_LIST: `tuple` or `None`, optional
+            The dimension names for the data, e.g. ``()``,
+            ``(('time',),)``, ``(('latitude',), ('longitude',))``
+
+        _astype: `numpyp.dtype` or `None`, optional
+
     """
 
     name: str
     attrs: dict[str, Any] = field(default_factory=dict)
     shape: tuple[int, ...] = field(default_factory=tuple)
     dtype: Any = None
-    chunk_shape: tuple[int, ...] | None = None
+    chunk_shape: list[int, ...] | None = None
     data_loader: Callable[[], Any] | None = None
     data_loader_options: dict | None = None
     file: Any = None
-    chunk_records: list[dict[str, Any]] = field(default_factory=list)
-    _astype: np.dtype | None = field(default=None, init=False, repr=False)
+    chunk_records: tuple = field(default_factory=tuple)
     id: DataVariableID = field(init=False, repr=False)
     DIMENSION_LIST: tuple[tuple, ...] | None = None
+    _astype: np.dtype | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self):
         if self.dtype is not None:
@@ -699,7 +838,10 @@ class DataVariable(_Mixin):
                 "there are data dimensions"
             )
 
-        self.setattr("DIMENSION_LIST", DIMENSION_LIST)
+        self.attrs["DIMENSION_LIST"] = DIMENSION_LIST
+        self.attrs = {
+            name: value for name, value in sorted(self.attrs.items())
+        }
 
     def __getitem__(self, key):
         """Return self[key]."""
@@ -717,7 +859,7 @@ class DataVariable(_Mixin):
 
         :Parameters:
 
-            dtype: optional
+            dtype: data-type, optional
                 Typecode or data-type to which the array is cast.
 
             copy: `None` or `bool`
@@ -777,9 +919,13 @@ class DataVariable(_Mixin):
         2: Data compressed with the N3rd bit mask
 
         """
+        #       out = {
+        #            (int(chunk_record["record"].int_hdr[INDEX_LBPACK]) // 10) % 10
+        #            for chunk_record in self.chunk_records
+        #        }
         out = {
-            (int(chunk_record["record"].int_hdr[INDEX_LBPACK]) // 10) % 10
-            for chunk_record in self.chunk_records
+            (int(rec.int_hdr[INDEX_LBPACK]) // 10) % 10
+            for rec in self.chunk_records
         }
 
         out.discard(0)
@@ -806,16 +952,20 @@ class DataVariable(_Mixin):
     @property
     def fillvalue(self):
         """Fillvalue of the data."""
-        return self.attrs.get("missing_value")
+        mdi = self.attrs.get("missing_value")
+        if mdi is None:
+            mdi = self.attrs.get("_FillValue")
+
+        return mdi
 
     @property
     def fletcher32(self):
-        """Boolean indicator if fletcher32 filter was applied.
+        """Boolean indicator if the fletcher32 filter was applied.
 
         Provided for compatability with the `pyfive` API.
 
         """
-        return
+        return False
 
     @property
     def has_extra_data(self):
@@ -830,7 +980,9 @@ class DataVariable(_Mixin):
         if not chunk_records:
             return False
 
-        return bool(chunk_records[0]["record"].extra_data)
+        #        return bool(chunk_records[0]["record"].extra_data)
+
+        return bool(chunk_records[0].extra_data)
 
     @property
     def lbpack(self):
@@ -840,11 +992,14 @@ class DataVariable(_Mixin):
         in the variable.
 
         """
+        #        return sorted(
+        #            {
+        #                int(chunk_record["record"].int_hdr[INDEX_LBPACK])
+        #                for chunk_record in self.chunk_records
+        #            }
+        #        )
         return sorted(
-            {
-                int(chunk_record["record"].int_hdr[INDEX_LBPACK])
-                for chunk_record in self.chunk_records
-            }
+            {int(rec.int_hdr[INDEX_LBPACK]) for rec in self.chunk_records}
         )
 
     @property
@@ -865,9 +1020,12 @@ class DataVariable(_Mixin):
         4: Data compressed using Run Length Encoding
 
         """
+        #        out = {
+        #            int(chunk_record["record"].int_hdr[INDEX_LBPACK]) % 10
+        #            for chunk_record in self.chunk_records
+        #        }
         out = {
-            int(chunk_record["record"].int_hdr[INDEX_LBPACK]) % 10
-            for chunk_record in self.chunk_records
+            int(rec.int_hdr[INDEX_LBPACK]) % 10 for rec in self.chunk_records
         }
 
         out.discard(0)
@@ -978,6 +1136,9 @@ class DataVariable(_Mixin):
             `None`
 
         """
+        if max_thread_count < 0:
+            raise ValueError("max_thread_count must be >= 0")
+
         thread_count = min(len(self.chunk_records), int(max_thread_count))
         self.data_loader_options.update(
             {

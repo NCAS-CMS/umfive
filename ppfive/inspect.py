@@ -1,9 +1,7 @@
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 
-from .dataset import File
+from .high_level import File
 
 
 def safe_print(*args, **kwargs):

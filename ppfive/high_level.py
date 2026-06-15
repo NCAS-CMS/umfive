@@ -77,23 +77,57 @@ class File(Mapping):
 
     32-bit and 64-bit PP and UM fields files of any endian-ness can be
     read.
-    
+
     2-d "slices" within a single file are always combined, where
-    possible, into fields with 3-d, 4-d or 5-d data.
+    possible, into fields with 3-d or 4-d data.
+
+    **CF mappings**
+
+    The contents of the dataset are mapped to CF dimensions,
+    coordinate variables, auxiliary coordinate variables, and data
+    variables as `DimensionScale`, `Variable`, and `DataVarible`
+    object respectively.
+
+    The following CF attributes are derived from the lookup headers
+    and are added to the output variables, or as global attributes,
+    where possible and approrpriate:
+
+    =================  ======================================
+    CF attribute       CF variable/global usage
+    =================  ======================================
+    ``_FillValue``     Data
+    ``axis``           Coordinate, Auxiliary coordinate
+    ``bounds``         Coordinate
+    ``calendar``       Coordinate
+    ``climatology``    Coordinate
+    ``Conventions``    Global
+    ``coordinates``    Data
+    ``cell_methods``   Data
+    ``formula_terms``  Coordinate
+    ``long_name``      Data, Coordinate, Auxiliary coordinate
+    ``missing_value``  Data
+    ``positive``       Coordinate, Auxiliary coordinate
+    ``source``         Data
+    ``standard_name``  Data, Coordinate, Auxiliary coordinate
+    ``units``          Data, Coordinate, Auxiliary coordinate
+    =================  ======================================
+
+    **Performance**
 
     The read is lazy in that only the metadata (i.e. the lookup header
     and any extra data) are accessed during the initial read. The
     files arrays are then accessed on demand, and then only for the
-    part of the field array requested by the indexing.
+    part of the field array requested by the indexing. Data reads are
+    parallelised over the 2-d slices stored for each lookup header
+    (see `get_parallelism` and `set_parallelism` methods).
+
+    **Interoperability**
 
     This class is registered as a virtual subclass of `pyfive.File`,
     meaning it implements the core abstract methods required to safely
-    mimic a native pyfive file layout.
-
-    .. note:: Because this class is registered via
-              `pyfive.File.register(File)`, runtime type-checking
-              using ``isinstance(instance, pyfive.File)`` will
-              evaluate to `True`.
+    mimic a native pyfive file layout. Therefore runtime type-checking
+    using ``isinstance(ppfive_file_instance, pyfive.File)`` will
+    evaluate to `True`.
 
     """
 
@@ -114,19 +148,16 @@ class File(Mapping):
 
             filename:
                 The definition of the PP or UM dataset to be read.
-                Must either be a string-like (such as `str` or
-                `pathlib.Path`) or a file-like (such as
+                Must either be string-like (such as `str` or
+                `pathlib.Path`) or file-like (such as
                 `io.BufferedReader`, the result of an `fsspec` file
                 system open, or a subclass of `ppfive.ByteReader`).
-
-                Set to `None` if *_data_variable_index* has also been
-                provided.
 
             mode: `str`
                 The data access mode. Only ``'r'`` (read-only) is
                 allowed.
 
-            um_version: `str` or `None, optional
+            um_version: `str` or `None`, optional
                 The UM version to be used when decoding the
                 header. Valid versions are, for example, ``'4.2'``,
                 ``'6.6.3'`` and ``'8.2'``. If the UM version can be
@@ -181,15 +212,15 @@ class File(Mapping):
                  Set the verbosity. If *verbose* is ``0`` there is no
                  verbose output, and more output is produced for
                  progressively larger values of *verbose*. Values of
-                 ``2`` and higher (or the value ``-1``) produce the
+                 ``5`` and higher (or the value ``-1``) produce the
                  same maximally verbose output.
 
             _data_variable_index: `list` or `None`, optional
                  The dictionary representations of the data
                  variables. By default this is derived internally from
                  *fileaname*, so when *_data_variable_index* is
-                 provided, *filename* must be `None`. See the code for
-                 details.
+                 provided, *filename* must be `None`. See the
+                 `__init__` code for details.
 
         """
         if mode != "r":
@@ -221,6 +252,12 @@ class File(Mapping):
                 raise ValueError(
                     "_data_variable_index must be None when "
                     "filename is not None"
+                )
+
+            if not isinstance(filename, (str, Path)):
+                raise ValueError(
+                    f"Invalid type of filename argument: {filename!r} of type "
+                    f"{type(filename)}. Expected string-like or file-like."
                 )
 
             # Initialise the reader to None - in this case it'll get
@@ -307,13 +344,11 @@ class File(Mapping):
                 "thread_count": thread_count,
                 "cat_range_allowed": cat_range_allowed,
             }
-
             _data_variable_index = build_data_variable_index(
                 records,
                 self._reader,
                 parallelism=parallelism,
             )
-
         else:
             self.fmt = None
             self.byte_order = None
@@ -328,8 +363,10 @@ class File(Mapping):
 
         # Create the cache of metadata `Variable` and `DimensionScale`
         # instance names for the entire dataset. The dictionary keys
-        # are typically derived from lookup header values.
-
+        # must be tuples, have akey description as their first
+        # element, and are typically derived from lookup header
+        # values.
+        #
         # E.g.
         #
         # {('grid_mapping',
@@ -367,7 +404,6 @@ class File(Mapping):
         Netcdf4Dimid = [np.int32(0)]
 
         # Populate the 'all_variables' dictionary
-        _xxx = {}
         for meta in _data_variable_index:
             # Add any new metadata variable entries required by this
             # data variable
@@ -379,14 +415,12 @@ class File(Mapping):
             if name is None:
                 continue
 
-            _xxx[name] =  data_variable 
-
-
-        for name, data_variable  in _xxx.items():
-            attrs = data_variable.attrs
             DIMENSION_LIST = data_variable.DIMENSION_LIST
-            meta = data_variable.meta
-            
+            attrs = {
+                name: value
+                for name, value in sorted(data_variable.attrs.items())
+            }
+
             # Add a new entry for this data variable
             all_variables[name] = DataVariable(
                 name=name,
@@ -397,10 +431,33 @@ class File(Mapping):
                 data_loader=meta.get("data_loader"),
                 data_loader_options=meta.get("data_loader_options"),
                 file=self,
-                chunk_records=list(meta.get("chunk_records")),
+                chunk_records=tuple(meta.get("chunk_records", ())),
                 DIMENSION_LIST=DIMENSION_LIST,
             )
             data_variables.append(name)
+
+        # Try to add an "orog" formula term to vertical
+        # coordinates. We have to do this after all of the variables
+        # have been created.
+        for key, name in cache.items():
+            if key[0] != "orography_variables":
+                # This key does not store orography variable names
+                continue
+
+            if len(name) != 1:
+                # There is not exactly one orography variable for this
+                # Y-X grid
+                continue
+
+            orog_name = name[0]
+            yx_grid = key[1]
+
+            # Add the "orog" formula term to all vertical coordinates
+            # that share the same Y-X grid as this orography
+            for z in cache.get(("z_coordinates orography", yx_grid), ()):
+                DataVariableMetadata.formula_terms(
+                    all_variables[z], f"orog: {orog_name}"
+                )
 
         self.data_variables = data_variables
         self.variables = all_variables
@@ -408,8 +465,14 @@ class File(Mapping):
         # Verbosity
         if verbose == 1:
             print(repr(self))
-        elif verbose >= 2 or verbose == -1:
+        elif verbose == 2:
             print(self)
+        elif verbose == 3:
+            self.dump()
+        elif verbose == 4:
+            self.dump(metadata=True)
+        elif verbose >= 5 or verbose == -1:
+            self.dump(data=True)
 
     def __enter__(self):
         """Enter the runtime context."""
@@ -487,11 +550,87 @@ class File(Mapping):
         )
         return "\n".join(out)
 
+    def dump(self, display=True, data=False, metadata=False, _level=0):
+        """A full description of the dataset.
+
+        :Parameters:
+
+            display: `bool`, optional
+                If False then return the description as a string. By
+                default the description is printed.
+
+            data: `bool`, optional
+                If True then include a summary of each data and
+                metadata variable's data array. If False (the default)
+                then don't include these data summaries.
+
+            metadata: `bool`, optional
+                If True then include a summary of each metadata
+                variable's data array. If False (the default) then
+                don't include these data summaries. Note that the
+                metadata variables' data arrays are already in memory.
+
+        :Returns:
+
+            `None` or `str`
+                The description. If *display* is True then the
+                description is printed and `None` is
+                returned. Otherwise the description is returned as a
+                string.
+
+        """
+        indent = "    "
+        i0 = indent * _level
+        i1 = indent * (_level + 1)
+        i2 = indent * (_level + 2)
+
+        lines = [f"{i0}{self!r}"]
+
+        # Attributes
+        if self.attrs:
+            lines.append(f"{i1}Attributes:")
+            lines.extend(
+                f"{i2}{name}: {value!r}" for name, value in self.attrs.items()
+            )
+
+        # Data
+        if self.data_variables:
+            lines.append(f"{i1}Data variables:")
+            lines.extend(
+                var.dump(
+                    display=False,
+                    data=data,
+                    _level=_level + 2,
+                )
+                for name, var in self.variables.items()
+                if name in self.data_variables
+            )
+
+        # Metadata variables
+        if len(self.variables) > len(self.data_variables):
+            lines.append(f"{i1}Metadata variables:")
+            lines.extend(
+                var.dump(
+                    display=False,
+                    data=data or metadata,
+                    _level=_level + 2,
+                )
+                for name, var in self.items()
+                if name not in self.data_variables
+            )
+
+        out = "\n".join(lines)
+        if not display:
+            return out
+
+        print(out)
+
     @property
     def consolidated_metadata(self):
-        """Whether the internal metadata are in a contiguous block.
+        """Whether the metadata are in a contiguous block.
 
-        Provided for compatability with the `pyfive` API.
+        Metadata in this context comprises the lookup headers and any
+        extra data.
 
         :Returns:
 
@@ -511,7 +650,7 @@ class File(Mapping):
         if not len(data_variables):
             return True
 
-        var = self.variables[data_variables[0]]
+        var = self[data_variables[0]]
         if len(var.chunk_records) > 1:
             return False
 
@@ -526,15 +665,14 @@ class File(Mapping):
             `bool`
 
         """
-        variables = self.variables
         for name in self.data_variables:
-            if variables[name].has_extra_data:
+            if self[name].has_extra_data:
                 return True
 
         return False
 
     @property
-    def userblock_size(self) -> int:
+    def userblock_size(self):
         """Size of the user block in bytes (currently always 0).
 
         Provided for compatability with the `pyfive` API.
@@ -546,7 +684,7 @@ class File(Mapping):
         """
         return 0
 
-    def close(self) -> None:
+    def close(self):
         """Close the underlying dataset reader.
 
         However, the reader is not closed if it was opened externally
@@ -576,10 +714,8 @@ class File(Mapping):
                 accessing the data. See `set_parallelism` for details.
 
         """
-        variables = self.variables
         return {
-            name: variables[name].get_parallelism()
-            for name in self.data_variables
+            name: self[name].get_parallelism() for name in self.data_variables
         }
 
     def get_lazy_view(self, name) -> DataVariable:
@@ -593,7 +729,7 @@ class File(Mapping):
         logger.info(
             "get_lazy_view is not supported; returning normal variable view"
         )
-        return self.variables[name]
+        return self[name]
 
     def items(self):
         """A set-like object providing a view on the dataset's items."""
@@ -628,10 +764,8 @@ class File(Mapping):
 
         """
         # Set parallelism on data variables
-        variables = self.variables
         for name in self.data_variables:
-            var = variables[name]
-            var.set_parallelism(max_thread_count, cat_range_allowed)
+            self[name].set_parallelism(max_thread_count, cat_range_allowed)
 
 
 class DataVariableMetadata:
@@ -644,9 +778,7 @@ class DataVariableMetadata:
 
     """
 
-    def __init__(
-        self, data_variable_meta, variables, file_obj, cache, Netcdf4Dimid
-    ):
+    def __init__(self, meta, all_variables, file_obj, cache, Netcdf4Dimid):
         """**Initialisation**
 
         :Parameters:
@@ -655,7 +787,7 @@ class DataVariableMetadata:
                 The data variable meta dictionary from the variable
                 index list.
 
-            variables: `dict`
+            all_variables: `dict`
                 The dictionary of all (i.e. data and metadata)
                 variables.
 
@@ -679,7 +811,7 @@ class DataVariableMetadata:
         # Data variable name
         self.name = None
 
-        self.variables = variables
+        self.variables = all_variables
         self.data_variable_meta = meta
 
         self._file_obj = file_obj
@@ -689,10 +821,10 @@ class DataVariableMetadata:
         self._cache = cache
         self._Netcdf4Dimid = Netcdf4Dimid
 
-        chunk_recs = data_variable_meta["chunk_records"]
-        self._chunk_recs = chunk_recs
+        chunk_records = meta["chunk_records"]
+        self._chunk_records = chunk_records
 
-        rec0 = chunk_recs[0]["record"]
+        rec0 = chunk_records[0]  # ["record"]
         int_hdr = rec0.int_hdr
         real_hdr = rec0.real_hdr
         self._int_hdr_dtype = int_hdr.dtype
@@ -821,19 +953,6 @@ class DataVariableMetadata:
 
         self._cf_info = {}
 
-        # A key defining the X-Y grid
-        self._XY = (
-            LBROW,
-            LBNPT,
-            int_hdr[INDEX_LBHEM],
-            LBCODE,
-            BPLAT, BPLON, real_hdr[INDEX_BGOR],
-            real_hdr[INDEX_BDX],
-            real_hdr[INDEX_BZX],
-            real_hdr[INDEX_BDY],
-            real_hdr[INDEX_BZY],
-        )
-
         # The STASH code has been set in the PP header, so try to find
         # its standard_name from the conversion table
         um_condition = None
@@ -889,25 +1008,27 @@ class DataVariableMetadata:
         # ------------------------------------------------------------
         # Unique headers for the 'T' and 'Z' axes
         # ------------------------------------------------------------
-        shape = data_variable_meta["shape"]
-        axis_order = data_variable_meta["axis_order"]
+        shape = meta["shape"]
+        axis_order = meta["axis_order"]
         has_z_axis = "z" in axis_order
 
         if has_z_axis:
             nz = shape[1]
-            t_recs = chunk_recs[::nz]
-            z_recs = chunk_recs[:nz]
+            t_recs = chunk_records[::nz]
+            z_recs = chunk_records[:nz]
 
             # The 'Z' headers might be in the wrong order (i.e. not in the
             # order that we want the coordinate arrays to be), so let's
             # get them in correct order.
-            z_recs = sorted(z_recs, key=lambda x: x["chunk_coords"])
+            #            z_recs = sorted(z_recs, key=lambda x: x["chunk_coords"])
+            #            z_recs = sorted(z_recs, key=lambda x: x["record"].chunk_coords)
+            z_recs = sorted(z_recs, key=lambda x: x.chunk_coords)
         else:
             z_recs = []
-            t_recs = chunk_recs
+            t_recs = chunk_records
 
-        z_recs = [chunk_rec["record"] for chunk_rec in z_recs]
-        t_recs = [chunk_rec["record"] for chunk_rec in t_recs]
+        #        z_recs = [chunk_rec["record"] for chunk_rec in z_recs]
+        #        t_recs = [chunk_rec["record"] for chunk_rec in t_recs]
 
         self._z_recs = z_recs
         self._t_recs = t_recs
@@ -943,6 +1064,30 @@ class DataVariableMetadata:
 
         # Set data variable attribtues
         self.attrs.update(cf_properties)
+
+        # Store the definition of the data varible's Y-X grid
+        self._yx_grid_key = (
+            "yx_grid",
+            LBROW,
+            LBNPT,
+            int_hdr[INDEX_LBHEM],
+            LBCODE,
+            BPLAT,
+            BPLON,
+            real_hdr[INDEX_BGOR],
+            real_hdr[INDEX_BDX],
+            real_hdr[INDEX_BZX],
+            real_hdr[INDEX_BDY],
+            real_hdr[INDEX_BZY],
+        )
+
+        # Store an orography variable name (this is used to
+        # potentially add an "orog" formula term to vertical
+        # coordinates)
+        if stash == 33:
+            self._cache.setdefault(
+                ("orography_variables", self._yx_grid_key), []
+            ).append(self.name)
 
         # --------------------------------------------------------
         # Get the extra data for this group
@@ -1115,6 +1260,11 @@ class DataVariableMetadata:
         The key is defined by *name*, and may have a suffx added to it
         to ensure uniqueness.
 
+        If *name* is a string, then a plae-holder is added to the
+        `variables` dictionry, with a value of `None`. This
+        expectation is that `None` will get replaced later with a
+        variable instance.
+
         :Parameters:
 
             name:
@@ -1225,6 +1375,7 @@ class DataVariableMetadata:
             array_b,
             bounds0_b,
             bounds1_b,
+            self._yx_grid_key,
         )
         dim_ncvar = self._cache.get(key)
         if dim_ncvar is None:
@@ -1272,6 +1423,8 @@ class DataVariableMetadata:
                 )
                 dim_ncvar = self.add_to_variables(d, "dimension")
                 self._axis["z"] = dim_ncvar
+
+                bounds_ncvar = None
             else:
                 array = array_a / toa_height
                 bounds = bounds_a / toa_height
@@ -1279,6 +1432,7 @@ class DataVariableMetadata:
                 dc = DimensionScale(
                     data=array,
                     axiscode=axiscode,
+                    attrs={"bounds": None},
                     file_obj=self._file_obj,
                     Netcdf4Dimid=self._Netcdf4Dimid,
                 )
@@ -1292,7 +1446,17 @@ class DataVariableMetadata:
                     DIMENSION_LIST=((self._axis["z"],), (bounds_dim,)),
                 )
                 bounds_ncvar = self.add_to_variables(dc_bounds)
-                dc.setattr("bounds", bounds_ncvar)
+
+                dc.attrs["bounds"] = bounds_ncvar
+
+            self._cache.setdefault(
+                ("z_coordinates orography", self._yx_grid_key), []
+            ).append(dim_ncvar)
+
+            if bounds_ncvar is not None:
+                self._cache.setdefault(
+                    ("z_coordinates orography", self._yx_grid_key), []
+                ).append(bounds_ncvar)
 
             # "a" domain ancillary
             da_a = Variable(
@@ -1301,6 +1465,7 @@ class DataVariableMetadata:
                 attrs={
                     "long_name": "height based hybrid coeffient a",
                     "units": "m",
+                    "bounds": None,
                 },
                 DIMENSION_LIST=((self._axis["z"],),),
             )
@@ -1314,7 +1479,8 @@ class DataVariableMetadata:
                 DIMENSION_LIST=((self._axis["z"],), (bounds_dim,)),
             )
             self.add_to_variables(da_a_bounds)
-            da_a.setattr("bounds", da_a_bounds.name)
+
+            da_a.attrs["bounds"] = da_a_bounds.name
 
             # "b" domain ancillary
             da_b = Variable(
@@ -1323,6 +1489,7 @@ class DataVariableMetadata:
                 attrs={
                     "long_name": "height based hybrid coeffient b",
                     "units": "1",
+                    "bounds": None,
                 },
                 DIMENSION_LIST=((self._axis["z"],),),
             )
@@ -1336,7 +1503,7 @@ class DataVariableMetadata:
                 DIMENSION_LIST=((self._axis["z"],), (bounds_dim,)),
             )
             self.add_to_variables(da_b_bounds)
-            da_b.setattr("bounds", da_b_bounds.name)
+            da_b.attrs["bounds"] = da_b_bounds.name
 
             # Set the 'forumla terms' attributes on the parent
             # coordinate and coordinate bounds variables
@@ -1385,7 +1552,11 @@ class DataVariableMetadata:
 
         """
         items = tuple(self.bz(rec) for rec in self._z_recs)
-        key = ("atmosphere_hybrid_sigma_pressure_coordinate", items)
+        key = (
+            "atmosphere_hybrid_sigma_pressure_coordinate",
+            items,
+            self._yx_grid_key,
+        )
         dim_ncvar = self._cache.get(key)
         if dim_ncvar is None:
             array = []
@@ -1416,9 +1587,11 @@ class DataVariableMetadata:
             dc = DimensionScale(
                 data=array,
                 axiscode=axiscode,
+                attrs={"bounds": None},
                 file_obj=self._file_obj,
                 Netcdf4Dimid=self._Netcdf4Dimid,
             )
+
             dim_ncvar = self.add_to_variables(dc, "dimension_coordinate")
             self._axis["z"] = dim_ncvar
 
@@ -1429,17 +1602,19 @@ class DataVariableMetadata:
                 DIMENSION_LIST=((self._axis["z"],), (bounds_dim,)),
             )
             self.add_to_variables(dc_bounds)
-            dc.setattr("bounds", dc_bounds.name)
+
+            dc.attrs["bounds"] = dc_bounds.name
+
+            self._cache.setdefault(
+                ("z_coordinates orography", self._yx_grid_key), []
+            ).extend((dim_ncvar, dc_bounds.name))
 
             # "a" domain ancillary
             name = "atmosphere_hybrid_sigma_pressure_coordinate_ak"
             da_a = Variable(
                 name=name,
                 data=ak_array,
-                attrs={
-                    "long_name": name,
-                    "units": "Pa",
-                },
+                attrs={"long_name": name, "units": "Pa", "bounds": None},
                 DIMENSION_LIST=((self._axis["z"],),),
             )
             self.add_to_variables(da_a)
@@ -1452,17 +1627,15 @@ class DataVariableMetadata:
                 DIMENSION_LIST=((self._axis["z"],), (bounds_dim,)),
             )
             self.add_to_variables(da_a_bounds)
-            da_a.setattr("bounds", da_a_bounds.name)
+
+            da_a.attrs["bounds"] = da_a_bounds.name
 
             # "b" domain ancillary
             name = "atmosphere_hybrid_sigma_pressure_coordinate_bk"
             da_b = Variable(
                 name=name,
                 data=bk_array,
-                attrs={
-                    "long_name": name,
-                    "units": "1",
-                },
+                attrs={"long_name": name, "units": "1", "bounds": None},
                 DIMENSION_LIST=((self._axis["z"],),),
             )
             self.add_to_variables(da_b)
@@ -1475,7 +1648,8 @@ class DataVariableMetadata:
                 DIMENSION_LIST=((self._axis["z"],), (bounds_dim,)),
             )
             self.add_to_variables(da_b_bounds)
-            da_b.setattr("bounds", da_b_bounds.name)
+
+            da_b.attrs["bounds"] = da_b_bounds.name
 
             # Set the 'forumla terms' attributes on the parent
             # coordinate and coordinate bounds variables
@@ -1713,8 +1887,9 @@ class DataVariableMetadata:
         """
         return tuple(rec.int_hdr[INDEX_LBYRD : INDEX_LBMIND + 1].tolist())
 
-    def formula_terms(self, var, formula_terms):
-        """Add a formula_terms attribute to a varable.
+    @classmethod
+    def formula_terms(cls, var, formula_terms):
+        """Add to the formula_terms attribute to a varable.
 
         :Parameters:
 
@@ -1730,7 +1905,12 @@ class DataVariableMetadata:
             `None`
 
         """
-        var.setattr("formula_terms", formula_terms)
+        original_ft = var.attrs.get("formula_terms")
+        if original_ft is not None:
+            formula_terms = f"{original_ft} {formula_terms}"
+            var.attrs["formula_terms"] = formula_terms
+        else:
+            var.setattr("formula_terms", formula_terms)
 
     def grid_mapping(self):
         """Add packing attributes to a data variable.
@@ -1922,7 +2102,7 @@ class DataVariableMetadata:
             ac = Variable(
                 data=array,
                 axiscode=axiscode,
-                attrs={"units": rwl_units},
+                attrs={"units": rwl_units, "bounds": None},
             )
             aux_ncvar = self.add_to_variables(ac, "auxiliary_coordinate")
 
@@ -1934,7 +2114,7 @@ class DataVariableMetadata:
             )
             bounds_ncvar = self.add_to_variables(ac_bounds)
 
-            ac.setattrs("bounds", bounds_ncvar)
+            ac.attrs["bounds"] = bounds_ncvar
 
             self._cache[key] = aux_ncvar
 
@@ -2255,6 +2435,7 @@ class DataVariableMetadata:
                         "standard_name": standard_name,
                         "long_name": "region limit",
                         "units": units,
+                        "bounds": None,
                     },
                     DIMENSION_LIST=((self._axis[axis],),),
                 )
@@ -2268,7 +2449,7 @@ class DataVariableMetadata:
                 )
                 ac_bounds_ncvar = self.add_to_variables(ac_bounds)
 
-                ac.setattr("bounds", ac_bounds_ncvar)
+                ac.attrs["bounds"] = ac_bounds_ncvar
 
                 self._cache[key] = aux_ncvar
 
@@ -2374,7 +2555,8 @@ class DataVariableMetadata:
         # This PP/FF field is a timeseries. The validity time is taken
         # to be the time for the first sample, the data time for the
         # last sample, with the others evenly between.
-        rec = self._chunk_recs[0]["record"]
+        #        rec = self._chunk_recs[0]["record"]
+        rec = self._chunk_records[0]
         vtime = self.time_since_vtime(rec)
         dtime = self.time_since_dtime(rec)
 

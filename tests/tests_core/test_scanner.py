@@ -40,7 +40,7 @@ def test_scan_pp_headers_single_record(tmp_path):
     with LocalPosixReader(p) as reader:
         recs = scan_pp_headers(
             reader,
-            FileTypeInfo(fmt="PP", byte_ordering="little_endian", word_size=4),
+            FileTypeInfo(fmt="PP", byte_order="little", word_size=4),
         )
 
     assert len(recs) == 1
@@ -78,7 +78,7 @@ def test_scan_ff_headers_single_lookup(tmp_path):
     with LocalPosixReader(p) as reader:
         recs = scan_ff_headers(
             reader,
-            FileTypeInfo(fmt="FF", byte_ordering="little_endian", word_size=4),
+            FileTypeInfo(fmt="FF", byte_order="little", word_size=4),
         )
 
     assert len(recs) == 1

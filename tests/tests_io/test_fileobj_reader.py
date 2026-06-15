@@ -8,90 +8,42 @@ handle straight to ppfive.File.
 
 """
 
-from io import BytesIO
 from pathlib import Path
 
 import fsspec
 import numpy as np
 import pytest
 
-from ppfive import File
+from ppfive import File, FileObjReader
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 PP_PATH = DATA_DIR / "test2.pp"
 
 
-def _data_variable_names(f: File) -> list[str]:
-    return [
-        name
-        for name, variable in f.variables.items()
-        if variable.attrs.get("CLASS")
-        not in (b"DIMENSION_SCALE", b"AUXILIARY_COORDINATE")
-        and "grid_mapping_name" not in variable.attrs
-    ]
+def test_FileObjReader_fs_protocol():
+    file_like = fsspec.filesystem("file").open("tests/data/test2.pp", "rb")
+    with FileObjReader(file_like) as f:
+        assert "file" in f.fs.protocol
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "path",
+    [
+        "tests/data/test2.pp",
+        Path("tests/data/test2.pp"),
+    ],
+)
+def test_file_accepts_local_reader_as_first_argument(path):
+    file_like = fsspec.filesystem("file").open(path, "rb")
+    with FileObjReader(file_like) as reader:
+        f = File(reader)
+        assert (
+            repr(f)
+            == f"<ppfive.File: {file_like.name}, 1 data variable, 9 metadata variables>"
+        )
 
 
-class _MinimalFileObj:
-    """Bare-minimum seekable/readable wrapper around an in-memory
-    buffer."""
-
-    def __init__(self, data: bytes) -> None:
-        self._buf = BytesIO(data)
-
-    def read(self, n: int = -1) -> bytes:
-        return self._buf.read(n)
-
-    def seek(self, offset: int, whence: int = 0) -> int:
-        return self._buf.seek(offset, whence)
-
-    # deliberately no .close() to ensure that is optional
-
-
-# ---------------------------------------------------------------------------
-# Tests: plain file-like objects
-# ---------------------------------------------------------------------------
-
-
-def test_file_accepts_raw_open_builtin():
-    """ppfive.File should accept a built-in open() handle (has .read and
-    .seek)."""
-    with open(PP_PATH, "rb") as fh:
-        f = File(fh)
-        names = _data_variable_names(f)
-        assert names
-        arr = f[names[0]][:]
-
-    assert arr.shape == (3, 5, 110, 106)
-    assert arr.dtype == np.dtype("float32")
-
-
-def test_file_accepts_bytesio():
-    """ppfive.File should accept a BytesIO instance."""
-    data = PP_PATH.read_bytes()
-    buf = BytesIO(data)
-    f = File(buf)
-    names = _data_variable_names(f)
-    assert names
-    arr = f[names[0]][:]
-    assert arr.shape == (3, 5, 110, 106)
-
-
-def test_file_accepts_minimal_fileobj():
-    """ppfive.File should work with any object that has .read and
-    .seek."""
-    data = PP_PATH.read_bytes()
-    fobj = _MinimalFileObj(data)
-    f = File(fobj)
-    names = _data_variable_names(f)
-    assert names
-
-
-def test_file_rejects_object_without_seek():
+def test_FileObjReader_rejects_object_without_seek():
     """An object with .read but no .seek should raise ValueError."""
 
     class _NoSeek:
@@ -102,40 +54,19 @@ def test_file_rejects_object_without_seek():
         File(_NoSeek())
 
 
-# ---------------------------------------------------------------------------
-# Tests: fsspec file handles passed directly (the primary use-case)
-# ---------------------------------------------------------------------------
-
-
-def test_file_accepts_fsspec_local_handle():
-    """ppfive.File should accept an fsspec local-filesystem open handle
-    directly, without the caller needing to construct a FsspecReader."""
-    fs = fsspec.filesystem("file")
-    with fs.open(str(PP_PATH), "rb") as fh:
-        f = File(fh)
-        names = _data_variable_names(f)
-        assert names
-        arr = f[names[0]][:]
-
-    assert arr.shape == (3, 5, 110, 106)
-    assert arr.dtype == np.dtype("float32")
-
-
 def test_fileobj_parity_with_path():
     """Reading via a raw fsspec handle should return identical data to
     path-based open."""
     with File(PP_PATH) as f_path:
         expected = {
-            name: np.asarray(f_path[name][:])
-            for name in _data_variable_names(f_path)
+            name: np.asarray(f_path[name][:]) for name in f_path.data_variables
         }
 
     fs = fsspec.filesystem("file")
     with fs.open(str(PP_PATH), "rb") as fh:
         f_fh = File(fh)
         result = {
-            name: np.asarray(f_fh[name][:])
-            for name in _data_variable_names(f_fh)
+            name: np.asarray(f_fh[name][:]) for name in f_fh.data_variables
         }
 
     assert list(result) == list(expected)

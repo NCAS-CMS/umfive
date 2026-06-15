@@ -73,6 +73,7 @@ class RecordInfo:
     word_size: int
     byte_order: int
     extra_data: dict = field(default_factory=dict)
+    chunk_coords: tuple = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)

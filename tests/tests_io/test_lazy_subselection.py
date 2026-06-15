@@ -7,13 +7,7 @@ from ppfive import File
 
 
 def _first_data_variable_name(f: File) -> str:
-    return next(
-        name
-        for name, variable in f.variables.items()
-        if variable.attrs.get("CLASS")
-        not in (b"DIMENSION_SCALE", b"AUXILIARY_COORDINATE")
-        and "grid_mapping_name" not in variable.attrs
-    )
+    return next(name for name in f.data_variables)
 
 
 def test_subselection_reads_only_intersecting_chunks(monkeypatch):
@@ -26,9 +20,9 @@ def test_subselection_reads_only_intersecting_chunks(monkeypatch):
         calls = []
         original = chunk_read_module.read_record_array
 
-        def _counting_read(reader, rec, word_size, byte_ordering):
+        def _counting_read(reader, rec):
             calls.append(int(rec.data_offset))
-            return original(reader, rec, word_size, byte_ordering)
+            return original(reader, rec)
 
         monkeypatch.setattr(
             chunk_read_module, "read_record_array", _counting_read

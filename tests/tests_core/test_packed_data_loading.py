@@ -30,6 +30,9 @@ def _record(
         header_offset=0,
         data_offset=0,
         disk_length=len(raw),
+        word_size=4,
+        byte_order="little",
+        chunk_coords=(0,),
     )
     return reader, rec
 
@@ -55,9 +58,7 @@ def test_cray32_packed_record_reads(tmp_path):
     reader, rec = _record(raw, int_hdr, real_hdr, tmp_path, "pack2.bin")
 
     try:
-        arr = read_record_array(
-            reader, rec, word_size=4, byte_ordering="little_endian"
-        )
+        arr = read_record_array(reader, rec)
     finally:
         reader.close()
 
@@ -71,9 +72,7 @@ def test_run_length_packed_record_reads(tmp_path):
     reader, rec = _record(raw, int_hdr, real_hdr, tmp_path, "pack4.bin")
 
     try:
-        arr = read_record_array(
-            reader, rec, word_size=4, byte_ordering="little_endian"
-        )
+        arr = read_record_array(reader, rec)
     finally:
         reader.close()
 
