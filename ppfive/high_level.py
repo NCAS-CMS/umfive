@@ -57,9 +57,10 @@ from .constants import (
 )
 from .core import detect_file_type, scan_ff_headers, scan_pp_headers
 from .core.variables import build_data_variable_index
-from .io.bytereader import ByteReader
-from .io.fileobj import FileObjReader
-from .io.local import LocalPosixReader
+
+# from .io.bytereader import ByteReader
+# from .io.fileobj import FileObjReader
+from .io import ByteReader, FileObjReader, LocalPosixReader
 from .stash import stash_records
 from .variable import DataVariable, DimensionScale, Variable
 
@@ -83,51 +84,131 @@ class File(Mapping):
 
     **CF mappings**
 
-    The contents of the dataset are mapped to CF dimensions,
-    coordinate variables, auxiliary coordinate variables, and data
-    variables as `DimensionScale`, `Variable`, and `DataVarible`
-    object respectively.
+    The contents of the dataset are mapped to CF dimensions and
+    coordinate variables (both as `DimensionScale` objects); auxiliary
+    coordinate variables and domain ancillary variables (both as
+    `Variable` objects); and data variables (as `DataVariable`
+    objects).
 
     The following CF attributes are derived from the lookup headers
     and are added to the output variables, or as global attributes,
-    where possible and approrpriate:
+    where possible and appropriate:
 
-    =================  ======================================
+    =================  =======================================
     CF attribute       CF variable/global usage
-    =================  ======================================
+    =================  =======================================
     ``_FillValue``     Data
     ``axis``           Coordinate, Auxiliary coordinate
-    ``bounds``         Coordinate
+    ``bounds``         Coordinate, Domain ancillary
     ``calendar``       Coordinate
     ``climatology``    Coordinate
     ``Conventions``    Global
     ``coordinates``    Data
     ``cell_methods``   Data
     ``formula_terms``  Coordinate
-    ``long_name``      Data, Coordinate, Auxiliary coordinate
+    ``grid_mapping``   Data
+    ``long_name``      Data, Coordinate, Auxiliary coordinate,
+                       Domain ancillary
     ``missing_value``  Data
     ``positive``       Coordinate, Auxiliary coordinate
     ``source``         Data
-    ``standard_name``  Data, Coordinate, Auxiliary coordinate
-    ``units``          Data, Coordinate, Auxiliary coordinate
-    =================  ======================================
+    ``standard_name``  Data, Coordinate, Auxiliary coordinate,
+                       Domain ancillary
+    ``units``          Data, Coordinate, Auxiliary coordinate,
+                       Domain ancillary
+    =================  =======================================
 
     **Performance**
 
-    The read is lazy in that only the metadata (i.e. the lookup header
-    and any extra data) are accessed during the initial read. The
-    files arrays are then accessed on demand, and then only for the
-    part of the field array requested by the indexing. Data reads are
-    parallelised over the 2-d slices stored for each lookup header
-    (see `get_parallelism` and `set_parallelism` methods).
+    The read is lazy in that only the metadata (i.e. the lookup
+    headers and any extra data) are accessed during the initial
+    read. A data array in the file is then accessed on demand, and
+    then only for the part of the data array requested by the
+    indexing. Data reads are parallelised over the 2-d slices stored
+    for each lookup header (see `get_parallelism` and
+    `set_parallelism` methods).
 
     **Interoperability**
 
     This class is registered as a virtual subclass of `pyfive.File`,
-    meaning it implements the core abstract methods required to safely
-    mimic a native pyfive file layout. Therefore runtime type-checking
-    using ``isinstance(ppfive_file_instance, pyfive.File)`` will
-    evaluate to `True`.
+    meaning that it implements the core abstract methods required to
+    safely mimic a native `pyfive.File` layout. Therefore runtime
+    type-checking using ``isinstance(ppfive_file_instance,
+    pyfive.File)`` will evaluate to `True`.
+
+    **Initialisation**
+
+    :Parameters:
+
+        filename:
+            The definition of the PP or UM dataset to be read.  Must
+            either be string-like (such as `str` or `pathlib.Path`) or
+            file-like (such as `io.BufferedReader`, the result of an
+            `fsspec` file system open, or a subclass of
+            `ppfive.ByteReader`).
+
+        mode: `str`
+            The data access mode. Only ``'r'`` (read-only) is allowed.
+
+        um_version: `str` or `None`, optional
+            The UM version to be used when decoding the header. Valid
+            versions are, for example, ``'4.2'``, ``'6.6.3'`` and
+            ``'8.2'``. If the UM version can be derived fron LBSRCE in
+            the lookup headers (which is usually the case for files
+            created by the UM at versions 5.3 and later) then
+            *um_version* parameter is ignored.
+
+            If the UM version can't be derived fron the lookup headers
+            (which is usually the case for files created by the UM at
+            versions ealier than 5.3) then the given UM version is
+            used, and if *um_version* is `None` the UM version 4.5 is
+            assumed.
+
+            When the UM version has a third element (such as the 3 in
+            6.6.3), this is a special case for which the UM veriosn
+            must be provided with the *um_version* parameter, and any
+            UM version encoded in the lookup header is ignored.
+
+        height_at_top_of_model: `float` or `None`, optional
+            The height in metres of the upper bound of the top model
+            level. If `None` (the default) the height at top model is
+            taken from the top level's upper bound defined by BRSVD1
+            in the lookup headers. If the height can't be determined
+            from the header, or the given height is less than or equal
+            to 0, then a coordinate reference system will still be
+            created that contains the 'a' and 'b' formula term values,
+            but without an atmosphere hybrid height dimension
+            coordinate construct.
+
+            .. note:: A current limitation is that if pseudolevels and
+                      atmosphere hybrid height coordinates are defined
+                      by same the lookup headers then the height
+                      **can't be determined automatically**. In this
+                      case the height may be found after reading as
+                      the maximum value of the bounds of the domain
+                      ancillary construct containing the 'a' formula
+                      term. The file can then be re-read with this
+                      height as the *height_at_top_of_model*
+                      parameter.
+
+        local_os_cache: `bool`, optional
+             If True (the default) then use the local operating system
+             cache for local POSIX dataset access when *filename* is a
+             string-like. If False then this caching is disabled in
+             this case.
+
+        verbose: `int`, optional
+             Set the verbosity. If *verbose* is ``0`` there is no
+             verbose output, and more output is produced for
+             progressively larger values of *verbose*. Values of ``5``
+             and higher (or the value ``-1``) produce the same
+             maximally verbose output.
+
+        _data_variable_index: `list` or `None`, optional
+             The dictionary representations of the data variables. By
+             default this is derived internally from *fileaname*, so
+             when *_data_variable_index* is provided, *filename* must
+             be `None`. See the `__init__` code for details.
 
     """
 
@@ -142,87 +223,6 @@ class File(Mapping):
         *,
         _data_variable_index=None,
     ):
-        """**Initialisation**
-
-        :Parameters:
-
-            filename:
-                The definition of the PP or UM dataset to be read.
-                Must either be string-like (such as `str` or
-                `pathlib.Path`) or file-like (such as
-                `io.BufferedReader`, the result of an `fsspec` file
-                system open, or a subclass of `ppfive.ByteReader`).
-
-            mode: `str`
-                The data access mode. Only ``'r'`` (read-only) is
-                allowed.
-
-            um_version: `str` or `None`, optional
-                The UM version to be used when decoding the
-                header. Valid versions are, for example, ``'4.2'``,
-                ``'6.6.3'`` and ``'8.2'``. If the UM version can be
-                derived fron LBSRCE in the lookup headers (which is
-                usually the case for files created by the UM at
-                versions 5.3 and later) then *um_version* parameter is
-                ignored.
-
-                If the UM version can't be derived fron the lookup
-                headers (which is usually the case for files created
-                by the UM at versions ealier than 5.3) then the given
-                UM version is used, and if *um_version* is `None` the
-                UM version 4.5 is assumed.
-
-                When the UM version has a third element (such as the 3
-                in 6.6.3), this is a special case for which the UM
-                veriosn must be provided with the *um_version*
-                parameter, and any UM version encoded in the lookup
-                header is ignored.
-
-            height_at_top_of_model: `float` or `None`, optional
-                The height in metres of the upper bound of the top
-                model level. If `None` (the default) the height at top
-                model is taken from the top level's upper bound
-                defined by BRSVD1 in the lookup headers. If the height
-                can't be determined from the header, or the given
-                height is less than or equal to 0, then a coordinate
-                reference system will still be created that contains
-                the 'a' and 'b' formula term values, but without an
-                atmosphere hybrid height dimension coordinate
-                construct.
-
-                .. note:: A current limitation is that if pseudolevels
-                          and atmosphere hybrid height coordinates are
-                          defined by same the lookup headers then the
-                          height **can't be determined
-                          automatically**. In this case the height may
-                          be found after reading as the maximum value
-                          of the bounds of the domain ancillary
-                          construct containing the 'a' formula
-                          term. The file can then be re-read with this
-                          height as the *height_at_top_of_model*
-                          parameter.
-
-            local_os_cache: `bool`, optional
-                 If True (the default) then use the local operating
-                 system cache for local POSIX dataset access when
-                 *filename* is a string-like. If False then this
-                 caching is disabled in this case.
-
-            verbose: `int`, optional
-                 Set the verbosity. If *verbose* is ``0`` there is no
-                 verbose output, and more output is produced for
-                 progressively larger values of *verbose*. Values of
-                 ``5`` and higher (or the value ``-1``) produce the
-                 same maximally verbose output.
-
-            _data_variable_index: `list` or `None`, optional
-                 The dictionary representations of the data
-                 variables. By default this is derived internally from
-                 *fileaname*, so when *_data_variable_index* is
-                 provided, *filename* must be `None`. See the
-                 `__init__` code for details.
-
-        """
         if mode != "r":
             raise ValueError(
                 f"{self.__class__.__name__} currently supports "
@@ -475,11 +475,9 @@ class File(Mapping):
             self.dump(data=True)
 
     def __enter__(self):
-        """Enter the runtime context."""
         return self
 
     def __exit__(self, _exc_type, _exc, _tb):
-        """Exit the runtime context."""
         self.close()
 
     def __getitem__(self, path: str):
@@ -515,11 +513,15 @@ class File(Mapping):
         return iter(self.variables)
 
     def __len__(self):
-        """Return len(self)."""
+        """The number of variables.
+
+        Includes data variables, dimension scale, and metadata
+        variables.
+
+        """
         return len(self.variables)
 
     def __repr__(self):
-        """Return repr(self)."""
         n_data = len(self.data_variables)
         n_metadata = len(self.variables) - n_data
 
@@ -533,7 +535,6 @@ class File(Mapping):
         )
 
     def __str__(self):
-        """Return str(self)."""
         data_variables = self.data_variables
         out = [repr(self)]
         out.append("Data variables:")
@@ -718,12 +719,20 @@ class File(Mapping):
             name: self[name].get_parallelism() for name in self.data_variables
         }
 
-    def get_lazy_view(self, name) -> DataVariable:
+    def get_lazy_view(self, name):
         """Return a lazy view of the data variable.
 
         Simply returns the data variable object.
 
         Provided for compatability with the `pyfive` API.
+
+        :Parameters:
+
+            name: `str`
+
+        :Returns:
+
+            `DataVariable`
 
         """
         logger.info(
@@ -776,35 +785,33 @@ class DataVariableMetadata:
     The returned instance's `name`, `attrs`, and `DIMENSION_LIST`
     attributes may be used to create a `DataVariable` instance.
 
+    **Initialisation**
+
+    :Parameters:
+
+        data_variable_meta: `dict`
+            The data variable meta dictionary from the variable index
+            list.
+
+        all_variables: `dict`
+            The dictionary of all (i.e. data and metadata) variables.
+
+        file_obj: `File`
+            The parent `File` instance.
+
+        cache: `dict`
+            The cache of metadata `Variable` and `DimensionScale`
+            instance names for the entire dataset. The dictionary keys
+            are typically derived from lookup header values.
+
+        Netcdf4Dimid: `list`
+            A single-element list containing the next available
+            "_NetCDF4Dimid" attribute value for `DimensionScale`
+            instances.
+
     """
 
     def __init__(self, meta, all_variables, file_obj, cache, Netcdf4Dimid):
-        """**Initialisation**
-
-        :Parameters:
-
-            data_variable_meta: `dict`
-                The data variable meta dictionary from the variable
-                index list.
-
-            all_variables: `dict`
-                The dictionary of all (i.e. data and metadata)
-                variables.
-
-            file_obj: `File`
-                The parent `File` instance.
-
-            cache: `dict`
-                The cache of metadata `Variable` and `DimensionScale`
-                instance names for the entire dataset. The dictionary
-                keys are typically derived from lookup header values.
-
-            Netcdf4Dimid: `list`
-                A single-element list containing the next available
-                "_NetCDF4Dimid" attribute value for `DimensionScale`
-                instances.
-
-        """
         # Data variable attributes
         self.attrs = {}
 

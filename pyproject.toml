@@ -20,3 +20,7 @@ line_length=79
 extend_skip_glob = [
   "**/__init__.py",
 ]
+
+# Prevent message about missing docstring in magic method
+[tool.pydocstyle]
+ignore = "D105"

@@ -57,23 +57,25 @@ def read_extra_data(
 
 
 class ExtraDataUnpacker:
-    """Extra data unpacker."""
+    """Extra data unpacker.
+
+    **Initialisation**
+
+     :Parameters:
+
+         raw_extra_data: `bytes`
+             The raw bytes of the packed extra data.
+
+         word_size: `int`
+             The word size (``4`` or ``8``).
+
+         byte_order: `str`
+             The word byte order (``'little'`` or ``'big'``).
+
+    """
 
     def __init__(self, raw_extra_data, word_size, byte_order):
-        """**Initialisation**
 
-        :Parameters:
-
-            raw_extra_data: `bytes`
-                The raw bytes of the packed extra data.
-
-            word_size: `int`
-                The word size (``4`` or ``8``).
-
-            byte_order: `str`
-                The word byte order (``'little'`` or ``'big'``).
-
-        """
         self.raw_data = raw_extra_data
         self.word_size = word_size
 

@@ -33,7 +33,7 @@ class _PyfiveAttrs(dict):
     """
 
     @staticmethod
-    def _coerce_for_items(value: Any) -> Any:
+    def _coerce_for_items(value):
         if isinstance(value, str):
             return np.bytes_(value)
 
@@ -64,26 +64,25 @@ class AstypeContext:
         self._dtype = np.dtype(dtype)
 
     def __enter__(self):
-        """Enter the runtime context."""
         self._variable._astype = self._dtype
 
     def __exit__(self, _exc_type, _exc, _tb):
-        """Exit the runtime context."""
         self._variable._astype = None
 
 
 class DataVariableID(ChunkReadMixin):
-    """Small dataset-id-like object that backs `DataVariable` reads."""
+    """Small dataset-id-like object that backs `DataVariable` reads.
+
+    **Initialisation**
+
+    :Parameters:
+
+        variable: `DataVariable`
+            The parent data variable instance.
+
+    """
 
     def __init__(self, variable):
-        """**Initialisation**
-
-        :Parameters:
-
-            variable: `DataVariable`
-                The parent data variable instance.
-
-        """
         self._variable = variable
         self._index_cache = None
         self._nthindex = None
@@ -100,7 +99,7 @@ class DataVariableID(ChunkReadMixin):
 
         """
         if (
-            self._variable.chunk_shape is None
+            self._variable.chunks is None
             or not self._variable.chunk_records
         ):
             return False
@@ -132,15 +131,32 @@ class DataVariableID(ChunkReadMixin):
         return True
 
     def _get_selection_via_chunks(self, args):
-        """Use the zarr orthogonal indexer to extract data for a specfic
+        """Get a data subspace from chunks.
+
+        Uses the zarr orthogonal indexer to extract data for a specfic
         selection within the dataset array and in doing so, only load
-        the relevant chunks."""
+        the relevant chunks.
+
+        :Parameters:
+
+            args: array indices
+                The array indiceis defining the subspace,
+                e.g. ``(Ellipsis, 0)``, ``(0, slice(None, None, None),
+                0)``, ``(0, 0, [1, 3, 4])``
+
+        :Returns:
+
+            `numpy.ndarray`
+                The subspace of the data array.
+
+        """
+        print(repr(args))
         array = ZarrArrayStub(self.shape, self.chunks)
         indexer = OrthogonalIndexer(args, array)
         out = np.empty(indexer.shape, dtype=self.dtype)
 
         self._select_chunks(indexer, out)
-
+        print(out)
         return out
 
     @property
@@ -163,7 +179,7 @@ class DataVariableID(ChunkReadMixin):
             `tuple`
 
         """
-        return self._variable.chunk_shape
+        return self._variable.chunks
 
     @property
     def dtype(self):
@@ -291,18 +307,45 @@ class DataVariableID(ChunkReadMixin):
         raise TypeError("Dataset is not chunked ")
 
     def get_chunk_info_by_coord(self, coordinate_index):
-        """Retrieve information about a chunk specified by the array
-        address of the chunk's first element in each dimension."""
+        """Get information about a specific chunk.
+
+        Retrieve information about a chunk specified by the array
+        address of the chunk's first element in each dimension.
+
+        :Parameters:
+
+            coordinate_index: sequence of `int`
+                The chunk index, e.g. ``(2, 1, 0, 0)``.
+
+        :Returns:
+
+            `StoreInfo`
+
+        """
         if self.__chunk_init_check():
             return self._index_cache[tuple(coordinate_index)]
 
         raise TypeError("Dataset is not chunked ")
 
     def read_direct_chunk(self, chunk_position, **kwargs):
-        """Returns a tuple containing the filter_mask and the raw data
+        """Get the filter mask and raw chunk bytes.
+
+        Returns a tuple containing the filter_mask and the raw data
         storing this chunk as bytes.
 
-        Additional arguments supported by ``h5py`` are not supported here.
+        :Parameters:
+
+            chunk_position: sequence of `int`
+                The chunk index, e.g. ``(2, 1, 0, 0)``.
+
+            kwargs: optional
+                Additional arguments supported by ``h5py``, which are
+                not supported here.
+
+        :Returns:
+
+            `int`, `bytes`
+                The filter mask, and the raw bytes of the packed data.
 
         """
         del kwargs
@@ -331,7 +374,6 @@ class _Mixin:
     """Mixin class for dataset variables."""
 
     def __len__(self):
-        """Return len(self)."""
         shape = self.shape
         if not shape:
             raise TypeError(f"len() of unsized object: {self!r}")
@@ -339,7 +381,6 @@ class _Mixin:
         return shape[0]
 
     def __repr__(self):
-        """Return repr(self)."""
         dimensions = self.dimensions
         if dimensions is None:
             dimensions = ""
@@ -352,11 +393,25 @@ class _Mixin:
             f"{self.name}, shape={self.shape}{dimensions}>"
         )
 
+    def __str__(self):
+        return self.dump(display=False, data=False)
+
     @property
     def __orthogonal_indexing__(self):
         """Flag to indicate whether indexing is orthogonal."""
         return False
 
+    @property
+    def chunks(self):
+        """The chunk shape.
+
+        :Returns:
+
+            `tuple`
+
+        """
+        return self._chunks
+    
     @property
     def dimensions(self):
         """The dimension names.
@@ -374,13 +429,33 @@ class _Mixin:
         return tuple(dim[0] for dim in DIMENSION_LIST)
 
     @property
+    def maxshape(self):
+        """Maximum shape of the data.
+        
+        :Returns:
+
+            `tuple`
+        """
+        return self.shape
+
+    @property
     def ndim(self):
-        """The array's number of dimensions."""
+        """The array's number of dimensions.
+
+        :Returns:
+
+            `int`
+        """
         return len(self.shape)
 
     @property
     def size(self):
-        """Number of elements in the array."""
+        """Number of elements in the array.
+
+        :Returns:
+
+            `int`
+        """
         return prod(self.shape)
 
     def _setattrs_from_axiscode(self, axiscode):
@@ -490,6 +565,9 @@ class _Mixin:
     def setattr(self, name, value):
         """Set an attribute.
 
+        The attributes are also sorted lexicographically by attribute
+        name.
+        
         :Parameters:
 
             name: `str`
@@ -503,23 +581,63 @@ class _Mixin:
             `None`
 
         """
-        #        self.attrs[name] = value
         attrs = self.attrs
         attrs[name] = value
         self.attrs = {name: value for name, value in sorted(attrs.items())}
 
 
 class DimensionScale(_Mixin):
-    """Internal pyfive-like dimension-scale dataset.
+    """A CF dimension coordinate variable or dimension.
+
+    A CF dimension coordinate variable and a CF dimension are
+    distinguished by the latter having no data array, as well as
+    differnt value for the "NAME" attribute.
+
+    **Performance**
+
+    A dimension coordinate variable's data array is derived from the
+    lookup headers of the associated data variable, and so is always
+    stored in memory.
+
+    **Interoperability**
 
     This class is registered as a virtual subclass of
-    `pyfive.Dataset`, meaning it implements the core abstract methods
-    required to safely mimic a native pyfive file layout.
+    `pyfive.Dataset`, meaning that it implements the core abstract
+    methods required to safely mimic a native `pyfive.Dataset`
+    layout. Therefore runtime type-checking using
+    ``isinstance(ppfive_dimension_scale_instance, pyfive.Dataset)``
+    will evaluate to `True`.
 
-    .. note:: Because this class is registered via
-              `pyfive.File.register(Dataset)`, runtime type-checking
-              using ``isinstance(instance, pyfive.Dataset)`` will
-              evaluate to `True`.
+    **Initialisation**
+
+    :Parameters:
+
+        name: `str` or `None`, optional
+            The dimension name.
+
+        data: `np.ndarray` or `None`, optional
+            The 1-d data, or `None` if dimension has no data.
+
+        size: `int` or `None`, optional
+            The size of the dimension. Ignored if *data* is set to an
+            array.
+
+        axiscode: `int` or `None`, optional
+            The integer PP axis code from which attributes are
+            derived, or `None` if there isn't one.
+
+        attrs: `dict` or `None`, optional
+            The dimension coordinate attributes, which override any
+            with the same name set via *axiscode*.
+
+        file_obj: `File` or `None, optional
+            The parent dataset.
+
+        Netcdf4Dimid: `list` or `None`, optional
+            A single-element list containing the next available
+            "_NetCDF4Dimid" attribute value. The list is updated
+            in-place. If `None` (the default) then the "_NetCDF4Dimid"
+            attribute will be assigned a value of ``0``.
 
     """
 
@@ -533,37 +651,6 @@ class DimensionScale(_Mixin):
         file_obj=None,
         Netcdf4Dimid=None,
     ):
-        """**Initialisation**
-
-        :Parameters:
-
-            name: `str` or `None`, optional
-                The dimension name.
-
-            data: `np.ndarray` or `None`, optional
-                The 1-d data, or `None` if dimension has no data.
-
-            size: `int` or `None`, optional
-                The size of the dimension. Ignored if *data* is set to
-                an array.
-
-            axiscode: `int` or `None`, optional
-                The integer PP axis code from which attributes are
-                derived, or `None` if there isn't one.
-
-            attrs: `dict` or `None`, optional
-                The dimension coordinate attributes, which override
-                any with the same name set via *axiscode*.
-
-            file_obj: `File` or `None, optional
-                The parent dataset.
-
-            Netcdf4Dimid: `list` or `None`, optional
-                A single-element list containing the next available
-                "_NetCDF4Dimid" attribute value. The list is updated
-                in-place.
-
-        """
         if data is None:
             self._data = None
             self.shape = (int(size),)
@@ -577,11 +664,9 @@ class DimensionScale(_Mixin):
             self.shape = data.shape
             self.dtype = data.dtype
 
-        self.maxshape = self.shape
-
         self.name = name
         self.file = file_obj
-        self.chunks = None
+        self._chunks = None
 
         self.attrs = {}
         self._setattrs_from_axiscode(axiscode)
@@ -609,11 +694,11 @@ class DimensionScale(_Mixin):
         self.attrs.update(hdf5_attrs)
 
         self.attrs = {
-            name: value for name, value in sorted(self.attrs.items())
+            attr: value for attr, value in sorted(self.attrs.items())
         }
 
     def __getitem__(self, key):
-        """Return self[key]."""
+        """Return a subspace of the data array."""
         data = self._data
         if data is None:
             raise ValueError(
@@ -624,7 +709,6 @@ class DimensionScale(_Mixin):
         return data[key]
 
     def __repr__(self):
-        """Return repr(self)."""
         out = f"<ppfive.{self.__class__.__name__}: {self.name}, "
         if self._data is None:
             out += f"size={self.shape[0]}>"
@@ -639,37 +723,39 @@ class DimensionScale(_Mixin):
 
         :Returns:
 
-            `tuple` or `None`
-                The dimension name, or `None` if it is undefined.
+            `tuple`
+                The dimension name.
 
         """
-        name = self.name
-        if name is None:
-            return
-
         return (name,)
 
 
 class Variable(_Mixin):
-    """A metadata variable in the dataset.
+    """A CF metadata variable in the dataset.
 
-    Any variable that is not a dimension coordinate variable nor a
+    Any CF variable that is not a dimension coordinate variable nor a
     data variable is represented by a `Variable` instance. This
-    includes coordinate bounds, auxilary coordinate, domain ancillary,
-    and grid mapping variables.
+    includes, but is not restricted to, coordinate bounds, auxilary
+    coordinate, domain ancillary, and grid mapping variables.
 
-    A dimension coordinate variable (with or within an array) is
-    represented by a `DimensionScale` instance, and a data variable is
-    represented by a `DataVariable` instance.
+    A CF dimension coordinate variable or CF dimension must be
+    represented by a `DimensionScale` instance, and a CF data variable
+    must represented by a `DataVariable` instance.
+
+    **Performance**
+
+    A metadata variable's data array is derived from the lookup
+    headers of the associated data variable, and so is always stored
+    in memory.
+
+    **Interoperability**
 
     This class is registered as a virtual subclass of
-    `pyfive.Dataset`, meaning it implements the core abstract methods
-    required to safely mimic a native pyfive file layout.
-
-    .. note:: Because this class is registered via
-              `pyfive.File.register(Dataset)`, runtime type-checking
-              using ``isinstance(instance, pyfive.Dataset)`` will
-              evaluate to `True`.
+    `pyfive.Dataset`, meaning that it implements the core abstract
+    methods required to safely mimic a native `pyfive.Dataset`
+    layout. Therefore runtime type-checking using
+    ``isinstance(ppfive_variable_instance, pyfive.Dataset)`` will
+    evaluate to `True`.
 
     """
 
@@ -708,8 +794,7 @@ class Variable(_Mixin):
         self._data = data
         self.shape = data.shape
         self.dtype = data.dtype
-        self.maxshape = data.shape
-        self.chunks = None
+        self._chunks = None
 
         self.attrs = {}
         self._setattrs_from_axiscode(axiscode)
@@ -738,22 +823,35 @@ class Variable(_Mixin):
         }
 
     def __getitem__(self, key):
-        """Return self[key]."""
+        """Return a subspace of the data array."""
         return self._data[key]
 
 
 @dataclass(repr=False)
 class DataVariable(_Mixin):
-    """Minimal pyfive-like variable for PP/Fields data.
+    """A CF data variable in the dataset.
+
+    A data variable comprises a multi-dimensional data array of a
+    single physical quantity, that is defined in the dateaset by one
+    or more two-dimensional chunks, each of which is described by
+    metadata stored in a lookup header.
+
+    **Performance**
+
+    Accessing the data array is lazy. The data array in the file is
+    accessed on demand, and then only for the part of the data array
+    requested by the indexing. Data reads are parallelised over the
+    2-d slices stored for each lookup header (see `get_parallelism`
+    and `set_parallelism` methods).
+
+    **Interoperability**
 
     This class is registered as a virtual subclass of
-    `pyfive.Dataset`, meaning it implements the core abstract methods
-    required to safely mimic a native pyfive file layout.
-
-    .. note:: Because this class is registered via
-              `pyfive.File.register(Dataset)`, runtime type-checking
-              using ``isinstance(instance, pyfive.Dataset)`` will
-              evaluate to `True`.
+    `pyfive.Dataset`, meaning that it implements the core abstract
+    methods required to safely mimic a native `pyfive.Dataset`
+    layout. Therefore runtime type-checking using
+    ``isinstance(ppfive_data_variable_instance, pyfive.Dataset)`` will
+    evaluate to `True`.
 
     **Initialisation**
 
@@ -780,7 +878,8 @@ class DataVariable(_Mixin):
             the data chunks.
 
         data_loader_options: `dict` or `None`, optional
-            Keyword arguments for configuring the *data_loader* function.
+            Keyword arguments for configuring the *data_loader*
+            function.
 
         file: `File`
             The parent `File` object.
@@ -791,9 +890,11 @@ class DataVariable(_Mixin):
 
         DIMENSION_LIST: `tuple` or `None`, optional
             The dimension names for the data, e.g. ``()``,
-            ``(('time',),)``, ``(('latitude',), ('longitude',))``
+            ``(('time',),)``, ``(('latitude',),
+            ('longitude',))``. This are stored as an attribute in the
+            `attrs` dictionary.
 
-        _astype: `numpyp.dtype` or `None`, optional
+        _astype: `numpy.dtype` or `None`, optional
 
     """
 
@@ -821,6 +922,9 @@ class DataVariable(_Mixin):
 
         self.parent = self.file
 
+        self._chunks = self.chunk_shape
+        del self.chunk_shape
+        
         DIMENSION_LIST = self.DIMENSION_LIST
         if DIMENSION_LIST is None and not self.shape:
             DIMENSION_LIST = ()
@@ -844,7 +948,7 @@ class DataVariable(_Mixin):
         }
 
     def __getitem__(self, key):
-        """Return self[key]."""
+        """Return a subspace of the data array."""
         data = self.id.get_data(key)
         if data is None:
             return
@@ -886,17 +990,6 @@ class DataVariable(_Mixin):
     def __orthogonal_indexing__(self):
         """Flag to indicate whether indexing is orthogonal."""
         return True
-
-    @property
-    def chunks(self):
-        """The chunk shape.
-
-        :Returns:
-
-            `tuple`
-
-        """
-        return self.chunk_shape
 
     @property
     def compression(self):
@@ -988,8 +1081,8 @@ class DataVariable(_Mixin):
     def lbpack(self):
         """The unique data chunk LBPACK values.
 
-        These are the unique values of the LBPACK across all data chunks
-        in the variable.
+        These are the unique values of the LBxPACK across all data
+        chunks in the variable.
 
         """
         #        return sorted(
@@ -1001,11 +1094,6 @@ class DataVariable(_Mixin):
         return sorted(
             {int(rec.int_hdr[INDEX_LBPACK]) for rec in self.chunk_records}
         )
-
-    @property
-    def maxshape(self):
-        """Maximum shape of the data."""
-        return self.shape
 
     @property
     def packing_modes(self):
@@ -1049,12 +1137,20 @@ class DataVariable(_Mixin):
         """
         return False
 
-    def astype(self, dtype: str | np.dtype) -> AstypeContext:
-        """Return a context manager which returns data as a particular
-        type.
+    def astype(self, dtype):
+        """Return a context manager which changes the data type.
 
-        Conversion is handled by NumPy after reading extracting the
+        Conversion is handled by `numpy` after reading extracting the
         data.
+
+        :Parameters:
+
+            dtype: data-type
+                Typecode or data-type to which the array is cast.
+
+        :Returns:
+
+            `AstypeContext`
 
         """
         return AstypeContext(self, dtype)
@@ -1089,15 +1185,25 @@ class DataVariable(_Mixin):
         """
         return self.id.iter_chunks(args)
 
-    def read_direct(
-        self, array: np.ndarray, source_sel=None, dest_sel=None
-    ) -> None:
+    def read_direct(self, array, source_sel=None, dest_sel=None):
         """Read from the dataset directly into a `numpy` array.
 
         This is equivalent to dset[source_sel] = arr[dset_sel].
 
         Creation of intermediates is not avoided. This method if
         provided from compatibility with pyfive, it is not efficient.
+
+        :Parameters:
+
+            array: `numpy.ndarray`
+
+            source_sel: array indices or `None`, optional
+
+            dest_sel: array indices or `None`, optional
+
+        :Returns:
+
+            `None`
 
         """
         if source_sel is None:

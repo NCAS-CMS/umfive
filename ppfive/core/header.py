@@ -3,7 +3,7 @@ import numpy as np
 from ..constants import N_HDR, N_INT_HDR, N_REAL_HDR
 
 
-def endian_prefix(byte_order: str) -> str:
+def endian_prefix(byte_order):
     """Return the '>' or '<' prefix for the byte_order.
 
     :Parameter:

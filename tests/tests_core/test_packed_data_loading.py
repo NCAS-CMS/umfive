@@ -1,5 +1,6 @@
 import numpy as np
 
+from ppfive import LocalPosixReader
 from ppfive.constants import (
     INDEX_BMDI,
     INDEX_LBCODE,
@@ -15,7 +16,6 @@ from ppfive.constants import (
 )
 from ppfive.core.data import read_record_array
 from ppfive.core.models import RecordInfo
-from ppfive.io.local import LocalPosixReader
 
 
 def _record(

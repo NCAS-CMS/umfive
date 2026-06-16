@@ -3,17 +3,18 @@ from .mock_filesystem import MockFilesystem
 
 
 class FileObjReader(ByteReader):
-    """ByteReader adapter for seekable/readable file-like objects."""
+    """ByteReader adapter for seekable/readable file-like objects.
+
+    **Initialisation**
+
+    :Parameters:
+
+        fileobj:
+            The file-like object to wrap.
+
+    """
 
     def __init__(self, fileobj):
-        """**Initialisation**
-
-        :Parameters:
-
-            fileobj:
-                The file-like object to wrap.
-
-        """
         if not hasattr(fileobj, "read") or not callable(fileobj.read):
             raise ValueError("fileobj must provide a callable read method")
 

@@ -5,8 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
-from ppfive.io.bytereader import ByteReader
-from ppfive.io.local import LocalPosixReader
+from ppfive.io import ByteReader, LocalPosixReader
 
 from ..constants import (
     INDEX_BDX,
@@ -52,6 +51,8 @@ from .data import (
 )
 from .interpret import get_type
 from .models import RecordInfo
+
+# from ppfive.ioimport LocalPosixReader
 
 
 def _float_key(val):
@@ -238,9 +239,7 @@ def _t_key(rec):
     return _within_var_key(rec)[:13]
 
 
-def _split_on_duplicate_tz_pairs_and_extra_data(
-    recs,
-) -> list[list[RecordInfo]]:
+def _split_on_duplicate_tz_pairs_and_extra_data(recs):
     """Split a grouped variable on duplicate (t,z) coordinate pairs.
 
     Split a grouped variable when (t,z) coordinate pairs are duplicated.

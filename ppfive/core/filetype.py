@@ -72,7 +72,7 @@ def _is_alternating_zeros_with_offset(vals, num_pairs, offset):
     return True
 
 
-def _is_alternating_zeros(vals: list[int], num_pairs: int) -> bool:
+def _is_alternating_zeros(vals, num_pairs):
     """Whether a sequence has alternating zeros.
 
     The zeros may start at index ``0`` or ``1``.

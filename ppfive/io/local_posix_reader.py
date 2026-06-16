@@ -9,23 +9,24 @@ from .mock_filesystem import MockFilesystem
 
 
 class LocalPosixReader(ByteReader):
-    """POSIX file reader using pread-style absolute reads."""
+    """POSIX file reader using pread-style absolute reads.
 
-    def __init__(self, filename: str | os.PathLike[str], local_os_cache=True):
-        """**Initialisation**
+    **Initialisation**
 
-        :Parameters:
+    :Parameters:
 
-            path: string-like
-                The definition of the PP or UM dataset to be read.
+       path: string-like
+           The definition of the PP or UM dataset to be read.
 
-            local_os_cache: `bool`, optional
-                 If True (the default) then use the local operating
-                 system cache for local POSIX dataset access when
-                 *filename* is a string-like. If False then this
-                 caching is disabled in this case.
+       local_os_cache: `bool`, optional
+            If True (the default) then use the local operating system
+            cache for local POSIX dataset access when *filename* is a
+            string-like. If False then this caching is disabled in
+            this case.
 
-        """
+    """
+
+    def __init__(self, filename, local_os_cache=True):
         path = Path(filename)
         if path.is_dir():
             raise IsADirectoryError(
@@ -40,7 +41,7 @@ class LocalPosixReader(ByteReader):
         # Create a mock file system with selected attributes
         self.fs = MockFilesystem(protocol="file")
 
-    def _set_cache_policy(self) -> None:
+    def _set_cache_policy(self):
         """Set the cache policy.
 
         :Returns:

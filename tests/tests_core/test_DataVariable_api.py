@@ -37,7 +37,7 @@ def test_DataVariable_attributes():
     }
     assert v.shape == (3, 5, 110, 106)
     assert v.dtype == np.float32
-    assert v.chunk_shape == (1, 1, 110, 106)
+    assert v.chunks == (1, 1, 110, 106)
     assert v.data_loader_options == {
         "thread_count": 0,
         "cat_range_allowed": False,

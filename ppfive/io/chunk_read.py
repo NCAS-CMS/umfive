@@ -9,7 +9,7 @@ from ppfive.core.data import (
 
 # from ppfive.io.fsspec_reader import FsspecReader
 from .bytereader import ByteReader
-from .local import LocalPosixReader
+from .local_posix_reader import LocalPosixReader
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class ChunkReadMixin:
             chunk_offset = tuple(
                 int(coord * chunk)
                 for coord, chunk in zip(
-                    chunk_coords, self._variable.chunk_shape
+                    chunk_coords, self._variable.chunks
                 )
             )
             rec = self._record_cache.get(chunk_offset)
@@ -57,7 +57,7 @@ class ChunkReadMixin:
                 min(int(chunk), int(dim) - int(offset))
                 for offset, chunk, dim in zip(
                     chunk_offset,
-                    self._variable.chunk_shape,
+                    self._variable.chunks,
                     self._variable.shape,
                 )
             )

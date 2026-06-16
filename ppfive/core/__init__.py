@@ -18,7 +18,6 @@ __all__ = [
     "get_type",
     "get_num_data_words",
     "get_extra_data_offset_and_length",
-    "materialize_reference_dict",
     "scan_pp_headers",
     "scan_ff_headers",
     "build_variable_index",

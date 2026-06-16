@@ -1,5 +1,6 @@
 import numpy as np
 
+from ppfive import LocalPosixReader
 from ppfive.constants import (
     INDEX_LBEGIN,
     INDEX_LBLREC,
@@ -9,7 +10,6 @@ from ppfive.constants import (
 )
 from ppfive.core.models import FileTypeInfo
 from ppfive.core.scanner import scan_ff_headers, scan_pp_headers
-from ppfive.io.local import LocalPosixReader
 
 
 def _fortran_record(
