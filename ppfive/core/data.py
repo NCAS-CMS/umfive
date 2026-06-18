@@ -20,7 +20,6 @@ def _dtype_for_record(rec):
 
     """
     word_size = rec.word_size
-    #    data_type, _ = get_type_and_num_words(rec.int_hdr, word_size)
     data_type = get_type(rec.int_hdr)
     prefix = endian_prefix(rec.byte_order)
     if data_type == "integer":
@@ -90,7 +89,6 @@ def _unpack_runlength_encoded(raw, nwords, byte_order, word_size, mdi):
     prefix = endian_prefix(byte_order)
     packed_dtype = np.dtype(f"{prefix}f{word_size}")
     packed = np.frombuffer(raw, dtype=packed_dtype)
-    # out = np.empty(nwords, dtype=np.float32 if word_size == 4 else np.float64)
     out = np.full((nwords,), mdi, dtype=f"f{word_size}")
 
     src = 0
@@ -195,12 +193,11 @@ def decode_record_array_from_raw(raw, rec):
     word_size = rec.word_size
     byte_order = rec.byte_order
     pack = int(rec.int_hdr[INDEX_LBPACK]) % 10
-    # _, nwords = get_type_and_num_words(rec.int_hdr, word_size)
     nwords = get_num_data_words(rec.int_hdr, word_size)
 
     if pack == 0:
         need = nwords * word_size
-        dtype = _dtype_for_record(rec)  # , word_size, byte_order)
+        dtype = _dtype_for_record(rec)
         return np.frombuffer(raw[:need], dtype=dtype, count=nwords).copy()
 
     if pack == 1:

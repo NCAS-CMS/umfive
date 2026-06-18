@@ -1,10 +1,11 @@
-import pyfive
 import pytest
 
 import ppfive
 
 
 def test_pyfive_resistration():
+    pyfive = pytest.importorskip("pyfive")
+
     with ppfive.File("tests/data/test2.pp") as f:
         assert isinstance(f, pyfive.File)
 

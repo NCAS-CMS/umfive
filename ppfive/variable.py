@@ -20,29 +20,15 @@ from .core.interpret import get_extra_data_length
 from .core.models import StoreInfo
 from .io.chunk_read import ChunkReadMixin
 
-np.set_printoptions(floatmode="maxprec")
+# np.printoptions parameters for `dump` output (17 significant digits
+# is enough to fully represent every possible bit of precision for
+# 64-bit floats).
+_printoptions = {"precision": 17, "floatmode": "maxprec"}
 
 
-class _PyfiveAttrs(dict):
-    """Attribute mapping tuned for cfdm/p5netcdf compatibility.
-
-    Keep normal Python `str` values for direct user access, but expose those
-    strings as byte scalars when iterating `.items()` so cfdm's p5netcdf
-    adapter formats them as scalar text instead of character arrays.
-
-    """
-
-    @staticmethod
-    def _coerce_for_items(value):
-        if isinstance(value, str):
-            return np.bytes_(value)
-
-        return value
-
-    def items(self):
-        """A set-like object providing a view on the items."""
-        for key, value in super().items():
-            yield key, self._coerce_for_items(value)
+def _sorted_dict(d):
+    """Return a dictionary sorted by its keys."""
+    return {name: value for name, value in sorted(d.items())}
 
 
 class AstypeContext:
@@ -98,10 +84,7 @@ class DataVariableID(ChunkReadMixin):
                 undefined. Otherwise True.
 
         """
-        if (
-            self._variable.chunks is None
-            or not self._variable.chunk_records
-        ):
+        if self._variable.chunks is None or not self._variable.chunk_records:
             return False
 
         if self._index_cache is None:
@@ -150,13 +133,11 @@ class DataVariableID(ChunkReadMixin):
                 The subspace of the data array.
 
         """
-        print(repr(args))
         array = ZarrArrayStub(self.shape, self.chunks)
         indexer = OrthogonalIndexer(args, array)
         out = np.empty(indexer.shape, dtype=self.dtype)
 
         self._select_chunks(indexer, out)
-        print(out)
         return out
 
     @property
@@ -301,7 +282,6 @@ class DataVariableID(ChunkReadMixin):
 
         """
         if self.__chunk_init_check():
-            print(self._index_cache[(0, 1, 0, 0)])
             return self._index_cache[self._nthindex[index]]
 
         raise TypeError("Dataset is not chunked ")
@@ -389,7 +369,7 @@ class _Mixin:
             dimensions = f", dimensions=({dims})"
 
         return (
-            f"<ppfive.{self.__class__.__name__}: "
+            f"<{__package__}.{self.__class__.__name__}: "
             f"{self.name}, shape={self.shape}{dimensions}>"
         )
 
@@ -411,7 +391,7 @@ class _Mixin:
 
         """
         return self._chunks
-    
+
     @property
     def dimensions(self):
         """The dimension names.
@@ -431,10 +411,11 @@ class _Mixin:
     @property
     def maxshape(self):
         """Maximum shape of the data.
-        
+
         :Returns:
 
             `tuple`
+
         """
         return self.shape
 
@@ -445,6 +426,7 @@ class _Mixin:
         :Returns:
 
             `int`
+
         """
         return len(self.shape)
 
@@ -455,6 +437,7 @@ class _Mixin:
         :Returns:
 
             `int`
+
         """
         return prod(self.shape)
 
@@ -530,31 +513,31 @@ class _Mixin:
 
         lines = [f"{i0}{self!r}"]
 
-        if data:
-            # Set numpy linewidth
-            linewidth0 = np.get_printoptions()["linewidth"]
-            np.set_printoptions(linewidth=len(lines[0]))
+        printoptions = _printoptions
+        if data and "linewidth" not in printoptions:
+            # Set the numpy linewidth
+            printoptions = printoptions | {"linewidth": len(lines[0])}
 
-        if self.attrs:
-            lines.append(f"{i1}Attributes:")
-            lines.extend(
-                f"{i2}{name}: {value!r}" for name, value in self.attrs.items()
-            )
-
-        if data:
-            try:
-                array = self[...]
-            except Exception:
-                array = None
-
-            if array is not None:
-                lines.append(f"{i1}Data {self.dtype.name}:")
-                lines.append(
-                    f"{i2}{np.array2string(array, separator=', ', prefix=i2)}"
+        with np.printoptions(**printoptions):
+            if self.attrs:
+                lines.append(f"{i1}Attributes:")
+                lines.extend(
+                    f"{i2}{name}: {value!r}"
+                    for name, value in self.attrs.items()
                 )
 
-            # Reset numpy linewidth
-            np.set_printoptions(linewidth=linewidth0)
+            if data:
+                try:
+                    array = self[...]
+                except Exception:
+                    array = None
+
+                if array is not None:
+                    lines.append(f"{i1}Data {self.dtype.name}:")
+                    data_string = np.array2string(
+                        array, separator=", ", prefix=i2
+                    )
+                    lines.append(f"{i2}{data_string}")
 
         out = "\n".join(lines)
         if not display:
@@ -567,7 +550,7 @@ class _Mixin:
 
         The attributes are also sorted lexicographically by attribute
         name.
-        
+
         :Parameters:
 
             name: `str`
@@ -583,7 +566,7 @@ class _Mixin:
         """
         attrs = self.attrs
         attrs[name] = value
-        self.attrs = {name: value for name, value in sorted(attrs.items())}
+        self.attrs = _sorted_dict(attrs)
 
 
 class DimensionScale(_Mixin):
@@ -605,8 +588,8 @@ class DimensionScale(_Mixin):
     `pyfive.Dataset`, meaning that it implements the core abstract
     methods required to safely mimic a native `pyfive.Dataset`
     layout. Therefore runtime type-checking using
-    ``isinstance(ppfive_dimension_scale_instance, pyfive.Dataset)``
-    will evaluate to `True`.
+    ``isinstance(dimension_scale_instance, pyfive.Dataset)`` will
+    evaluate to `True`.
 
     **Initialisation**
 
@@ -693,9 +676,7 @@ class DimensionScale(_Mixin):
 
         self.attrs.update(hdf5_attrs)
 
-        self.attrs = {
-            attr: value for attr, value in sorted(self.attrs.items())
-        }
+        self.attrs = _sorted_dict(self.attrs)
 
     def __getitem__(self, key):
         """Return a subspace of the data array."""
@@ -709,7 +690,7 @@ class DimensionScale(_Mixin):
         return data[key]
 
     def __repr__(self):
-        out = f"<ppfive.{self.__class__.__name__}: {self.name}, "
+        out = f"<{__package__}.{self.__class__.__name__}: {self.name}, "
         if self._data is None:
             out += f"size={self.shape[0]}>"
         else:
@@ -727,7 +708,7 @@ class DimensionScale(_Mixin):
                 The dimension name.
 
         """
-        return (name,)
+        return (self.name,)
 
 
 class Variable(_Mixin):
@@ -754,8 +735,8 @@ class Variable(_Mixin):
     `pyfive.Dataset`, meaning that it implements the core abstract
     methods required to safely mimic a native `pyfive.Dataset`
     layout. Therefore runtime type-checking using
-    ``isinstance(ppfive_variable_instance, pyfive.Dataset)`` will
-    evaluate to `True`.
+    ``isinstance(variable_instance, pyfive.Dataset)`` will evaluate to
+    `True`.
 
     """
 
@@ -816,11 +797,8 @@ class Variable(_Mixin):
                 "there are data dimensions"
             )
 
-        self.setattr("DIMENSION_LIST", DIMENSION_LIST)
-
-        self.attrs = {
-            name: value for name, value in sorted(self.attrs.items())
-        }
+        self.attrs["DIMENSION_LIST"] = DIMENSION_LIST
+        self.attrs = _sorted_dict(self.attrs)
 
     def __getitem__(self, key):
         """Return a subspace of the data array."""
@@ -850,7 +828,7 @@ class DataVariable(_Mixin):
     `pyfive.Dataset`, meaning that it implements the core abstract
     methods required to safely mimic a native `pyfive.Dataset`
     layout. Therefore runtime type-checking using
-    ``isinstance(ppfive_data_variable_instance, pyfive.Dataset)`` will
+    ``isinstance(data_variable_instance, pyfive.Dataset)`` will
     evaluate to `True`.
 
     **Initialisation**
@@ -924,7 +902,7 @@ class DataVariable(_Mixin):
 
         self._chunks = self.chunk_shape
         del self.chunk_shape
-        
+
         DIMENSION_LIST = self.DIMENSION_LIST
         if DIMENSION_LIST is None and not self.shape:
             DIMENSION_LIST = ()
@@ -943,9 +921,7 @@ class DataVariable(_Mixin):
             )
 
         self.attrs["DIMENSION_LIST"] = DIMENSION_LIST
-        self.attrs = {
-            name: value for name, value in sorted(self.attrs.items())
-        }
+        self.attrs = _sorted_dict(self.attrs)
 
     def __getitem__(self, key):
         """Return a subspace of the data array."""
@@ -1252,3 +1228,15 @@ class DataVariable(_Mixin):
                 "cat_range_allowed": bool(cat_range_allowed),
             }
         )
+
+
+# Let external callers treat variable classes as pyfive-like Datasets
+try:
+    import pyfive
+except Exception:  # pragma: no cover
+    pass
+else:
+    # Let external callers treat files as pyfive-like file handles.
+    pyfive.Dataset.register(DataVariable)
+    pyfive.Dataset.register(DimensionScale)
+    pyfive.Dataset.register(Variable)

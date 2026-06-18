@@ -133,8 +133,8 @@ class File(Mapping):
     This class is registered as a virtual subclass of `pyfive.File`,
     meaning that it implements the core abstract methods required to
     safely mimic a native `pyfive.File` layout. Therefore runtime
-    type-checking using ``isinstance(ppfive_file_instance,
-    pyfive.File)`` will evaluate to `True`.
+    type-checking using ``isinstance(file_instance, pyfive.File)``
+    will evaluate to `True`.
 
     **Initialisation**
 
@@ -144,8 +144,7 @@ class File(Mapping):
             The definition of the PP or UM dataset to be read.  Must
             either be string-like (such as `str` or `pathlib.Path`) or
             file-like (such as `io.BufferedReader`, the result of an
-            `fsspec` file system open, or a subclass of
-            `ppfive.ByteReader`).
+            `fsspec` file system open, or a subclass of `ByteReader`).
 
         mode: `str`
             The data access mode. Only ``'r'`` (read-only) is allowed.
@@ -416,10 +415,7 @@ class File(Mapping):
                 continue
 
             DIMENSION_LIST = data_variable.DIMENSION_LIST
-            attrs = {
-                name: value
-                for name, value in sorted(data_variable.attrs.items())
-            }
+            attrs = data_variable.attrs
 
             # Add a new entry for this data variable
             all_variables[name] = DataVariable(
@@ -529,7 +525,7 @@ class File(Mapping):
         pm = "" if n_metadata == 1 else "s"
 
         return (
-            f"<ppfive.{self.__class__.__name__}: {self.filename}, "
+            f"<{__package__}.{self.__class__.__name__}: {self.filename}, "
             f"{n_data} data variable{pd}, "
             f"{n_metadata} metadata variable{pm}>"
         )
@@ -688,9 +684,9 @@ class File(Mapping):
     def close(self):
         """Close the underlying dataset reader.
 
-        However, the reader is not closed if it was opened externally
-        to `ppfive`, i.e. if the *filename* argument to `ppfive.File`
-        was a file-like object.
+        However, the reader is not closed if it was opened externally,
+        i.e. if the *filename* argument to `File` was a file-like
+        object.
 
         :Returns:
 
@@ -2923,3 +2919,12 @@ class DataVariableMetadata:
 
         self.add_to_coordinates(dim_ncvar)
         return dim_ncvar
+
+
+# Let external callers treat File as pyfive-like File
+try:
+    import pyfive
+except Exception:  # pragma: no cover
+    pass
+else:
+    pyfive.File.register(File)

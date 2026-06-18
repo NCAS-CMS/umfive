@@ -7,7 +7,6 @@ from ppfive.core.data import (
     read_record_array,
 )
 
-# from ppfive.io.fsspec_reader import FsspecReader
 from .bytereader import ByteReader
 from .local_posix_reader import LocalPosixReader
 
@@ -42,9 +41,7 @@ class ChunkReadMixin:
         for chunk_coords, chunk_selection, out_selection in indexer:
             chunk_offset = tuple(
                 int(coord * chunk)
-                for coord, chunk in zip(
-                    chunk_coords, self._variable.chunks
-                )
+                for coord, chunk in zip(chunk_coords, self._variable.chunks)
             )
             rec = self._record_cache.get(chunk_offset)
             if rec is None:
@@ -139,10 +136,6 @@ class ChunkReadMixin:
             rec,
             chunk_shape,
         ) in required:
-            #            chunk_data = read_record_array(
-            #                self._variable.file._reader,
-            #                rec,
-            #            ).reshape(chunk_shape)
             chunk_data = read_record_array(self._variable.file._reader, rec)
             chunk_data = chunk_data.reshape(chunk_shape)
             decoded_chunks.append(

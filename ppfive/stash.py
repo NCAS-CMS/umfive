@@ -172,7 +172,7 @@ def load_stash_table(table=None, delimiter="!", merge=True):
 
         default = True
         merge = False
-        table_path = files("ppfive").joinpath("data/STASH_to_CF.txt")
+        table_path = files(__package__).joinpath("data/STASH_to_CF.txt")
     else:
         # User supplied table
         default = False
@@ -265,10 +265,10 @@ def stash_records(submodel, stash_code):
 
     **Examples**
 
-    >>> ppfive.stash_records(2, 101)
+    >>> stash_records(2, 101)
     (('POTENTIAL TEMPERATURE (OCEAN)  DEG.C', 'K @ 273.15',  None,  900.0, 'sea_water_potential_temperature', {}, ''),)
 
-    >>> ppfive.stash_records(1, 5)
+    >>> stash_records(1, 5)
     (('THETAL IN THE EXTERNAL DUMP         ', 'K', None, 407.0, None, {}, ''),
      ('OROGRAPHIC GRADIENT  X COMPONENT    ', None, 606.0, None, None, {}, ''))
 

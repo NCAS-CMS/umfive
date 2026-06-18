@@ -88,26 +88,6 @@ def get_num_data_words(int_hdr, word_size):
     )
 
 
-# ef get_type_and_num_words(int_hdr, word_size):
-#   """TODO.
-#
-#   :Parameters:
-#
-#       int_hdr: `numpy.ndarray`
-#           The integer lookup header.
-#
-#       word_size: `int`
-#           The word size (``4`` or ``8``).
-#
-#   :Returns:
-#
-#       `str`, `int`
-#           The data array type, and the  TODO
-#
-#   """
-#   return get_type(int_hdr), get_num_data_words(int_hdr, word_size)
-
-
 def get_extra_data_offset_and_length(
     int_hdr, data_offset, disk_length, word_size
 ):

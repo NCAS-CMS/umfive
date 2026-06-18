@@ -52,8 +52,6 @@ from .data import (
 from .interpret import get_type
 from .models import RecordInfo
 
-# from ppfive.ioimport LocalPosixReader
-
 
 def _float_key(val):
     """Convert a value to a rounded `float`.
@@ -493,10 +491,6 @@ def build_data_variable_index(
                     chunk_coords = (ti, 0, 0)
 
                 rec.chunk_coords = chunk_coords
-
-                # chunk_records.append(
-                #    {"record": rec} # "chunk_coords": chunk_coords}
-                # )
                 chunk_records.append(rec)
 
             def _make_loader(

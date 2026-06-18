@@ -42,7 +42,7 @@
                 standard_name: 'time'
                 units: 'days since 1989-1-1'
             Data float64:
-                [0.01388889]
+                [0.01388888888888889]
         <ppfive.DimensionScale: air_pressure, shape=(1,)>
             Attributes:
                 CLASS: b'DIMENSION_SCALE'
