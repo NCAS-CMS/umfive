@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from math import prod
 from typing import Any, Callable
@@ -90,10 +88,7 @@ class DataVariableID(ChunkReadMixin):
         if self._index_cache is None:
             index = {}
             record_cache = {}
-            #            for item in self._variable.chunk_records:
             for rec in self._variable.chunk_records:
-                #                rec = item["record"]
-                #                chunk_offset = tuple(int(x) for x in item["chunk_coords"])
                 chunk_offset = tuple(int(x) for x in rec.chunk_coords)
                 info = StoreInfo(
                     chunk_offset=chunk_offset,
@@ -338,9 +333,8 @@ class DataVariableID(ChunkReadMixin):
 
         rec = None
         for r in self._variable.chunk_records:
-            #            if tuple(item["chunk_coords"]) == chunk_position:
             if tuple(r.chunk_coords) == chunk_position:
-                rec = r  # ["record"]
+                rec = r
                 break
 
         if rec is None:
@@ -988,10 +982,6 @@ class DataVariable(_Mixin):
         2: Data compressed with the N3rd bit mask
 
         """
-        #       out = {
-        #            (int(chunk_record["record"].int_hdr[INDEX_LBPACK]) // 10) % 10
-        #            for chunk_record in self.chunk_records
-        #        }
         out = {
             (int(rec.int_hdr[INDEX_LBPACK]) // 10) % 10
             for rec in self.chunk_records
@@ -1049,8 +1039,6 @@ class DataVariable(_Mixin):
         if not chunk_records:
             return False
 
-        #        return bool(chunk_records[0]["record"].extra_data)
-
         return bool(chunk_records[0].extra_data)
 
     @property
@@ -1061,12 +1049,6 @@ class DataVariable(_Mixin):
         chunks in the variable.
 
         """
-        #        return sorted(
-        #            {
-        #                int(chunk_record["record"].int_hdr[INDEX_LBPACK])
-        #                for chunk_record in self.chunk_records
-        #            }
-        #        )
         return sorted(
             {int(rec.int_hdr[INDEX_LBPACK]) for rec in self.chunk_records}
         )
@@ -1084,10 +1066,6 @@ class DataVariable(_Mixin):
         4: Data compressed using Run Length Encoding
 
         """
-        #        out = {
-        #            int(chunk_record["record"].int_hdr[INDEX_LBPACK]) % 10
-        #            for chunk_record in self.chunk_records
-        #        }
         out = {
             int(rec.int_hdr[INDEX_LBPACK]) % 10 for rec in self.chunk_records
         }
@@ -1236,7 +1214,6 @@ try:
 except Exception:  # pragma: no cover
     pass
 else:
-    # Let external callers treat files as pyfive-like file handles.
     pyfive.Dataset.register(DataVariable)
     pyfive.Dataset.register(DimensionScale)
     pyfive.Dataset.register(Variable)

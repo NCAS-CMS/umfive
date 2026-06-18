@@ -42,7 +42,7 @@ Like pyfive, ppfive is Read-only:
 	- `f["group/var"]` is not supported.
 	- `groups` exists for compatibility but is empty for current PP/Fields inputs.
 - `get_lazy_view(...)` fallback behavior:
-	- pyfive-style API entry exists, but returns the normal variable view with an info log.
+	- `pyfive`-style API entry exists, but returns the normal variable view with an info log.
 - Some Dataset properties are intentionally placeholders (`None`) because they are
 	not meaningful for PP/Fields records:
 	- `compression`, `compression_opts`, `shuffle`, `fletcher32`, `maxshape`,
@@ -53,12 +53,12 @@ Like pyfive, ppfive is Read-only:
 		`rotated_latitude_longitude`) may be exposed when implied by UM headers.
 - ppfive-specific extension API:
 	- `File.set_parallelism(thread_count=..., cat_range_allowed=...)`
-		is provided by ppfive and is not part of pyfive.
+		is provided by ppfive and is not part of `pyfive`.
 
 
 ### Practical expectation
 
-If your code treats `ppfive.File` and `ppfive.Variable` as pyfive-like read objects,
+If your code treats `ppfive.File` and `ppfive.Variable` as `pyfive`-like read objects,
 common analysis workflows should work, including chunk-level access (pp records
 are treated as chunks).  
 

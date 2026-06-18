@@ -1,11 +1,9 @@
-from __future__ import annotations
-
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
-from ppfive.io import ByteReader, LocalPosixReader
+from ..io import ByteReader, LocalPosixReader
 
 from ..constants import (
     INDEX_BDX,
@@ -367,11 +365,7 @@ def _equal_extra_data(rec0, rec1):
     return True
 
 
-def build_data_variable_index(
-    records: list[RecordInfo],
-    reader,
-    parallelism,
-):
+def build_data_variable_index(records, reader, parallelism):
     """Create a dictionary of data variable descriptions.
 
     :Parameters:

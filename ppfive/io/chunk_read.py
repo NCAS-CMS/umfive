@@ -1,7 +1,7 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
-from ppfive.core.data import (
+from ..core.data import (
     decode_record_array_from_raw,
     get_record_packed_nbytes,
     read_record_array,
@@ -259,11 +259,12 @@ class ChunkReadMixin:
         cat_range_allowed = bool(getattr(file_obj, "_cat_range_allowed", True))
         cat_str = "Cat ranges ON" if cat_range_allowed else "Cat ranges OFF"
         logger.info(
-            f"[ppfive] select chunks: thread_count={thread_count}, {cat_str}"
+            f"{__package__} select chunks: "
+            f"thread_count={thread_count}, {cat_str}"
         )
 
         required = self._get_required_chunks(indexer)
-        logger.info(f"[ppfive] {len(required)} chunks required")
+        logger.info(f"{__package__} {len(required)} chunks required")
 
         if not required:
             return

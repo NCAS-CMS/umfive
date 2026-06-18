@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from ..constants import (
     INDEX_LBEXT,
     INDEX_LBLREC,

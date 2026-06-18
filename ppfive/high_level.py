@@ -58,8 +58,6 @@ from .constants import (
 from .core import detect_file_type, scan_ff_headers, scan_pp_headers
 from .core.variables import build_data_variable_index
 
-# from .io.bytereader import ByteReader
-# from .io.fileobj import FileObjReader
 from .io import ByteReader, FileObjReader, LocalPosixReader
 from .stash import stash_records
 from .variable import DataVariable, DimensionScale, Variable
