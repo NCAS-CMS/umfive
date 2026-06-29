@@ -1,9 +1,7 @@
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 
-from .file import File
+from .high_level import File
 
 
 def safe_print(*args, **kwargs):
@@ -45,7 +43,9 @@ def _collect_dimensions_from_root(root: File) -> dict[str, int]:
     return dims
 
 
-def _gather_dimensions(ds, real_dimensions: dict[str, int], phony_dims: dict[int, str]):
+def _gather_dimensions(
+    ds, real_dimensions: dict[str, int], phony_dims: dict[int, str]
+):
     dims: list[tuple[str, int]] = []
     shape = tuple(getattr(ds, "shape", ()))
 
@@ -68,21 +68,30 @@ def _gather_dimensions(ds, real_dimensions: dict[str, int], phony_dims: dict[int
             if axis < len(dim_names):
                 dims.append((dim_names[axis], int(size)))
             elif int(size) in real_dimensions.values():
-                found = next((k for k, v in real_dimensions.items() if v == int(size)), None)
+                found = next(
+                    (k for k, v in real_dimensions.items() if v == int(size)),
+                    None,
+                )
                 if found is not None:
                     dims.append((found, int(size)))
                 else:
-                    pname = phony_dims.setdefault(int(size), f"phony_dim_{len(phony_dims)}")
+                    pname = phony_dims.setdefault(
+                        int(size), f"phony_dim_{len(phony_dims)}"
+                    )
                     dims.append((pname, int(size)))
             else:
-                pname = phony_dims.setdefault(int(size), f"phony_dim_{len(phony_dims)}")
+                pname = phony_dims.setdefault(
+                    int(size), f"phony_dim_{len(phony_dims)}"
+                )
                 dims.append((pname, int(size)))
         return dims
 
     for size in shape:
         size = int(size)
         if size in real_dimensions.values():
-            found = next((k for k, v in real_dimensions.items() if v == size), None)
+            found = next(
+                (k for k, v in real_dimensions.items() if v == size), None
+            )
             if found is not None:
                 dims.append((found, size))
                 continue
@@ -93,7 +102,9 @@ def _gather_dimensions(ds, real_dimensions: dict[str, int], phony_dims: dict[int
     return dims
 
 
-def _print_attrs(indent: str, var_name: str, attrs: dict[str, Any], omit: list[str]):
+def _print_attrs(
+    indent: str, var_name: str, attrs: dict[str, Any], omit: list[str]
+):
     for key, value in attrs.items():
         if key in omit:
             continue

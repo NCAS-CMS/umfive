@@ -1,7 +1,7 @@
 # ppfive
 
 A PP and Fields file reader that mimics relevant parts of the `pyfive` high-level API,
-with support for lazy metadata loading and parallel data loading when necessary. 
+with support for lazy metadata loading and parallel data loading when necessary.
 
 This is NOT an alternative to pyfive, it is a package which makes pp and fields files
 look like and taste ("quack like") chunked HDF5 files written by a NetCDF library.
@@ -42,23 +42,23 @@ Like pyfive, ppfive is Read-only:
 	- `f["group/var"]` is not supported.
 	- `groups` exists for compatibility but is empty for current PP/Fields inputs.
 - `get_lazy_view(...)` fallback behavior:
-	- pyfive-style API entry exists, but returns the normal variable view with an info log.
+	- `pyfive`-style API entry exists, but returns the normal variable view with an info log.
 - Some Dataset properties are intentionally placeholders (`None`) because they are
 	not meaningful for PP/Fields records:
 	- `compression`, `compression_opts`, `shuffle`, `fletcher32`, `maxshape`,
-		`fillvalue`, `dims`, `scaleoffset`, `external`, `is_virtual`.
+		`fillvalue`, `dims`, `scaleoffset`.
 - Compatibility metadata is synthesized for CF/cfdm bridging:
 	- dimension-scale datasets and `DIMENSION_LIST` are created where needed.
 	- rotated-grid helper variables (for example `latitude`, `longitude`,
 		`rotated_latitude_longitude`) may be exposed when implied by UM headers.
 - ppfive-specific extension API:
 	- `File.set_parallelism(thread_count=..., cat_range_allowed=...)`
-		is provided by ppfive and is not part of pyfive.
-        
+		is provided by ppfive and is not part of `pyfive`.
+
 
 ### Practical expectation
 
-If your code treats `ppfive.File` and `ppfive.Variable` as pyfive-like read objects,
+If your code treats `ppfive.File` and `ppfive.Variable` as `pyfive`-like read objects,
 common analysis workflows should work, including chunk-level access (pp records
 are treated as chunks).  
 

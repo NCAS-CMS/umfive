@@ -8,7 +8,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-
 PERF_VAR_RE = re.compile(
     r"PERF_VAR\s+thread=(?P<thread>\d+)\s+iter=(?P<iter>\d+)\s+"
     r"var=(?P<var>\S+)(?:\s+cat=(?P<cat>ON|OFF))?(?:\s+wgdos=(?P<wgdos>[TF]))?\s+"
@@ -23,7 +22,8 @@ DOING_NAME_RE = re.compile(
 
 
 def parse_perf_var_lines(log_path: Path):
-    """Return timing rows and variable metadata mapping from a ppview log."""
+    """Return timing rows and variable metadata mapping from a ppview
+    log."""
     rows: list[tuple[str, str, int, float]] = []
     metadata_by_var: dict[str, dict[str, str | bool]] = {}
     has_cat = False
@@ -75,12 +75,16 @@ def parse_perf_var_lines(log_path: Path):
                     )
                 )
             except ValueError as exc:
-                raise ValueError(f"Failed to parse PERF_VAR on line {line_number}: {line.strip()}") from exc
+                raise ValueError(
+                    f"Failed to parse PERF_VAR on line {line_number}: {line.strip()}"
+                ) from exc
     return rows, metadata_by_var, has_cat
 
 
 def group_by_variable_config(rows: list[tuple[str, str, int, float]]):
-    grouped: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    grouped: dict[str, dict[str, list[float]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
     for var, config_label, _iter_idx, seconds in rows:
         grouped[var][config_label].append(seconds)
     return grouped
@@ -90,7 +94,9 @@ def sort_config_labels(labels: list[str], has_cat: bool) -> list[str]:
     if has_cat:
         order = {"OFF": 0, "ON": 1}
         return sorted(labels, key=lambda item: order.get(item, 99))
-    return sorted(labels, key=lambda item: int(item) if item.isdigit() else item)
+    return sorted(
+        labels, key=lambda item: int(item) if item.isdigit() else item
+    )
 
 
 def make_boxplots(
@@ -102,12 +108,19 @@ def make_boxplots(
 ):
     variables = sorted(grouped)
     if not variables:
-        raise ValueError("No PERF_VAR rows found. Re-run n512_ppview.py to regenerate the log with per-variable timings.")
+        raise ValueError(
+            "No PERF_VAR rows found. Re-run n512_ppview.py to regenerate the log with per-variable timings."
+        )
 
     n = len(variables)
     ncols = 3
     nrows = math.ceil(n / ncols)
-    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(5.2 * ncols, 2.8 * nrows), squeeze=False)
+    fig, axes = plt.subplots(
+        nrows=nrows,
+        ncols=ncols,
+        figsize=(5.2 * ncols, 2.8 * nrows),
+        squeeze=False,
+    )
 
     for i, var in enumerate(variables):
         ax = axes[i // ncols][i % ncols]
@@ -140,7 +153,11 @@ def make_boxplots(
     for j in range(n, total_axes):
         axes[j // ncols][j % ncols].axis("off")
 
-    fig_title = title or ("Per-variable timing by cat_ranges setting" if has_cat else "Per-variable timing by thread count")
+    fig_title = title or (
+        "Per-variable timing by cat_ranges setting"
+        if has_cat
+        else "Per-variable timing by thread count"
+    )
     fig.suptitle(fig_title)
     fig.tight_layout()
     fig.subplots_adjust(top=0.94)
@@ -175,10 +192,16 @@ def main():
     args = parser.parse_args()
     rows, metadata_by_var, has_cat = parse_perf_var_lines(args.log)
     grouped = group_by_variable_config(rows)
-    make_boxplots(grouped, metadata_by_var, has_cat, args.out, title=args.title)
+    make_boxplots(
+        grouped, metadata_by_var, has_cat, args.out, title=args.title
+    )
 
-    n_points = sum(len(v) for by_thread in grouped.values() for v in by_thread.values())
-    print(f"Parsed {n_points} timing points across {len(grouped)} variables from {args.log}")
+    n_points = sum(
+        len(v) for by_thread in grouped.values() for v in by_thread.values()
+    )
+    print(
+        f"Parsed {n_points} timing points across {len(grouped)} variables from {args.log}"
+    )
     print(f"Saved plot to {args.out}")
 
 

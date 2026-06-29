@@ -9,11 +9,7 @@ def test_variable_id_exposes_pyfive_like_chunk_index_for_unpacked_file():
     path = Path(__file__).resolve().parents[1] / "data" / "test2.pp"
 
     with File(str(path)) as f:
-        name = next(
-            name
-            for name, variable in f.variables.items()
-            if variable.attrs.get("CLASS") != b"DIMENSION_SCALE"
-        )
+        name = next(name for name in f.data_variables)
         variable = f[name]
         idx = variable.id.index
 
@@ -38,11 +34,7 @@ def test_unpacked_chunk_index_can_back_a_kerchunk_like_reconstruction():
     path = Path(__file__).resolve().parents[1] / "data" / "test2.pp"
 
     with File(str(path)) as f:
-        name = next(
-            name
-            for name, variable in f.variables.items()
-            if variable.attrs.get("CLASS") != b"DIMENSION_SCALE"
-        )
+        name = next(name for name in f.data_variables)
         variable = f[name]
         direct = variable[:]
         refs = {
@@ -69,7 +61,9 @@ def test_unpacked_chunk_index_can_back_a_kerchunk_like_reconstruction():
         block = np.frombuffer(raw, dtype=dtype).reshape(chunk_shape)
         selection = tuple(
             slice(offset, min(offset + csize, full), 1)
-            for offset, csize, full in zip(ref["chunk_offset"], chunk_shape, shape)
+            for offset, csize, full in zip(
+                ref["chunk_offset"], chunk_shape, shape
+            )
         )
         rebuilt[selection] = block
 

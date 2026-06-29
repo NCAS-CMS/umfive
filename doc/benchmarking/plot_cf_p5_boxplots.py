@@ -9,7 +9,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
-
 LINE_RE = re.compile(
     r"^(?P<var>.+?)\s+CF:\s+(?P<cf>[0-9]*\.?[0-9]+)s,\s+"
     r"P5:\s+(?P<p5>[0-9]*\.?[0-9]+)s\s+\(WGD=(?P<wgd>Tru|Fal),\s*(?P<shape>.*)\)$"
@@ -57,7 +56,9 @@ def parse_log(log_path: Path) -> dict[str, VarStats]:
             p5_val = float(match.group("p5"))
 
             if var_name not in records:
-                records[var_name] = VarStats(name=var_name, wgd=wgd, shape=shape)
+                records[var_name] = VarStats(
+                    name=var_name, wgd=wgd, shape=shape
+                )
 
             records[var_name].cf_times.append(cf_val)
             records[var_name].p5_times.append(p5_val)
@@ -67,19 +68,31 @@ def parse_log(log_path: Path) -> dict[str, VarStats]:
 
 def is_right_axis_shape(shape: tuple[int, ...] | None) -> bool:
     """Determine if a shape should use the right y-axis (239 or 240)."""
-    return bool(shape is not None and len(shape) >= 1 and shape[0] in (239, 240))
+    return bool(
+        shape is not None and len(shape) >= 1 and shape[0] in (239, 240)
+    )
 
 
 def shape_sort_key(var: VarStats) -> tuple:
     """Sort variables by shape group, then by name within group."""
     shape = var.shape
-    
+
     # Determine group order
     if var.name == "meta":
         group = 0
-    elif shape is not None and len(shape) >= 2 and shape[0] == 10 and shape[1] == 1:
+    elif (
+        shape is not None
+        and len(shape) >= 2
+        and shape[0] == 10
+        and shape[1] == 1
+    ):
         group = 1
-    elif shape is not None and len(shape) >= 2 and shape[0] == 10 and shape[1] == 2:
+    elif (
+        shape is not None
+        and len(shape) >= 2
+        and shape[0] == 10
+        and shape[1] == 2
+    ):
         group = 2
     elif shape is not None and len(shape) >= 1 and shape[0] == 239:
         group = 3
@@ -87,15 +100,23 @@ def shape_sort_key(var: VarStats) -> tuple:
         group = 4
     else:
         group = 5  # Other shapes
-    
+
     return (group, var.name)
 
 
 def make_combined_panel(ax, all_stats: list[VarStats]) -> None:
-    """Create a single panel with dual y-axes, left for small shapes, right for 239/240."""
+    """Create a single panel with dual y-axes, left for small shapes,
+    right for 239/240."""
     if not all_stats:
         ax.set_title("No variables")
-        ax.text(0.5, 0.5, "No matching variables", ha="center", va="center", transform=ax.transAxes)
+        ax.text(
+            0.5,
+            0.5,
+            "No matching variables",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+        )
         ax.set_axis_off()
         return
 
@@ -162,7 +183,7 @@ def make_combined_panel(ax, all_stats: list[VarStats]) -> None:
     ax.set_xticks(range(n))
     labels = [s.name for s in all_stats]
     ax.set_xticklabels(labels, rotation=45, ha="right")
-    
+
     # Color WGD=True labels red
     for i, s in enumerate(all_stats):
         if s.wgd:
@@ -172,16 +193,28 @@ def make_combined_panel(ax, all_stats: list[VarStats]) -> None:
     if len(left_stats) > 0 and len(right_stats) > 0:
         divider_pos = len(left_stats) - 0.5
         y_min, y_max = ax.get_ylim()
-        ax.vlines(divider_pos, y_min, y_max, colors='gray', linestyles='dotted', alpha=0.5, linewidth=1.5)
+        ax.vlines(
+            divider_pos,
+            y_min,
+            y_max,
+            colors="gray",
+            linestyles="dotted",
+            alpha=0.5,
+            linewidth=1.5,
+        )
 
     ax.set_ylabel("Seconds (left axis)", color="black")
     ax2.set_ylabel("Seconds (right axis, shapes 239/240)", color="black")
-    ax.set_title("CF vs P5 Variable Read Timings (shape-grouped with dual axes)")
+    ax.set_title(
+        "CF vs P5 Variable Read Timings (shape-grouped with dual axes)"
+    )
     ax.grid(axis="y", alpha=0.25)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Plot CF vs P5 timing distributions from comparison log")
+    parser = argparse.ArgumentParser(
+        description="Plot CF vs P5 timing distributions from comparison log"
+    )
     parser.add_argument(
         "--log",
         type=Path,
@@ -208,7 +241,10 @@ def main() -> None:
         Patch(facecolor="#ff7f0e", alpha=0.7, label="P5"),
     ]
     fig.legend(handles=legend_handles, loc="lower right")
-    fig.suptitle("CF vs P5 Variable Read Timings (8 repetitions) - Red labels = WGD=True", fontsize=14)
+    fig.suptitle(
+        "CF vs P5 Variable Read Timings (8 repetitions) - Red labels = WGD=True",
+        fontsize=14,
+    )
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(args.out, dpi=180)

@@ -2081,13 +2081,13 @@
 1!10228!ANGULAR MOMENTUM W3   KG M2/S X10-24!!!407!!!
 1!10229!CLOUD LIQUID WATER BEFORE DYNAMICS  !!!407!!!
 1!10230!CLOUD ICE CONTENT  BEFORE DYNAMICS  !!!407!!!
-1!12002!U AFTER PRIMARY FIELD ADVECTION     !m s-1!!407!eastward_wind!!true_latitude_longitude      
+1!12002!U AFTER PRIMARY FIELD ADVECTION     !m s-1!!407!eastward_wind!!true_latitude_longitude
 1!12002!U AFTER PRIMARY FIELD ADVECTION     !m s-1!!407!x_wind!!rotated_latitude_longitude
 1!12002!U (MODEL LEVELS) AFTER ADVECTION    !m s-1!501!!eastward_wind!!true_latitude_longitude
 1!12002!U (MODEL LEVELS) AFTER ADVECTION    !m s-1!501!!x_wind!!rotated_latitude_longitude
-1!12003!V AFTER PRIMARY FIELD ADVECTION     !m s-1!!407!northward_wind!!true_latitude_longitude    
+1!12003!V AFTER PRIMARY FIELD ADVECTION     !m s-1!!407!northward_wind!!true_latitude_longitude
 1!12003!V AFTER PRIMARY FIELD ADVECTION     !m s-1!!407!y_wind!!rotated_latitude_longitude
-1!12003!V (MODEL LEVELS) AFTER ADVECTION    !m s-1!501!!northward_wind!!true_latitude_longitude    
+1!12003!V (MODEL LEVELS) AFTER ADVECTION    !m s-1!501!!northward_wind!!true_latitude_longitude
 1!12003!V (MODEL LEVELS) AFTER ADVECTION    !m s-1!501!!y_wind!!rotated_latitude_longitude
 1!12004!THETAL AFTER PRIMARY FIELD ADVECTION!K!!407!!!
 1!12004!TEMPERATURE AFTER ADVECTION         !K!501!!air_temperature!!
@@ -2122,9 +2122,9 @@
 1!12204!lambda w departure point  radians   !radian!502!!!!
 1!12205!phi w departure point     radians   !radian!502!!!!
 1!12254!QCL               AFTER ADVECTION   !1!501!!!!
-1!13002!U AFTER FILTERING AND DIFFUSION     !m s-1!!407!eastward_wind!!true_latitude_longitude   
+1!13002!U AFTER FILTERING AND DIFFUSION     !m s-1!!407!eastward_wind!!true_latitude_longitude
 1!13002!U AFTER FILTERING AND DIFFUSION     !m s-1!!407!x_wind!!rotated_latitude_longitude
-1!13003!V AFTER FILTERING AND DIFFUSION     !m s-1!!407!northward_wind!!true_latitude_longitude  
+1!13003!V AFTER FILTERING AND DIFFUSION     !m s-1!!407!northward_wind!!true_latitude_longitude
 1!13003!V AFTER FILTERING AND DIFFUSION     !m s-1!!407!y_wind!!rotated_latitude_longitude
 1!13004!THETAL AFTER FILTERING AND DIFFUSION!K!!407!!!
 1!13010!QT AFTER FILTERING AND DIFFUSION    !1!!407!!!

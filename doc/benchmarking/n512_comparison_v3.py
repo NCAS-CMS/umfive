@@ -5,12 +5,14 @@ import statistics as st
 import time
 from pathlib import Path
 
-import dask
 import cf
+import dask
+
 import ppfive
 
-
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
+)
 
 DEFAULT_PATH = "/Volumes/Lawrence4TB/xjanpa.pa19910301"
 
@@ -40,14 +42,20 @@ def _read_p5(path: str, dask_chunks, thread_count: int):
         return cf.read(f, dask_chunks=dask_chunks)
 
 
-def _time_field_arrays(fields, targets: set[str] | None, dask_scheduler: str | None):
+def _time_field_arrays(
+    fields, targets: set[str] | None, dask_scheduler: str | None
+):
     timed = {}
     for field in fields:
         name = field.identity()
         if targets is not None and name not in targets:
             continue
 
-        ctx = dask.config.set(scheduler=dask_scheduler) if dask_scheduler else _null_ctx()
+        ctx = (
+            dask.config.set(scheduler=dask_scheduler)
+            if dask_scheduler
+            else _null_ctx()
+        )
         with ctx:
             t0 = time.perf_counter()
             arr = field.array
@@ -67,11 +75,21 @@ def _time_field_arrays(fields, targets: set[str] | None, dask_scheduler: str | N
 
 
 class _null_ctx:
-    def __enter__(self): return self
-    def __exit__(self, *_): pass
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        pass
 
 
-def _run_one_mode(mode: str, path: str, dask_chunks, thread_count: int, targets: set[str] | None, dask_scheduler: str | None):
+def _run_one_mode(
+    mode: str,
+    path: str,
+    dask_chunks,
+    thread_count: int,
+    targets: set[str] | None,
+    dask_scheduler: str | None,
+):
     if mode == "CF":
         fields = _read_cf(path, dask_chunks)
     elif mode == "P5":
@@ -95,10 +113,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Tighter CF-vs-PPFive benchmark with warmup discard and alternating run order"
     )
-    parser.add_argument("--path", default=DEFAULT_PATH, help="Input PP/Fields file path")
-    parser.add_argument("--trials", type=int, default=8, help="Number of measured trials")
-    parser.add_argument("--warmup", type=int, default=2, help="Warmup trials to discard")
-    parser.add_argument("--thread-count", type=int, default=4, help="PPFive local thread count")
+    parser.add_argument(
+        "--path", default=DEFAULT_PATH, help="Input PP/Fields file path"
+    )
+    parser.add_argument(
+        "--trials", type=int, default=8, help="Number of measured trials"
+    )
+    parser.add_argument(
+        "--warmup", type=int, default=2, help="Warmup trials to discard"
+    )
+    parser.add_argument(
+        "--thread-count", type=int, default=4, help="PPFive local thread count"
+    )
     parser.add_argument(
         "--dask-chunks",
         default="none",
@@ -132,7 +158,9 @@ def main() -> None:
     print("CONFIG")
     print(f"  path={Path(args.path)}")
     print(f"  trials={args.trials} warmup={args.warmup}")
-    print(f"  dask_chunks={args.dask_chunks} ppfive_thread_count={args.thread_count}")
+    print(
+        f"  dask_chunks={args.dask_chunks} ppfive_thread_count={args.thread_count}"
+    )
     print(f"  dask_scheduler={dask_scheduler or 'default'}")
     print(f"  targets={'ALL_COMMON' if targets is None else sorted(targets)}")
 
@@ -141,7 +169,14 @@ def main() -> None:
         order = ("CF", "P5") if i % 2 == 0 else ("P5", "CF")
         print(f"WARMUP {i + 1}/{args.warmup} order={order}")
         for mode in order:
-            _ = _run_one_mode(mode, args.path, dask_chunks, args.thread_count, targets, dask_scheduler)
+            _ = _run_one_mode(
+                mode,
+                args.path,
+                dask_chunks,
+                args.thread_count,
+                targets,
+                dask_scheduler,
+            )
             gc.collect()
 
     stats = {}
@@ -153,7 +188,14 @@ def main() -> None:
 
         trial_data = {}
         for mode in order:
-            trial_data[mode] = _run_one_mode(mode, args.path, dask_chunks, args.thread_count, targets, dask_scheduler)
+            trial_data[mode] = _run_one_mode(
+                mode,
+                args.path,
+                dask_chunks,
+                args.thread_count,
+                targets,
+                dask_scheduler,
+            )
             gc.collect()
 
         cf_data = trial_data["CF"]

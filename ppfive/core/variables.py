@@ -1,16 +1,9 @@
-from __future__ import annotations
-
-from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
-from datetime import datetime
-from typing import Any
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
-from ppfive.io.fsspec_reader import FsspecReader
-from ppfive.io.local import LocalPosixReader
-
-from .constants import (
+from ..constants import (
     INDEX_BDX,
     INDEX_BDY,
     INDEX_BGOR,
@@ -26,11 +19,9 @@ from .constants import (
     INDEX_LBDAY,
     INDEX_LBDAYD,
     INDEX_LBFT,
-    INDEX_LBFC,
     INDEX_LBHEM,
     INDEX_LBHR,
     INDEX_LBHRD,
-    INDEX_LBREL,
     INDEX_LBLEV,
     INDEX_LBMIN,
     INDEX_LBMIND,
@@ -41,7 +32,6 @@ from .constants import (
     INDEX_LBPROC,
     INDEX_LBROW,
     INDEX_LBTIM,
-    INDEX_LBSRCE,
     INDEX_LBUSER4,
     INDEX_LBUSER5,
     INDEX_LBUSER7,
@@ -50,6 +40,7 @@ from .constants import (
     INDEX_LBYRD,
     INT_MISSING_DATA,
 )
+from ..io import ByteReader, LocalPosixReader
 from .data import (
     decode_record_array_from_raw,
     get_record_packed_nbytes,
@@ -57,164 +48,38 @@ from .data import (
 )
 from .interpret import get_type
 from .models import RecordInfo
-from .stash_table import stash_records
 
 
-def _calendar_from_lbtim(lbtim: int) -> str:
-    _, ib_ic = divmod(int(lbtim), 100)
-    _, ic = divmod(ib_ic, 10)
-    if ic == 1:
-        return "gregorian"
-    if ic == 4:
-        return "365_day"
-    return "360_day"
+def _float_key(val):
+    """Convert a value to a rounded `float`.
 
+    :Parameters:
 
-def _time_values_from_t_steps(
-    t_steps: list[tuple[Any, ...]],
-    *,
-    units: str,
-    calendar: str,
-) -> np.ndarray:
-    values: list[float] = []
-    if calendar == "gregorian":
-        ref_year = int(units.split()[2].split("-")[0])
-        ref = datetime(ref_year, 1, 1, 0, 0)
-        for tkey in t_steps:
-            dt = datetime(int(tkey[1]), int(tkey[2]), int(tkey[3]), int(tkey[5]), int(tkey[6]))
-            delta = dt - ref
-            values.append(delta.total_seconds() / 86400.0)
-        return np.asarray(values, dtype=np.float64)
+        val:
+            The value to convert.
 
-    try:
-        import cftime
+    :Returns:
 
-        for tkey in t_steps:
-            dt = cftime.datetime(
-                int(tkey[1]),
-                int(tkey[2]),
-                int(tkey[3]),
-                int(tkey[5]),
-                int(tkey[6]),
-                calendar=calendar,
-            )
-            values.append(float(cftime.date2num(dt, units, calendar)))
-        return np.asarray(values, dtype=np.float64)
-    except Exception:
-        # Keep shape correct even if non-gregorian conversion support is unavailable.
-        return np.arange(len(t_steps), dtype=np.float64)
+        `float`
 
-
-def _infer_um_version(first: RecordInfo) -> int:
-    ih = first.int_hdr
-    header_um_version, _ = divmod(int(ih[INDEX_LBSRCE]), 10000)
-    if header_um_version > 0:
-        return int(header_um_version)
-
-    # Mirrors legacy fallback for older release-2 style headers.
-    if int(ih[INDEX_LBREL]) == 2:
-        return 405
-
-    return 0
-
-
-def _um_identity(first: RecordInfo) -> tuple[str | None, int, str]:
-    ih = first.int_hdr
-    model = int(ih[INDEX_LBUSER7])
-    stash = int(ih[INDEX_LBUSER4])
-    um_version = _infer_um_version(first)
-
-    if stash:
-        section, item = divmod(stash, 1000)
-        um_stash_source = f"m{model:02d}s{section:02d}i{item:03d}"
-    else:
-        um_stash_source = None
-
-    if um_stash_source is not None:
-        identity = f"UM_{um_stash_source}_vn{um_version}"
-    else:
-        identity = f"UM_{model}_fc{int(ih[INDEX_LBFC])}_vn{um_version}"
-
-    return um_stash_source, um_version, identity
-
-
-def _enrich_cf_like_attrs(first: RecordInfo) -> dict[str, Any]:
-    ih = first.int_hdr
-    rh = first.real_hdr
-    um_stash_source, um_version, identity = _um_identity(first)
-
-    attrs: dict[str, Any] = {
-        "um_version": um_version,
-        "um_identity": identity,
-        "lbrel": int(ih[INDEX_LBREL]),
-        "lbfc": int(ih[INDEX_LBFC]),
-        "lbvc": int(ih[INDEX_LBVC]),
-        "lbuser5": int(ih[INDEX_LBUSER5]),
-    }
-
-    if um_stash_source is not None:
-        attrs["um_stash_source"] = um_stash_source
-
-    stash = int(ih[INDEX_LBUSER4])
-    submodel = int(ih[INDEX_LBUSER7])
-    if stash:
-        for entry in stash_records(submodel, stash):
-            (
-                long_name,
-                units,
-                valid_from,
-                valid_to,
-                standard_name,
-                cf_info,
-                um_condition,
-            ) = entry
-
-            if valid_from is not None and um_version < valid_from:
-                continue
-            if valid_to is not None and um_version > valid_to:
-                continue
-
-            # Keep this portable and deterministic: only accept unconditional
-            # records for now, without importing cf-construct logic.
-            if um_condition:
-                continue
-
-            if standard_name:
-                attrs["standard_name"] = standard_name
-            if long_name:
-                attrs["long_name"] = long_name.rstrip()
-            if units:
-                attrs["units"] = units
-            if cf_info:
-                attrs["cf_info"] = dict(cf_info)
-
-            break
-
-    if "long_name" not in attrs:
-        attrs["long_name"] = identity
-
-    # Surface this for debugging/selection parity with legacy logic.
-    source_code = int(ih[INDEX_LBSRCE]) % 10000
-    if source_code == 1111 and um_version:
-        attrs["source"] = f"UM vn{um_version}"
-
-    # Expose small context that may be useful for future um_condition support.
-    attrs["lbcode"] = int(ih[INDEX_LBCODE])
-    attrs["bplat"] = float(rh[INDEX_BPLAT])
-    attrs["bplon"] = float(rh[INDEX_BPLON])
-    attrs["bzy"] = float(rh[INDEX_BZY])
-    attrs["bdy"] = float(rh[INDEX_BDY])
-    attrs["bzx"] = float(rh[INDEX_BZX])
-    attrs["bdx"] = float(rh[INDEX_BDX])
-
-    return attrs
-
-
-def _float_key(val: float) -> float:
+    """
     return round(float(val), 9)
 
 
-def _between_var_key(rec: RecordInfo) -> tuple[Any, ...]:
+def _between_var_key(rec):
+    """Key to discern records that belong in a group.
+
+    :Parameters:
+
+        rec: `RecordInfo`
+            The record from which to derive the key.
+
+    :Returns:
+
+        `tuple`
+            A tuple of values derived from the lookup header.
+
+    """
     ih = rec.int_hdr
     rh = rec.real_hdr
     return (
@@ -237,7 +102,22 @@ def _between_var_key(rec: RecordInfo) -> tuple[Any, ...]:
     )
 
 
-def _within_var_key(rec: RecordInfo) -> tuple[Any, ...]:
+def _within_var_key(rec):
+    """Key to discern records within a group.
+
+    THe group is defined by `_between_var_key`.
+
+    :Parameters:
+
+        rec: `RecordInfo`
+            The record from which to derive the key.
+
+    :Returns:
+
+        `tuple`
+            A tuple of values derived from the lookup header.
+
+    """
     ih = rec.int_hdr
     rh = rec.real_hdr
     lblev = int(ih[INDEX_LBLEV])
@@ -262,12 +142,27 @@ def _within_var_key(rec: RecordInfo) -> tuple[Any, ...]:
     )
 
 
-def _record_is_skippable(rec: RecordInfo) -> bool:
+def _record_is_skippable(rec):
+    """Whether or not the record should be skipped.
+
+    Mirrors key skip logic in process_vars.c.
+
+    :Parameters:
+
+        rec: `RecordInfo`
+            The record.
+
+    :Returns:
+
+        `bool`
+            `True` is the record is skippable, otherwise `False`.
+
+    """
     ih = rec.int_hdr
 
-    # Mirrors key skip logic in process_vars.c
     if int(ih[INDEX_LBNPT]) == INT_MISSING_DATA:
         return True
+
     if int(ih[INDEX_LBROW]) == INT_MISSING_DATA:
         return True
 
@@ -278,23 +173,42 @@ def _record_is_skippable(rec: RecordInfo) -> bool:
     return False
 
 
-def _stash_name(rec: RecordInfo) -> str:
-    ih = rec.int_hdr
-    model = int(ih[INDEX_LBUSER7])
-    user4 = int(ih[INDEX_LBUSER4])
-    section = user4 // 1000
-    item = user4 % 1000
-    return f"m{model:02d}s{section:02d}i{item:03d}"
+def _dtype_name(rec):
+    """The data type of the record data array.
 
+    :Parameters:
 
-def _dtype_name(first: RecordInfo, word_size: int) -> str:
-    kind = get_type(first.int_hdr)
+        rec: `RecordInfo`
+            The record.
+
+    :Returns:
+
+        `str`
+            The data type.
+
+    """
+    word_size = rec.word_size
+
+    kind = get_type(rec.int_hdr)
     if kind == "integer":
         return "int32" if word_size == 4 else "int64"
+
     return "float32" if word_size == 4 else "float64"
 
 
-def _z_key(rec: RecordInfo) -> tuple[Any, ...]:
+def _z_key(rec):
+    """Return a key for Z information.
+
+    :Parameters:
+
+        rec: `RecordInfo`
+            The record.
+
+    :Returns:
+
+        `tuple`
+
+    """
     ih = rec.int_hdr
     pseudo = int(ih[INDEX_LBUSER5])
     if pseudo in (0, INT_MISSING_DATA):
@@ -304,18 +218,46 @@ def _z_key(rec: RecordInfo) -> tuple[Any, ...]:
     return (pseudo, within[13], within[14], within[15])
 
 
-def _t_key(rec: RecordInfo) -> tuple[Any, ...]:
+def _t_key(rec):
+    """Return a key for T information.
+
+    :Parameters:
+
+        rec: `RecordInfo`
+            The record.
+
+    :Returns:
+
+        `tuple`
+
+    """
     return _within_var_key(rec)[:13]
 
 
-def _split_on_duplicate_tz_pairs(recs: list[RecordInfo]) -> list[list[RecordInfo]]:
-    """Split a grouped variable when (t,z) coordinate pairs are duplicated.
+def _split_on_duplicate_tz_pairs_and_extra_data(recs):
+    """Split a grouped variable on duplicate (t,z) coordinate pairs.
+
+    Split a grouped variable when (t,z) coordinate pairs are duplicated.
 
     This mirrors the key behavior of the legacy disambiguation index in
     process_vars.c for non-regular z/t record layouts.
+
+    Also split when extra data differs, after splitting duplicate
+    (t,z) coordinate pairs.
+
+    :Parameters:
+
+        recs: sequence of `RecordInfo`
+            The records.
+
+    :Returns:
+
+        `list`
+            Each element is a `list` of `RecordInfo`
+
     """
-    seen: dict[tuple[Any, Any], int] = defaultdict(int)
-    buckets: dict[int, list[RecordInfo]] = defaultdict(list)
+    seen = defaultdict(int)
+    buckets = defaultdict(list)
 
     for rec in recs:
         pair = (_t_key(rec), _z_key(rec))
@@ -326,90 +268,259 @@ def _split_on_duplicate_tz_pairs(recs: list[RecordInfo]) -> list[list[RecordInfo
     if len(buckets) <= 1:
         return [recs]
 
-    return [buckets[index] for index in sorted(buckets)]
+    recs_tz = [buckets[index] for index in sorted(buckets)]
+
+    return _split_groups_by_extra_data(recs_tz)
 
 
-def build_variable_index(
-    records: list[RecordInfo],
-    reader,
-    word_size: int,
-    byte_ordering: str,
-    parallel_config: dict[str, Any] | None = None,
-) -> dict[str, dict[str, Any]]:
-    if parallel_config is None:
-        parallel_config = {"thread_count": 0, "cat_range_allowed": True}
+def _split_groups_by_extra_data(recs_tz):
+    """Split groups by extra data.
+
+    :Parameters:
+
+        recs_tz: `list` of `list`
+            Each of the groups derived from splitting on duplicate
+            (t,z) coordinate pairs.
+
+    :Returns:
+
+        `dict`
+            The new groups taking extra data into account.
+
+    """
+    out = []
+    for recs in recs_tz:
+        split = False
+        rec0 = recs[0]
+        for rec1 in recs[1:]:
+            if not _equal_extra_data(rec0, rec1):
+                split = True
+                break
+
+        if split:
+            out.extend([rec] for rec in recs)
+        else:
+            out.append(recs)
+
+    return out
+
+
+def _equal_extra_data(rec0, rec1):
+    """Whether the extra data of two records are equal.
+
+    :Parameters:
+
+        rec0: `RecordInfo`
+            The first record.
+
+        rec1: `RecordInfo`
+            The second record.
+
+    :Returns:
+
+        `bool`
+            Whether or not the records' extra data are equal.
+
+    """
+    extra0 = rec0.extra_data
+    extra1 = rec1.extra_data
+
+    if not extra0:
+        if not extra1:
+            return True
+
+        return False
+
+    if not extra1:
+        return False
+
+    if sorted(extra0.keys()) != sorted(extra1.keys()):
+        return False
+
+    for key, value0 in extra0.items():
+        value1 = extra1[key]
+
+        kind = value0.dtype.kind
+        if kind == "f":
+            itemsize = value0.dtype.itemsize
+            if itemsize == 4:
+                rtol = 1e-5
+            elif itemsize == 8:
+                rtol = 1e-13
+
+            if not np.allclose(value0, value1, atol=0, rtol=rtol):
+                return False
+
+        elif kind in "iSUT":
+            if not np.array_equal(value0, value1):
+                return False
+
+        else:
+            raise ValueError(
+                "Invalid data type for extra data key "
+                f"{key!r}: {value0.dtype!r}"
+            )
+
+    return True
+
+
+def build_data_variable_index(records, reader, parallelism):
+    """Create a dictionary of data variable descriptions.
+
+    :Parameters:
+
+        records: sequence of `RecordInfo`
+            All records from a file.
+
+        reader: `ByteReader`
+            The file reader.
+
+        parallelism: `dict`
+            A dictionary of read-parallelism configuration
+            options. These are passed to the data-loader function
+            (`load`) at data-read time.
+
+    :Returns:
+
+        `list` of `dict`
+            A dictionary describing each data variable. Each
+            dictionary contains all of the information needed to
+            create a `DataVariable` instance and its associated
+            `DimensionScale` and `Variable` instances.
+
+    """
+    if parallelism is None:
+        parallelism = {}
 
     filtered = [r for r in records if not _record_is_skippable(r)]
-    ordered = sorted(filtered, key=lambda r: (_between_var_key(r), _within_var_key(r)))
+    ordered = sorted(
+        filtered, key=lambda r: (_between_var_key(r), _within_var_key(r))
+    )
 
-    grouped: dict[tuple[Any, ...], list[RecordInfo]] = defaultdict(list)
+    grouped = defaultdict(list)
     for rec in ordered:
         grouped[_between_var_key(rec)].append(rec)
 
-    variable_index: dict[str, dict[str, Any]] = {}
-    name_counts: dict[str, int] = defaultdict(int)
+    variable_index = []
 
-    for _, recs in grouped.items():
-        for recs_split in _split_on_duplicate_tz_pairs(recs):
+    # Assign a unique integer code to each data variable. This is used
+    # as the key in the 'variable_index' dictionary.
+    int_code = 0
+
+    for recs in grouped.values():
+        for recs_split in _split_on_duplicate_tz_pairs_and_extra_data(recs):
             first = recs_split[0]
-            base = _stash_name(first)
-            name_counts[base] += 1
-            name = base if name_counts[base] == 1 else f"{base}_{name_counts[base]}"
+
+            # Relevant LBVC codes
+            # -------------------
+            #   0  Unspecified
+            #   8  Pressure
+            # 126  Max C.A.T. level
+            # 127  Sea bed level
+            # 128  Mean sea level
+            # 129  Surface
+            # 130  Tropopause level
+            # 131  Maximum wind level
+            # 132  Freezing level
+            # 133  Top of atmosphere
+            # 134  -20 deg.C level
+            # 135  Upper level (height)
+            # 136  Lower level (height)
+            # 137  Upper level (pressure)
+            # 138  Lower level (pressure)
+            # 139  Wet bulb freezing level height (asl) m
+            LBVC = first.int_hdr[INDEX_LBVC]
 
             z_keys_set = {_z_key(r) for r in recs_split}
-            has_pseudo = any(zk[0] is not None for zk in z_keys_set)
-            z_levels = sorted(z_keys_set, reverse=not has_pseudo)
+
+            # Reverse air_pressure axis
+            reverse = LBVC == 8
+
+            z_levels = sorted(z_keys_set, reverse=reverse)
+
             t_steps = sorted({_t_key(r) for r in recs_split})
             z_index = {k: i for i, k in enumerate(z_levels)}
             t_index = {k: i for i, k in enumerate(t_steps)}
-
-            calendar = _calendar_from_lbtim(int(first.int_hdr[INDEX_LBTIM]))
-            time_units = f"days since {int(first.int_hdr[INDEX_LBYR])}-1-1"
-            time_values = _time_values_from_t_steps(
-                t_steps,
-                units=time_units,
-                calendar=calendar,
-            )
 
             ny = int(first.int_hdr[INDEX_LBROW])
             nx = int(first.int_hdr[INDEX_LBNPT])
             nz = len(z_levels)
             nt = len(t_steps)
-            dtype = np.dtype(_dtype_name(first, word_size))
-            packing_modes = sorted({int(rec.int_hdr[INDEX_LBPACK]) % 10 for rec in recs_split})
-            compression_modes = sorted({(int(rec.int_hdr[INDEX_LBPACK]) // 10) % 10 for rec in recs_split})
-            z_first = has_pseudo and nt > 1 and nz > 1
-            chunk_records = []
 
+            is_single_level_surface = (
+                nz == 1
+                and 126 <= LBVC <= 139
+                or (
+                    LBVC == 0
+                    and first.int_hdr[INDEX_LBLEV] in (8888, 9999)
+                    and first.int_hdr[INDEX_LBUSER5] == 0
+                )
+            )
+            has_z_axis = not is_single_level_surface
+
+            dtype = np.dtype(_dtype_name(first))
+
+            # # Digit N1 of LBPACK = N5N4N3N2N1
+            # packing_modes = sorted(
+            #      {int(rec.int_hdr[INDEX_LBPACK]) % 10 for rec in recs_split}
+            # )
+            #
+            # # Digit N2 of LBPACK = N5N4N3N2N1
+            # compression_modes = sorted(
+            #     {
+            #         (int(rec.int_hdr[INDEX_LBPACK]) // 10) % 10
+            #         for rec in recs_split
+            #     }
+            # )
+
+            chunk_records = []
             for rec in recs_split:
                 ti = t_index[_t_key(rec)]
                 zi = z_index[_z_key(rec)]
-                chunk_coords = (zi, ti, 0, 0) if z_first else (ti, zi, 0, 0)
-                chunk_records.append(
-                    {
-                        "record": rec,
-                        "chunk_coords": chunk_coords,
-                    }
-                )
 
-            def _make_loader(group_recs, _nt, _nz, _ny, _nx, _dtype, _t_index, _z_index, _z_first):
-                def _load():
-                    out_shape = (_nz, _nt, _ny, _nx) if _z_first else (_nt, _nz, _ny, _nx)
+                if has_z_axis:
+                    chunk_coords = (ti, zi, 0, 0)
+                else:
+                    chunk_coords = (ti, 0, 0)
+
+                rec.chunk_coords = chunk_coords
+                chunk_records.append(rec)
+
+            def _make_loader(
+                group_recs,
+                _nt,
+                _nz,
+                _ny,
+                _nx,
+                _dtype,
+                _t_index,
+                _z_index,
+                _has_z_axis,
+            ):
+                def _load(thread_count=0, cat_range_allowed=True):
+                    out_shape = (_nt, _nz, _ny, _nx)
+
                     out = np.empty(out_shape, dtype=_dtype)
                     out.fill(np.nan if _dtype.kind == "f" else 0)
 
-                    thread_count = int(parallel_config.get("thread_count", 0) or 0)
-                    cat_range_allowed = bool(parallel_config.get("cat_range_allowed", True))
-
-                    # Strategy A: fsspec bulk range reads for unpacked records.
-                    if thread_count != 0 and cat_range_allowed and isinstance(reader, FsspecReader):
-                        fh = getattr(reader, "_fh", None)
-                        actual_fh = getattr(fh, "fh", fh)
-                        if actual_fh is not None and hasattr(actual_fh, "fs") and hasattr(actual_fh.fs, "cat_ranges"):
-                            path = actual_fh.path
+                    # Strategy A: fsspec bulk range reads for unpacked
+                    #             records.
+                    if (
+                        thread_count > 0
+                        and cat_range_allowed
+                        and isinstance(reader, ByteReader)
+                    ):
+                        fs = getattr(reader, "fs", None)
+                        if hasattr(fs, "cat_ranges"):
+                            path = reader.path
                             starts = [rec.data_offset for rec in group_recs]
-                            stops = [rec.data_offset + get_record_packed_nbytes(rec, word_size) for rec in group_recs]
-                            buffers = actual_fh.fs.cat_ranges([path] * len(group_recs), starts, stops)
+                            stops = [
+                                rec.data_offset + get_record_packed_nbytes(rec)
+                                for rec in group_recs
+                            ]
+                            buffers = fs.cat_ranges(
+                                [path] * len(group_recs), starts, stops
+                            )
 
                             items = list(zip(group_recs, buffers))
 
@@ -417,86 +528,104 @@ def build_variable_index(
                                 rec, raw = item
                                 ti = _t_index[_t_key(rec)]
                                 zi = _z_index[_z_key(rec)]
-                                values = decode_record_array_from_raw(raw, rec, word_size, byte_ordering)
+                                values = decode_record_array_from_raw(raw, rec)
                                 return ti, zi, values
 
                             if thread_count > 1:
-                                with ThreadPoolExecutor(max_workers=thread_count) as executor:
+                                with ThreadPoolExecutor(
+                                    max_workers=thread_count
+                                ) as executor:
                                     decoded = executor.map(_decode_one, items)
                                     for ti, zi, values in decoded:
-                                        if _z_first:
-                                            out[zi, ti, :, :] = values.reshape((_ny, _nx))
-                                        else:
-                                            out[ti, zi, :, :] = values.reshape((_ny, _nx))
+                                        out[ti, zi, :, :] = values.reshape(
+                                            (_ny, _nx)
+                                        )
                             else:
                                 for ti, zi, values in map(_decode_one, items):
-                                    if _z_first:
-                                        out[zi, ti, :, :] = values.reshape((_ny, _nx))
-                                    else:
-                                        out[ti, zi, :, :] = values.reshape((_ny, _nx))
+                                    out[ti, zi, :, :] = values.reshape(
+                                        (_ny, _nx)
+                                    )
+
+                            if not _has_z_axis:
+                                # Remove a non-existent Z axis
+                                out = np.squeeze(out, axis=1)
 
                             return out
 
-                    # Strategy B: local threaded reads using os.pread-backed reader.
-                    if thread_count != 0 and isinstance(reader, LocalPosixReader):
+                    # Strategy B: local threaded reads using
+                    #             os.pread-backed reader.
+                    if thread_count > 0 and isinstance(
+                        reader, LocalPosixReader
+                    ):
+
                         def _read_one(rec):
                             ti = _t_index[_t_key(rec)]
                             zi = _z_index[_z_key(rec)]
-                            values = read_record_array(reader, rec, word_size, byte_ordering)
+                            values = read_record_array(reader, rec)
                             return ti, zi, values
 
-                        with ThreadPoolExecutor(max_workers=thread_count) as executor:
-                            for ti, zi, values in executor.map(_read_one, group_recs):
-                                if _z_first:
-                                    out[zi, ti, :, :] = values.reshape((_ny, _nx))
-                                else:
-                                    out[ti, zi, :, :] = values.reshape((_ny, _nx))
+                        with ThreadPoolExecutor(
+                            max_workers=thread_count
+                        ) as executor:
+                            for ti, zi, values in executor.map(
+                                _read_one, group_recs
+                            ):
+                                out[ti, zi, :, :] = values.reshape((_ny, _nx))
+
+                        if not _has_z_axis:
+                            # Remove a non-existent Z axis
+                            out = np.squeeze(out, axis=1)
+
                         return out
 
                     # Strategy C: serial fallback.
                     for rec in group_recs:
                         ti = _t_index[_t_key(rec)]
                         zi = _z_index[_z_key(rec)]
-                        values = read_record_array(reader, rec, word_size, byte_ordering)
-                        if _z_first:
-                            out[zi, ti, :, :] = values.reshape((_ny, _nx))
-                        else:
-                            out[ti, zi, :, :] = values.reshape((_ny, _nx))
+                        values = read_record_array(reader, rec)
+                        out[ti, zi, :, :] = values.reshape((_ny, _nx))
+
+                    if not _has_z_axis:
+                        # Remove a non-existent Z axis
+                        out = np.squeeze(out, axis=1)
+
                     return out
 
                 return _load
 
-            variable_index[name] = {
-                "attrs": {
-                    "stash_model": int(first.int_hdr[INDEX_LBUSER7]),
-                    "stash_code": int(first.int_hdr[INDEX_LBUSER4]),
-                    "lbtim": int(first.int_hdr[INDEX_LBTIM]),
-                    "lbproc": int(first.int_hdr[INDEX_LBPROC]),
-                    "packing_modes": packing_modes,
-                    "compression_modes": compression_modes,
-                    "is_packed": any(mode != 0 for mode in packing_modes),
-                    "is_wgdos_packed": 1 in packing_modes,
-                    **_enrich_cf_like_attrs(first),
-                    "time_values": time_values,
-                    "time_units": time_units,
-                    "time_calendar": calendar,
-                },
-                "shape": (nz, nt, ny, nx) if z_first else (nt, nz, ny, nx),
-                "dtype": _dtype_name(first, word_size),
-                "chunk_shape": (1, 1, ny, nx),
-                "records": recs_split,
-                "chunk_records": chunk_records,
-                "data_loader": _make_loader(
-                    recs_split,
-                    nt,
-                    nz,
-                    ny,
-                    nx,
-                    dtype,
-                    t_index,
-                    z_index,
-                    z_first,
-                ),
-            }
+            if has_z_axis:
+                axis_order = "tzyx"
+                shape = (nt, nz, ny, nx)
+                chunk_shape = (1, 1, ny, nx)
+            else:
+                axis_order = "tyx"
+                shape = (nt, ny, nx)
+                chunk_shape = (1, ny, nx)
+
+            variable_index.append(
+                {
+                    "attrs": {},
+                    "shape": shape,
+                    "dtype": _dtype_name(first),
+                    "chunk_shape": chunk_shape,
+                    "records": recs_split,
+                    "chunk_records": chunk_records,
+                    "axis_order": axis_order,
+                    "data_loader": _make_loader(
+                        recs_split,
+                        nt,
+                        nz,
+                        ny,
+                        nx,
+                        dtype,
+                        t_index,
+                        z_index,
+                        has_z_axis,
+                    ),
+                    "data_loader_options": parallelism.copy(),
+                }
+            )
+
+            int_code += 1
 
     return variable_index

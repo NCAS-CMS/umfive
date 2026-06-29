@@ -15,13 +15,15 @@ SOURCE_FILE = "/Volumes/Lawrence4TB/xjanpa.pa19910301"
 N_TRIALS = 1
 
 
-def metadata_probe(path: str, disable_os_cache: bool) -> tuple[float, list[tuple[str, tuple[int, ...], dict]]]:
+def metadata_probe(
+    path: str, disable_os_cache: bool
+) -> tuple[float, list[tuple[str, tuple[int, ...], dict]]]:
     t0 = time.perf_counter()
     with ppfive.File(path, disable_os_cache=disable_os_cache) as f:
         rows = []
         for name in f:
             var = f[name]
-            max = var[:].max() 
+            max = var[:].max()
             rows.append((name, var.shape, dict(var.attrs), max))
     return time.perf_counter() - t0, rows
 
@@ -56,8 +58,12 @@ def print_variable_metadata(path: str, disable_os_cache: bool) -> None:
     print("\nVariables (metadata only):")
     for name, shape, attrs in rows:
         print(f"- {name}: shape={shape}")
-        print(f"  is_packed={attrs.get('is_packed')} is_wgdos_packed={attrs.get('is_wgdos_packed')}")
-        print(f"  packing_modes={attrs.get('packing_modes')} compression_modes={attrs.get('compression_modes')}")
+        print(
+            f"  is_packed={attrs.get('is_packed')} is_wgdos_packed={attrs.get('is_wgdos_packed')}"
+        )
+        print(
+            f"  packing_modes={attrs.get('packing_modes')} compression_modes={attrs.get('compression_modes')}"
+        )
 
 
 def benchmark(path: str, trials: int, drop_cache_between_runs: bool) -> None:
@@ -113,22 +119,28 @@ def worker_mode(path: str, disable_os_cache: bool) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Metadata cache-on/off benchmark for ppfive")
-    parser.add_argument("--worker", action="store_true", help="Run one worker measurement")
+    parser = argparse.ArgumentParser(
+        description="Metadata cache-on/off benchmark for ppfive"
+    )
+    parser.add_argument(
+        "--worker", action="store_true", help="Run one worker measurement"
+    )
     parser.add_argument("--source-file", default=SOURCE_FILE)
     parser.add_argument("--disable-os-cache", default="0", choices=["0", "1"])
     parser.add_argument("--trials", type=int, default=N_TRIALS)
     parser.add_argument("--drop-cache-between-runs", action="store_true")
     return parser.parse_args()
 
+
 if __name__ == "__main__":
     args = parse_args()
     if args.worker:
-        worker_mode(args.source_file, disable_os_cache=(args.disable_os_cache == "1"))
+        worker_mode(
+            args.source_file, disable_os_cache=(args.disable_os_cache == "1")
+        )
     else:
         benchmark(
             args.source_file,
             trials=args.trials,
             drop_cache_between_runs=args.drop_cache_between_runs,
         )
-

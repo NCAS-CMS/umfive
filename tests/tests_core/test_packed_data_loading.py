@@ -1,10 +1,11 @@
 import numpy as np
 
-from ppfive.core.constants import (
+from ppfive import LocalPosixReader
+from ppfive.constants import (
     INDEX_BMDI,
     INDEX_LBCODE,
-    INDEX_LBLREC,
     INDEX_LBLEV,
+    INDEX_LBLREC,
     INDEX_LBNPT,
     INDEX_LBPACK,
     INDEX_LBROW,
@@ -15,10 +16,11 @@ from ppfive.core.constants import (
 )
 from ppfive.core.data import read_record_array
 from ppfive.core.models import RecordInfo
-from ppfive.io.local import LocalPosixReader
 
 
-def _record(raw: bytes, int_hdr, real_hdr, tmp_path, name: str) -> tuple[LocalPosixReader, RecordInfo]:
+def _record(
+    raw: bytes, int_hdr, real_hdr, tmp_path, name: str
+) -> tuple[LocalPosixReader, RecordInfo]:
     path = tmp_path / name
     path.write_bytes(raw)
     reader = LocalPosixReader(path)
@@ -28,6 +30,9 @@ def _record(raw: bytes, int_hdr, real_hdr, tmp_path, name: str) -> tuple[LocalPo
         header_offset=0,
         data_offset=0,
         disk_length=len(raw),
+        word_size=4,
+        byte_order="little",
+        chunk_coords=(0,),
     )
     return reader, rec
 
@@ -53,7 +58,7 @@ def test_cray32_packed_record_reads(tmp_path):
     reader, rec = _record(raw, int_hdr, real_hdr, tmp_path, "pack2.bin")
 
     try:
-        arr = read_record_array(reader, rec, word_size=4, byte_ordering="little_endian")
+        arr = read_record_array(reader, rec)
     finally:
         reader.close()
 
@@ -67,7 +72,7 @@ def test_run_length_packed_record_reads(tmp_path):
     reader, rec = _record(raw, int_hdr, real_hdr, tmp_path, "pack4.bin")
 
     try:
-        arr = read_record_array(reader, rec, word_size=4, byte_ordering="little_endian")
+        arr = read_record_array(reader, rec)
     finally:
         reader.close()
 
