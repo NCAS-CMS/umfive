@@ -57,7 +57,6 @@ from .constants import (
 )
 from .core import detect_file_type, scan_ff_headers, scan_pp_headers
 from .core.variables import build_data_variable_index
-
 from .io import ByteReader, FileObjReader, LocalPosixReader
 from .stash import stash_records
 from .variable import DataVariable, DimensionScale, Variable
@@ -89,8 +88,8 @@ class File(Mapping):
     objects).
 
     The following CF attributes are derived from the lookup headers
-    and are added to the output variables, or as global attributes,
-    where possible and appropriate:
+    and, where possible and appropriate, are added to the output
+    variables or as global attributes:
 
     =================  =======================================
     CF attribute       CF variable/global usage
@@ -142,7 +141,8 @@ class File(Mapping):
             The definition of the PP or UM dataset to be read.  Must
             either be string-like (such as `str` or `pathlib.Path`) or
             file-like (such as `io.BufferedReader`, the result of an
-            `fsspec` file system open, or a subclass of `ByteReader`).
+            `fsspec` file system open, or a subclass of
+            `ppfive.ByteReader`).
 
         mode: `str`
             The data access mode. Only ``'r'`` (read-only) is allowed.
@@ -1001,6 +1001,7 @@ class DataVariableMetadata:
         cf_properties["um_identity"] = identity
 
         if long_name is None:
+            # Make sure that we always have a long_name
             cf_properties["long_name"] = identity
 
         # Set the data variable name

@@ -3,8 +3,6 @@ from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
-from ..io import ByteReader, LocalPosixReader
-
 from ..constants import (
     INDEX_BDX,
     INDEX_BDY,
@@ -42,6 +40,7 @@ from ..constants import (
     INDEX_LBYRD,
     INT_MISSING_DATA,
 )
+from ..io import ByteReader, LocalPosixReader
 from .data import (
     decode_record_array_from_raw,
     get_record_packed_nbytes,

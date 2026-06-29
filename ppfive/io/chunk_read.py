@@ -6,7 +6,6 @@ from ..core.data import (
     get_record_packed_nbytes,
     read_record_array,
 )
-
 from .bytereader import ByteReader
 from .local_posix_reader import LocalPosixReader
 

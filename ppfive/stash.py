@@ -84,11 +84,13 @@ def _parse_cf_extra(value):
 
     for token in value.split():
         if token.startswith("height="):
-            out["height"] = re.split(_NUMBER_REGEX, token, re.IGNORECASE)[
+            out["height"] = re.split(
+                _NUMBER_REGEX, token, flags=re.IGNORECASE
+            )[1:4:2]
+        elif token.startswith("below_"):
+            out["below"] = re.split(_NUMBER_REGEX, token, flags=re.IGNORECASE)[
                 1:4:2
             ]
-        elif token.startswith("below_"):
-            out["below"] = re.split(_NUMBER_REGEX, token, re.IGNORECASE)[1:4:2]
         elif token.startswith("where_"):
             out["where"] = token.replace("where_", "where ", 1)
         elif token.startswith("over_"):
