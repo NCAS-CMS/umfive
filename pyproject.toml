@@ -21,6 +21,33 @@ extend_skip_glob = [
   "**/__init__.py",
 ]
 
+[project]
+name = "ppfive"
+version = "0.1.1"
+description = "PP/Fields reader with pyfive-style high-level API"
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+	{name = "David Hassell"},
+	{name = "Alan Iwi"},
+	{name = "Bryan Lawrence"},
+  {name = "Valeriu Predoi - package"},
+]
+dependencies = [
+	"cftime",
+	"numpy>=1.24",
+	"pyfive>=1.1.2",
+]
+
+[project.optional-dependencies]
+io = ["fsspec>=2024.3.0"]
+test = [
+	"pytest>=8",
+	"pytest-cov>=5",
+        "pytest-xdist",
+]
+
 # Prevent message about missing docstring in magic method
 [tool.pydocstyle]
 ignore = "D105"

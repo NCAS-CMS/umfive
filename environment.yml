@@ -7,6 +7,7 @@ dependencies:
   - python >=3.11
   - numpy >=1.24
   - fsspec >=2024.3.0
+  - pyfive >=1.1.2
   - pytest >=8
   - pytest-xdist
   - udunits2  # cf-python needs it
@@ -14,4 +15,3 @@ dependencies:
   - pip:
       - cf-python @ git+https://github.com/davidhassell/cf-python.git@kerchunk-read
       - cfdm @ git+https://github.com/davidhassell/cfdm.git@pyfive-netcdf
-      - pyfive @ git+https://github.com/NCAS-CMS/pyfive.git@pbtree2
