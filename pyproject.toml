@@ -1,3 +1,10 @@
+[build-system]
+requires = [
+  "setuptools>=80",
+  "setuptools_scm>=8",
+  "numpy>=1.24",
+]
+
 # This file is currently used only to configure the black Python code
 # formatter, rather than provide project metadata (see
 # https://www.python.org/dev/peps/pep-0621/) which can be found instead
@@ -43,7 +50,6 @@ dependencies = [
 [project.optional-dependencies]
 io = ["fsspec>=2024.3.0"]
 test = [
-        "numpy>=1.24",
 	"pytest>=8",
 	"pytest-cov>=5",
         "pytest-xdist",
