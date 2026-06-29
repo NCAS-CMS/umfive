@@ -1,25 +1,10 @@
-# This file is currently used only to configure the black Python code
-# formatter, rather than provide project metadata (see
-# https://www.python.org/dev/peps/pep-0621/) which can be found instead
-# in the setup.py file.
-
-# To run the black checker with this configuration, execute 'black .' in the
-# root of this repository. See https://black.readthedocs.io/en/stable/ for
-# the 'black' documentation.
-[tool.black]
-line-length = 79
-
-# Set for compatibility of 'black' and 'isort' auto-formatting tools
-[tool.isort]
-profile = "black"
-# ... and since we set this against the black default line length:
-line_length=79
-# Prevent isort from auto-formatting '__init__.py' file imports because
-# they require a specific non-aphabetical (etc.) ordering else they will
-# cause errors due to bad or circular importing across the modules.
-extend_skip_glob = [
-  "**/__init__.py",
+[build-system]
+requires = [
+  "setuptools>=80",
+  "setuptools_scm>=8",
+  "numpy>=1.24",
 ]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "ppfive"
@@ -32,7 +17,7 @@ authors = [
 	{name = "David Hassell"},
 	{name = "Alan Iwi"},
 	{name = "Bryan Lawrence"},
-  {name = "Valeriu Predoi - package"},
+        {name = "Valeriu Predoi - package"},
 ]
 dependencies = [
 	"cftime",
@@ -48,6 +33,32 @@ test = [
         "pytest-xdist",
 ]
 
-# Prevent message about missing docstring in magic method
-[tool.pydocstyle]
-ignore = "D105"
+[project.scripts]
+ppdump = "ppfive.ppdump:main"
+
+[tool.setuptools]
+include-package-data = true
+license-files = ["LICENSE"]
+
+[tool.setuptools.packages.find]
+include = ["ppfive*"]
+
+[tool.setuptools.package-data]
+ppfive = ["data/*.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.isort]
+profile = "black"
+# ... and since we set this against the black default line length:
+line_length=79
+# Prevent isort from auto-formatting '__init__.py' file imports because
+# they require a specific non-aphabetical (etc.) ordering else they will
+# cause errors due to bad or circular importing across the modules.
+extend_skip_glob = [
+  "**/__init__.py",
+]
+
+[tool.black]
+line-length = 79
