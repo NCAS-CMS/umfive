@@ -436,8 +436,7 @@ def build_data_variable_index(records, reader, parallelism):
             # Reverse air_pressure axis
             reverse = LBVC == 8
 
-            print(z_keys_set)
-            z_levels = sorted(z_keys_set, reverse=reverse)
+            z_levels = sorted(z_keys_set, reverse=bool(reverse))
 
             t_steps = sorted({_t_key(r) for r in recs_split})
             z_index = {k: i for i, k in enumerate(z_levels)}
