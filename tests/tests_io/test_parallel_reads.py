@@ -3,21 +3,21 @@ from pathlib import Path
 import fsspec
 import numpy as np
 
-import ppfive
+import umfive
 
 
-def _first_data_variable_name(f: ppfive.File) -> str:
+def _first_data_variable_name(f: umfive.File) -> str:
     return f.data_variables[0]
 
 
 def test_local_parallel_matches_serial():
     path = Path(__file__).resolve().parents[1] / "data" / "test2.pp"
 
-    with ppfive.File(str(path)) as f_serial:
+    with umfive.File(str(path)) as f_serial:
         name = _first_data_variable_name(f_serial)
         serial = f_serial[name][:]
 
-    with ppfive.File(str(path)) as f_parallel:
+    with umfive.File(str(path)) as f_parallel:
         f_parallel.set_parallelism(max_thread_count=4)
         name = _first_data_variable_name(f_parallel)
         parallel = f_parallel[name][:]
@@ -28,13 +28,13 @@ def test_local_parallel_matches_serial():
 def test_fsspec_bulk_range_matches_serial_for_unpacked_data():
     path = Path(__file__).resolve().parents[1] / "data" / "test2.pp"
 
-    with ppfive.File(str(path)) as f_serial:
+    with umfive.File(str(path)) as f_serial:
         f_serial.set_parallelism(max_thread_count=0, cat_range_allowed=False)
         name = _first_data_variable_name(f_serial)
         serial = f_serial[name][:]
 
     file_like = fsspec.filesystem("file").open(str(path), "rb")
-    with ppfive.File(file_like) as f_parallel:
+    with umfive.File(file_like) as f_parallel:
         f_parallel.set_parallelism(max_thread_count=4, cat_range_allowed=True)
         name = _first_data_variable_name(f_parallel)
         parallel = f_parallel[name][:]
@@ -45,12 +45,12 @@ def test_fsspec_bulk_range_matches_serial_for_unpacked_data():
 def test_fsspec_bulk_range_matches_serial_for_wgdos_packed_data():
     path = Path(__file__).resolve().parents[1] / "data" / "wgdos_packed.pp"
 
-    with ppfive.File(str(path)) as f_serial:
+    with umfive.File(str(path)) as f_serial:
         name = _first_data_variable_name(f_serial)
         serial = f_serial[name][:]
 
     file_like = fsspec.filesystem("file").open(str(path), "rb")
-    with ppfive.File(file_like) as f_parallel:
+    with umfive.File(file_like) as f_parallel:
         f_parallel.set_parallelism(max_thread_count=4, cat_range_allowed=True)
         name = _first_data_variable_name(f_parallel)
         parallel = f_parallel[name][:]
@@ -61,11 +61,11 @@ def test_fsspec_bulk_range_matches_serial_for_wgdos_packed_data():
 def test_local_parallel_slice_matches_serial():
     path = Path(__file__).resolve().parents[1] / "data" / "test2.pp"
 
-    with ppfive.File(str(path)) as f_serial:
+    with umfive.File(str(path)) as f_serial:
         name = _first_data_variable_name(f_serial)
         serial = f_serial[name][0, :, :, :]
 
-    with ppfive.File(str(path)) as f_parallel:
+    with umfive.File(str(path)) as f_parallel:
         f_parallel.set_parallelism(max_thread_count=4)
         name = _first_data_variable_name(f_parallel)
         parallel = f_parallel[name][0, :, :, :]
@@ -76,12 +76,12 @@ def test_local_parallel_slice_matches_serial():
 def test_fsspec_bulk_range_slice_matches_serial_for_unpacked_data():
     path = Path(__file__).resolve().parents[1] / "data" / "test2.pp"
 
-    with ppfive.File(str(path)) as f_serial:
+    with umfive.File(str(path)) as f_serial:
         name = _first_data_variable_name(f_serial)
         serial = f_serial[name][0, :, :, :]
 
     file_like = fsspec.filesystem("file").open(str(path), "rb")
-    with ppfive.File(file_like) as f_parallel:
+    with umfive.File(file_like) as f_parallel:
         f_parallel.set_parallelism(max_thread_count=4, cat_range_allowed=True)
         name = _first_data_variable_name(f_parallel)
         parallel = f_parallel[name][0, :, :, :]

@@ -1,4 +1,4 @@
-from ppfive import File, wgdos
+from umfive import File, wgdos
 
 
 def test_wgdos_extension_importable():

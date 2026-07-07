@@ -40,9 +40,9 @@ htmlcov/
 orig/
 
 # SO object
-ppfive/_wgdos.cpython-314-x86_64-linux-gnu.so
-ppfive/_wgdos.cpython-312-darwin.so
-ppfive/_wgdos.cpython*
+umfive/_wgdos.cpython-314-x86_64-linux-gnu.so
+umfive/_wgdos.cpython-312-darwin.so
+umfive/_wgdos.cpython*
 
 # Local large test data (do not commit)
 tests/data/dk922*

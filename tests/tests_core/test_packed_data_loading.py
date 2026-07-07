@@ -1,7 +1,7 @@
 import numpy as np
 
-from ppfive import LocalPosixReader
-from ppfive.constants import (
+from umfive import LocalPosixReader
+from umfive.constants import (
     INDEX_BMDI,
     INDEX_LBCODE,
     INDEX_LBLEV,
@@ -14,8 +14,8 @@ from ppfive.constants import (
     N_INT_HDR,
     N_REAL_HDR,
 )
-from ppfive.core.data import read_record_array
-from ppfive.core.models import RecordInfo
+from umfive.core.data import read_record_array
+from umfive.core.models import RecordInfo
 
 
 def _record(

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-import ppfive
+import umfive
 
 
 @pytest.mark.parametrize(
@@ -21,7 +21,7 @@ def test_file(dataset, suffix):
     input_file = f"tests/data/{dataset}{suffix}"
     dump_file = f"tests/data/{dataset}_dump.txt"
 
-    with ppfive.File(input_file) as f:
+    with umfive.File(input_file) as f:
         with open(dump_file, "r") as d:
             dump_contents = d.read()
             assert (
@@ -32,20 +32,20 @@ def test_file(dataset, suffix):
 
 def test_File_with_builtin_open_as_input():
     with open("tests/data/test2.pp", "rb") as fh:
-        f = ppfive.File(fh)
+        f = umfive.File(fh)
         assert (
             repr(f)
-            == "<ppfive.File: tests/data/test2.pp, 1 data variable, 9 metadata variables>"
+            == "<umfive.File: tests/data/test2.pp, 1 data variable, 9 metadata variables>"
         )
 
 
 def test_File_with_bytesio_as_input():
     path = Path("tests/data/test2.pp")
     raw = BytesIO(path.read_bytes())
-    f = ppfive.File(raw)
+    f = umfive.File(raw)
     assert (
         repr(f)
-        == "<ppfive.File: <file-like>, 1 data variable, 9 metadata variables>"
+        == "<umfive.File: <file-like>, 1 data variable, 9 metadata variables>"
     )
 
 
@@ -55,9 +55,9 @@ def test_File_with_bytesio_as_input():
 )
 def test_File_with_invalid_input(filename):
     with pytest.raises(ValueError):
-        ppfive.File(filename)
+        umfive.File(filename)
 
 
 def test_File_with_directory_input():
     with pytest.raises(IsADirectoryError):
-        ppfive.File("tests/data")
+        umfive.File("tests/data")

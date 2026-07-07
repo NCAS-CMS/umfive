@@ -1,4 +1,4 @@
-# ppfive
+# umfive
 
 A PP and Fields file reader that mimics relevant parts of the `pyfive` high-level API,
 with support for lazy metadata loading and parallel data loading when necessary.
@@ -6,9 +6,9 @@ with support for lazy metadata loading and parallel data loading when necessary.
 This is NOT an alternative to pyfive, it is a package which makes pp and fields files
 look like and taste ("quack like") chunked HDF5 files written by a NetCDF library.
 
-## API Contract (ppfive vs pyfive)
+## API Contract (umfive vs pyfive)
 
-`ppfive` is designed to be **pyfive-compatible** as far as likely users of pyfive
+`umfive` is designed to be **pyfive-compatible** as far as likely users of pyfive
 would need such compatability. That is, it produces a chunk index (for kerchunk)
 if you really want that, and it supports all the information needed by CF/CFDM
 workflows to make pp-data as CF-compliant as possible.
@@ -20,8 +20,8 @@ For the canonical pyfive interface, see the pyfive docs:
 
 ### What maps directly to pyfive
 
-- `ppfive.File` is registered as a `pyfive.File` virtual type (when `pyfive` is installed).
-- `ppfive.Variable` is registered as a `pyfive.Dataset` virtual type.
+- `umfive.File` is registered as a `umfive.File` virtual type (when `umfive` is installed).
+- `umfive.Variable` is registered as a `umfive.Dataset` virtual type.
 - File/root-level members expected by pyfive-style callers are present:
 	- `attrs`, `groups`, `variables`, `dimensions`, `name`, `path`, `parent`
 - Mapping-style access works:
@@ -31,7 +31,7 @@ For the canonical pyfive interface, see the pyfive docs:
 	- slicing/indexing via `__getitem__` (for example `f["var"][:]`)
 	- `read_direct`, `astype(...)`, `iter_chunks(...)`
 
-Like pyfive, ppfive is Read-only:
+Like `pyfive`, `umfive` is read-only:
 
 	- `File(..., mode="r")` is supported; write/update modes are not.
 
@@ -51,15 +51,15 @@ Like pyfive, ppfive is Read-only:
 	- dimension-scale datasets and `DIMENSION_LIST` are created where needed.
 	- rotated-grid helper variables (for example `latitude`, `longitude`,
 		`rotated_latitude_longitude`) may be exposed when implied by UM headers.
-- ppfive-specific extension API:
+- umfive-specific extension API:
 	- `File.set_parallelism(thread_count=..., cat_range_allowed=...)`
-		is provided by ppfive and is not part of `pyfive`.
+		is provided by `umfive` and is not part of `pyfive`.
 
 
 ### Practical expectation
 
-If your code treats `ppfive.File` and `ppfive.Variable` as `pyfive`-like read objects,
-common analysis workflows should work, including chunk-level access (pp records
+If your code treats `umfive.File` as  a `pyfive`-like read object,
+common analysis workflows should work, including chunk-level access (PP records
 are treated as chunks).  
 
 ## Authorship

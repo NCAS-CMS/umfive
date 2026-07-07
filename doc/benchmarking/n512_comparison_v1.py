@@ -8,7 +8,7 @@ import time
 
 import cf
 
-import ppfive
+import umfive
 
 EXAMPLE_FILE = "/Volumes/Lawrence4TB/xjanpa.pa19910301"
 # EXAMPLE_FILE = str(Path.home()/"data/xjanpa.pa19910301")
@@ -22,7 +22,7 @@ def timecf(path):
 
 def timep5(path):
     t0 = time.perf_counter()
-    with ppfive.File(path) as f:
+    with umfive.File(path) as f:
         f.set_parallelism(thread_count=4)
         r = cf.read(f, dask_chunks=None)
     return time.perf_counter() - t0, r

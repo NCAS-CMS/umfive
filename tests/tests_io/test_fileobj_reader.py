@@ -1,10 +1,10 @@
-"""Tests for ppfive.File accepting a raw seekable file-like object.
+"""Tests for umfive.File accepting a raw seekable file-like object.
 
 pyfive.File accepts any object that has .read and .seek methods and uses
-it directly (duck-typing).  ppfive.File should behave the same way so
+it directly (duck-typing).  umfive.File should behave the same way so
 that callers do not need to know about ByteReader / FsspecReader
 internals -- they can simply open a file (e.g. via fsspec) and pass the
-handle straight to ppfive.File.
+handle straight to umfive.File.
 
 """
 
@@ -14,7 +14,7 @@ import fsspec
 import numpy as np
 import pytest
 
-from ppfive import File, FileObjReader
+from umfive import File, FileObjReader
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 PP_PATH = DATA_DIR / "test2.pp"
@@ -39,7 +39,7 @@ def test_file_accepts_local_reader_as_first_argument(path):
         f = File(reader)
         assert (
             repr(f)
-            == f"<ppfive.File: {file_like.name}, 1 data variable, 9 metadata variables>"
+            == f"<umfive.File: {file_like.name}, 1 data variable, 9 metadata variables>"
         )
 
 

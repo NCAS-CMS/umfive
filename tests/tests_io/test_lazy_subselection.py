@@ -2,8 +2,8 @@ from pathlib import Path
 
 import numpy as np
 
-import ppfive.io.chunk_read as chunk_read_module
-from ppfive import File
+import umfive.io.chunk_read as chunk_read_module
+from umfive import File
 
 
 def _first_data_variable_name(f: File) -> str:

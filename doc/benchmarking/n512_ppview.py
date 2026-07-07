@@ -4,8 +4,8 @@ from pathlib import Path
 
 import fsspec
 
-import ppfive
-from ppfive.io import FsspecReader
+import umfive
+from umfive.io import FsspecReader
 
 logging.basicConfig(
     level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
@@ -20,9 +20,9 @@ def iteration(parallelism, iteration_index, usehttp=False):
     if usehttp:
         fs = fsspec.filesystem("https")
         reader = FsspecReader(fs, HTTP)
-        ff_ctx = ppfive.File(HTTP, reader=reader)
+        ff_ctx = umfive.File(HTTP, reader=reader)
     else:
-        ff_ctx = ppfive.File(EXAMPLE_FILE)
+        ff_ctx = umfive.File(EXAMPLE_FILE)
 
     with ff_ctx as ff:
         ff.set_parallelism(**parallelism)

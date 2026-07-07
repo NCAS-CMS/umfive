@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from ppfive import File, LocalPosixReader
+from umfive import File, LocalPosixReader
 
 
 def test_LocalPosixReader_read_at(tmp_path: Path):
@@ -43,5 +43,5 @@ def test_LocalPosixReader_as_input_to_File(path):
         f = File(reader)
         assert (
             repr(f)
-            == "<ppfive.File: tests/data/test2.pp, 1 data variable, 9 metadata variables>"
+            == "<umfive.File: tests/data/test2.pp, 1 data variable, 9 metadata variables>"
         )

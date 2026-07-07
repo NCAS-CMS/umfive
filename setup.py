@@ -5,9 +5,9 @@ print(np.get_include())
 setup(
     ext_modules=[
         Extension(
-            "ppfive._wgdos",
-            sources=["ppfive/c_ext/wgdos_module.c"],
-            include_dirs=[np.get_include(), "ppfive/c_ext"],
+            "umfive._wgdos",
+            sources=["umfive/c_ext/wgdos_module.c"],
+            include_dirs=[np.get_include(), "umfive/c_ext"],
         )
     ]
 )

@@ -1,8 +1,8 @@
-<ppfive.File: tests/data/test2.pp, 1 data variable, 9 metadata variables>
+<umfive.File: tests/data/test2.pp, 1 data variable, 9 metadata variables>
     Attributes:
         Conventions: 'CF-1.14'
     Data variables:
-        <ppfive.DataVariable: UM_m01s15i201_vn405, shape=(3, 5, 110, 106), dimensions=(time, air_pressure, grid_latitude, grid_longitude)>
+        <umfive.DataVariable: UM_m01s15i201_vn405, shape=(3, 5, 110, 106), dimensions=(time, air_pressure, grid_latitude, grid_longitude)>
             Attributes:
                 DIMENSION_LIST: (('time',), ('air_pressure',), ('grid_latitude',), ('grid_longitude',))
                 _FillValue: np.float32(-1.0737418e+09)
@@ -147,7 +147,7 @@
                    [ 5.14257669e+00,  5.06531000e+00,  5.00876808e+00, ..., -1.68950760e+00, -1.70027304e+00, -1.71349967e+00],
                    [ 4.59499311e+00,  4.50737619e+00,  4.43036985e+00, ..., -1.15786588e+00, -1.21203947e+00, -1.22635651e+00]]]]
     Metadata variables:
-        <ppfive.DimensionScale: time, shape=(3,)>
+        <umfive.DimensionScale: time, shape=(3,)>
             Attributes:
                 CLASS: b'DIMENSION_SCALE'
                 NAME: b'netCDF dimension coordinate variable'
@@ -159,19 +159,19 @@
                 units: 'days since 1979-1-1'
             Data float64:
                 [120.5, 121.5, 122.5]
-        <ppfive.DimensionScale: bounds2, size=2>
+        <umfive.DimensionScale: bounds2, size=2>
             Attributes:
                 CLASS: b'DIMENSION_SCALE'
                 NAME: b'This is a netCDF dimension but not a netCDF variable.'
                 _Netcdf4Dimid: np.int32(1)
-        <ppfive.Variable: time_bounds, shape=(3, 2), dimensions=(time, bounds2)>
+        <umfive.Variable: time_bounds, shape=(3, 2), dimensions=(time, bounds2)>
             Attributes:
                 DIMENSION_LIST: (('time',), ('bounds2',))
             Data float64:
                 [[120., 121.],
                  [121., 122.],
                  [122., 123.]]
-        <ppfive.DimensionScale: air_pressure, shape=(5,)>
+        <umfive.DimensionScale: air_pressure, shape=(5,)>
             Attributes:
                 CLASS: b'DIMENSION_SCALE'
                 NAME: b'netCDF dimension coordinate variable'
@@ -183,7 +183,7 @@
             Data float32:
                 [850.00006 , 700.00006 , 500.00003 ,
                  250.00002 ,  50.000004]
-        <ppfive.DimensionScale: grid_latitude, shape=(110,)>
+        <umfive.DimensionScale: grid_latitude, shape=(110,)>
             Attributes:
                 CLASS: b'DIMENSION_SCALE'
                 NAME: b'netCDF dimension coordinate variable'
@@ -303,7 +303,7 @@
                  -2.3760057449340820e+01,
                  -2.4200057983398438e+01,
                  -2.4640058517456055e+01]
-        <ppfive.Variable: grid_latitude_bounds, shape=(110, 2), dimensions=(grid_latitude, bounds2)>
+        <umfive.Variable: grid_latitude_bounds, shape=(110, 2), dimensions=(grid_latitude, bounds2)>
             Attributes:
                 DIMENSION_LIST: (('grid_latitude',), ('bounds2',))
             Data float64:
@@ -417,7 +417,7 @@
                  [-23.540057450532913  , -23.980057448148727  ],
                  [-23.98005798459053   , -24.420057982206345  ],
                  [-24.420058518648148  , -24.860058516263962  ]]
-        <ppfive.DimensionScale: grid_longitude, shape=(106,)>
+        <umfive.DimensionScale: grid_longitude, shape=(106,)>
             Attributes:
                 CLASS: b'DIMENSION_SCALE'
                 NAME: b'netCDF dimension coordinate variable'
@@ -533,7 +533,7 @@
                   24.779988765716553  ,
                   25.219988763332367  ,
                   25.65998876094818   ]
-        <ppfive.Variable: grid_longitude_bounds, shape=(106, 2), dimensions=(grid_longitude, bounds2)>
+        <umfive.Variable: grid_longitude_bounds, shape=(106, 2), dimensions=(grid_longitude, bounds2)>
             Attributes:
                 DIMENSION_LIST: (('grid_longitude',), ('bounds2',))
             Data float64:
@@ -643,7 +643,7 @@
                  [ 24.559988766908646  ,  24.99998876452446   ],
                  [ 24.99998876452446   ,  25.439988762140274  ],
                  [ 25.439988762140274  ,  25.87998875975609   ]]
-        <ppfive.Variable: rotated_latitude_longitude, shape=(), dimensions=()>
+        <umfive.Variable: rotated_latitude_longitude, shape=(), dimensions=()>
             Attributes:
                 DIMENSION_LIST: ()
                 grid_mapping_name: 'rotated_latitude_longitude'

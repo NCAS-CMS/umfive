@@ -1,7 +1,7 @@
 import numpy as np
 
-from ppfive import LocalPosixReader
-from ppfive.core import detect_file_type
+from umfive import LocalPosixReader
+from umfive.core import detect_file_type
 
 
 def test_detect_file_type_pp32_le(tmp_path):

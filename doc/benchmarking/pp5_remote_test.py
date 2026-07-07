@@ -4,7 +4,7 @@ from pathlib import Path
 
 import fsspec
 
-import ppfive
+import umfive
 
 logging.basicConfig(
     level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
@@ -36,8 +36,8 @@ def process(variable, cat_label, nthreads):
 def iteration(iteration_index, cat_range_allowed, nthreads):
     """Run one iteration of remote file access test."""
     fs = fsspec.filesystem("https", block_size=FS_BLOCK_SIZE)
-    reader = ppfive.FileObjReader(fs, HTTP)
-    ff_ctx = ppfive.File(HTTP, reader=reader)
+    reader = umfive.FileObjReader(fs, HTTP)
+    ff_ctx = umfive.File(HTTP, reader=reader)
     cat_label = "ON" if cat_range_allowed else "OFF"
 
     with ff_ctx as ff:

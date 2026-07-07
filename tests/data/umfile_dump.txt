@@ -1,8 +1,8 @@
-<ppfive.File: tests/data/umfile.pp, 1 data variable, 7 metadata variables>
+<umfive.File: tests/data/umfile.pp, 1 data variable, 7 metadata variables>
     Attributes:
         Conventions: 'CF-1.14'
     Data variables:
-        <ppfive.DataVariable: UM_m01s00i001_vn405, shape=(3, 73, 96), dimensions=(time, latitude, longitude)>
+        <umfive.DataVariable: UM_m01s00i001_vn405, shape=(3, 73, 96), dimensions=(time, latitude, longitude)>
             Attributes:
                 DIMENSION_LIST: (('time',), ('latitude',), ('longitude',))
                 _FillValue: np.float32(-1.0737418e+09)
@@ -48,7 +48,7 @@
                   [ 69099.,  68933.,  68531., ...,  69209.,  69169.,  69165.],
                   [ 69123.,  69123.,  69123., ...,  69123.,  69123.,  69123.]]]
     Metadata variables:
-        <ppfive.DimensionScale: time, shape=(3,)>
+        <umfive.DimensionScale: time, shape=(3,)>
             Attributes:
                 CLASS: b'DIMENSION_SCALE'
                 NAME: b'netCDF dimension coordinate variable'
@@ -60,19 +60,19 @@
                 units: 'days since 2159-1-1'
             Data float64:
                 [ 510.,  870., 1230.]
-        <ppfive.DimensionScale: bounds2, size=2>
+        <umfive.DimensionScale: bounds2, size=2>
             Attributes:
                 CLASS: b'DIMENSION_SCALE'
                 NAME: b'This is a netCDF dimension but not a netCDF variable.'
                 _Netcdf4Dimid: np.int32(1)
-        <ppfive.Variable: time_bounds, shape=(3, 2), dimensions=(time, bounds2)>
+        <umfive.Variable: time_bounds, shape=(3, 2), dimensions=(time, bounds2)>
             Attributes:
                 DIMENSION_LIST: (('time',), ('bounds2',))
             Data float64:
                 [[ 330.,  690.],
                  [ 690., 1050.],
                  [1050., 1410.]]
-        <ppfive.DimensionScale: latitude, shape=(73,)>
+        <umfive.DimensionScale: latitude, shape=(73,)>
             Attributes:
                 CLASS: b'DIMENSION_SCALE'
                 NAME: b'netCDF dimension coordinate variable'
@@ -97,7 +97,7 @@
                  -60. , -62.5, -65. , -67.5, -70. ,
                  -72.5, -75. , -77.5, -80. , -82.5,
                  -85. , -87.5, -90. ]
-        <ppfive.Variable: latitude_bounds, shape=(73, 2), dimensions=(latitude, bounds2)>
+        <umfive.Variable: latitude_bounds, shape=(73, 2), dimensions=(latitude, bounds2)>
             Attributes:
                 DIMENSION_LIST: (('latitude',), ('bounds2',))
             Data float64:
@@ -174,7 +174,7 @@
                  [-83.75, -86.25],
                  [-86.25, -88.75],
                  [-88.75, -91.25]]
-        <ppfive.DimensionScale: longitude, shape=(96,)>
+        <umfive.DimensionScale: longitude, shape=(96,)>
             Attributes:
                 CLASS: b'DIMENSION_SCALE'
                 NAME: b'netCDF dimension coordinate variable'
@@ -208,7 +208,7 @@
                  315.  , 318.75, 322.5 , 326.25,
                  330.  , 333.75, 337.5 , 341.25,
                  345.  , 348.75, 352.5 , 356.25]
-        <ppfive.Variable: longitude_bounds, shape=(96, 2), dimensions=(longitude, bounds2)>
+        <umfive.Variable: longitude_bounds, shape=(96, 2), dimensions=(longitude, bounds2)>
             Attributes:
                 DIMENSION_LIST: (('longitude',), ('bounds2',))
             Data float64:

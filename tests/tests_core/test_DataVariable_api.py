@@ -1,10 +1,10 @@
 import numpy as np
 
-import ppfive
+import umfive
 
 
 def test_DataVariable_attributes():
-    f = ppfive.File("tests/data/test2.pp")
+    f = umfive.File("tests/data/test2.pp")
     name = f.data_variables[0]
     v = f[name]
     assert v.name == name
@@ -47,7 +47,7 @@ def test_DataVariable_attributes():
 
 
 def test_DataVariableID_attributes():
-    f = ppfive.File("tests/data/wgdos_packed.pp")
+    f = umfive.File("tests/data/wgdos_packed.pp")
     name = f.data_variables[0]
     v = f[name]
     assert v.id.chunks == (1, 1, 145, 192)
@@ -55,7 +55,7 @@ def test_DataVariableID_attributes():
     assert v.id.first_chunk == (0, 0, 0, 0)
     assert v.id.shape == (1, 1, 145, 192)
     assert v.id.index == {
-        (0, 0, 0, 0): ppfive.core.models.StoreInfo(
+        (0, 0, 0, 0): umfive.core.models.StoreInfo(
             chunk_offset=(0, 0, 0, 0),
             filter_mask=0,
             byte_offset=268,
@@ -65,7 +65,7 @@ def test_DataVariableID_attributes():
 
 
 def test_DataVariable__getitem__():
-    f = ppfive.File("tests/data/test2.pp")
+    f = umfive.File("tests/data/test2.pp")
     v = f[f.data_variables[0]]
 
     assert np.allclose(

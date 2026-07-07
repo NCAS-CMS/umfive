@@ -2,7 +2,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ppfive import File
+from umfive import File
 
 
 def test_variable_id_exposes_pyfive_like_chunk_index_for_unpacked_file():

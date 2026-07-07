@@ -8,7 +8,7 @@ from pathlib import Path
 import cf
 import dask
 
-import ppfive
+import umfive
 
 logging.basicConfig(
     level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
@@ -35,7 +35,7 @@ def _read_cf(path: str, dask_chunks):
 
 
 def _read_p5(path: str, dask_chunks, thread_count: int):
-    with ppfive.File(path) as f:
+    with umfive.File(path) as f:
         f.set_parallelism(thread_count=thread_count)
         if dask_chunks == "__DEFAULT__":
             return cf.read(f)
@@ -111,7 +111,7 @@ def _summary(values: list[float]) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Tighter CF-vs-PPFive benchmark with warmup discard and alternating run order"
+        description="Tighter CF-vs-Umfive benchmark with warmup discard and alternating run order"
     )
     parser.add_argument(
         "--path", default=DEFAULT_PATH, help="Input PP/Fields file path"
@@ -123,7 +123,7 @@ def main() -> None:
         "--warmup", type=int, default=2, help="Warmup trials to discard"
     )
     parser.add_argument(
-        "--thread-count", type=int, default=4, help="PPFive local thread count"
+        "--thread-count", type=int, default=4, help="Umfive local thread count"
     )
     parser.add_argument(
         "--dask-chunks",
@@ -159,7 +159,7 @@ def main() -> None:
     print(f"  path={Path(args.path)}")
     print(f"  trials={args.trials} warmup={args.warmup}")
     print(
-        f"  dask_chunks={args.dask_chunks} ppfive_thread_count={args.thread_count}"
+        f"  dask_chunks={args.dask_chunks} umfive_thread_count={args.thread_count}"
     )
     print(f"  dask_scheduler={dask_scheduler or 'default'}")
     print(f"  targets={'ALL_COMMON' if targets is None else sorted(targets)}")

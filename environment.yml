@@ -1,4 +1,4 @@
-name: ppfive-dev
+name: umfive-dev
 channels:
   - conda-forge
   - nodefaults  # stay away from Anaconda like the plague

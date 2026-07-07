@@ -8,8 +8,8 @@ import subprocess
 import sys
 import time
 
-import ppfive
-from ppfive.io.local import LocalPosixReader
+import umfive
+from umfive.io.local import LocalPosixReader
 
 SOURCE_FILE = "/Volumes/Lawrence4TB/xjanpa.pa19910301"
 N_TRIALS = 1
@@ -19,7 +19,7 @@ def metadata_probe(
     path: str, disable_os_cache: bool
 ) -> tuple[float, list[tuple[str, tuple[int, ...], dict]]]:
     t0 = time.perf_counter()
-    with ppfive.File(path, disable_os_cache=disable_os_cache) as f:
+    with umfive.File(path, disable_os_cache=disable_os_cache) as f:
         rows = []
         for name in f:
             var = f[name]
@@ -120,7 +120,7 @@ def worker_mode(path: str, disable_os_cache: bool) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Metadata cache-on/off benchmark for ppfive"
+        description="Metadata cache-on/off benchmark for umfive"
     )
     parser.add_argument(
         "--worker", action="store_true", help="Run one worker measurement"

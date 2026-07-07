@@ -142,7 +142,7 @@ class File(Mapping):
             either be string-like (such as `str` or `pathlib.Path`) or
             file-like (such as `io.BufferedReader`, the result of an
             `fsspec` file system open, or a subclass of
-            `ppfive.ByteReader`).
+            `umfive.ByteReader`).
 
         mode: `str`
             The data access mode. Only ``'r'`` (read-only) is allowed.

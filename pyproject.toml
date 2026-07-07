@@ -7,7 +7,7 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ppfive"
+name = "umfive"
 version = "0.2.0"
 description = "PP/Fields reader with pyfive-style high-level API"
 license = {text = "MIT"}
@@ -34,17 +34,17 @@ test = [
 ]
 
 [project.scripts]
-ppdump = "ppfive.ppdump:main"
+ppdump = "umfive.ppdump:main"
 
 [tool.setuptools]
 include-package-data = true
 license-files = ["LICENSE"]
 
 [tool.setuptools.packages.find]
-include = ["ppfive*"]
+include = ["umfive*"]
 
 [tool.setuptools.package-data]
-ppfive = ["data/*.txt"]
+umfive = ["data/*.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
