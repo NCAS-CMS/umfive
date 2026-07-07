@@ -8,6 +8,7 @@ look like and taste ("quack like") chunked HDF5 files written by a NetCDF librar
 
 ## API Contract (umfive vs pyfive)
 
+
 `umfive` is designed to be **pyfive-compatible** as far as likely users of pyfive
 would need such compatability. That is, it produces a chunk index (for kerchunk)
 if you really want that, and it supports all the information needed by CF/CFDM
