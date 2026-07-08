@@ -34,7 +34,7 @@ test = [
 ]
 
 [project.scripts]
-ppdump = "umfive.ppdump:main"
+ppdump = "umfive.umdump:main"
 
 [tool.setuptools]
 include-package-data = true
