@@ -21,6 +21,9 @@ def main(argv=None):
         case ["-h"]:
             print(main.__doc__)
             return 0
+        case ["--help"]:
+            print(main.__doc__)
+            return 0
         case [filename]:
             ppncdump(filename, special=False)
             return 0
