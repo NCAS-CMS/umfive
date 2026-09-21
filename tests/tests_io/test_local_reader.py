@@ -66,7 +66,7 @@ def test_LocalPosixReader_as_input_to_File(path):
 
 
 def test_File_close_tolerates_stale_local_reader_fd():
-    f = File("tests/data/test2.pp")
+    f = File("tests/data/test.pp")
 
     # Simulate external invalidation while File still owns the reader.
     stale_fd = f._reader._fd
