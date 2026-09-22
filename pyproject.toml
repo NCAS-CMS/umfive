@@ -21,7 +21,9 @@ authors = [
 ]
 dependencies = [
 	"cftime",
-	"numpy>=1.24",
+        "cf-python>=3.21.0",
+        "cfdm>=1.13.3",
+        "numpy>=2",
 ]
 
 [project.optional-dependencies]
