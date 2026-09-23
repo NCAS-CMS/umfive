@@ -450,8 +450,9 @@ def build_data_variable_index(records, reader, parallelism):
                 nz == 1
                 and 126 <= LBVC <= 139
                 or (
-                    LBVC == 0
-                    and first.int_hdr[INDEX_LBLEV] in (8888, 9999)
+                    #LBVC == 0
+                    #and first.int_hdr[INDEX_LBLEV] in (0, 8888, 9999)
+                    first.int_hdr[INDEX_LBLEV] in (0, 8888, 9999)
                     and first.int_hdr[INDEX_LBUSER5] == 0
                 )
             )

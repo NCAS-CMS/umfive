@@ -50,6 +50,7 @@ from .constants import (
     BMDI_no_missing_data_value,
     _coord_long_name,
     _coord_positive,
+    _coord_standard_name,
     _lbsrce_model_codes,
     _lbvc_to_axiscode,
     _n_runid_characters,
@@ -1281,10 +1282,11 @@ class DataVariableMetadata:
                     axiscode
                 )
             elif axiscode == 2 and "height" in self._cf_info:
-                # Create the height coordinate from the information
-                # given in the STASH to standard_name conversion table
+                # Create a size-1, 1-d height coordinate from the
+                # information given in the STASH to standard_name
+                # conversion table
                 height, units = self._cf_info["height"]
-                dim_ncvar = self.size_1_height_coordinate(height, units)
+                dim_ncvar = self.size_1_height_coordinate(height, units, scalar=False)
             elif axiscode == 14:
                 dim_ncvar = self.atmosphere_hybrid_height_coordinate(axiscode)
             else:
@@ -1301,6 +1303,12 @@ class DataVariableMetadata:
             if LBVC in (2, 9, 65) or LBLEV in (7777, 8888):  # CHECK!
                 self._lblev = LBLEV
                 self.model_level_number_coordinate(aux=dim_ncvar is not None)
+
+        elif not has_z_axis and "height" in  self._cf_info:
+            # Create a scalar height coordinate from the information
+            # given in the STASH to standard_name conversion table
+            height, units = self._cf_info["height"]
+            dim_ncvar = self.size_1_height_coordinate(height, units, scalar=True)
 
         # --------------------------------------------------------
         # Create the 'Y' dimension coordinate
@@ -2329,7 +2337,7 @@ class DataVariableMetadata:
         _cache_runid[LBEXP] = runid
         return runid
 
-    def size_1_height_coordinate(self, height, units):
+    def size_1_height_coordinate(self, height, units, scalar):
         """Create a size-one height coordinate.
 
         :Parameters:
@@ -2339,6 +2347,10 @@ class DataVariableMetadata:
 
             units: `str`
                 The height units. E.g. ``'m'``.
+
+            scalar: `bool`
+                True to create a scalar coordinate variable, False to
+                create a size-1, 1-d coordinate variable.
 
         :Returns:
 
@@ -2350,22 +2362,40 @@ class DataVariableMetadata:
 
         # Create the height coordinate from the information given in
         # the STASH to standard_name conversion table
-        key = ("size_1_height_coordinate", height, units)
-        dim_ncvar = self._cache.get(key)
-        if dim_ncvar is None:
-            array = np.array((height,), dtype=float)
-            dc = DimensionScale(
-                data=array,
-                axiscode=axiscode,
-                attrs={"units": units},
-                file_obj=self._file_obj,
-                Netcdf4Dimid=self._Netcdf4Dimid,
-            )
-            dim_ncvar = self.add_to_variables(dc, "dimension_coordinate")
 
-            self._cache[key] = dim_ncvar
-
-        self._axis["z"] = dim_ncvar
+        if scalar:
+            # Create a scalar coordinate
+            key = ("scalar_height_coordinate", height, units)
+            dim_ncvar = self._cache.get(key)
+            if dim_ncvar is None:
+                array = np.array(height, dtype=float)
+                standard_name = _coord_standard_name.get(axiscode)
+                sc =  Variable(
+                    name=standard_name,
+                    data=array,
+                    attrs={"standard_name": standard_name, "units": units},
+                )
+                dim_ncvar = self.add_to_variables(sc)
+    
+                self._cache[key] = dim_ncvar
+        else:
+            # Create a 1-d coordinate
+            key = ("size_1_1-d_height_coordinate", height, units)
+            dim_ncvar = self._cache.get(key)
+            if dim_ncvar is None:
+                array = np.array((height,), dtype=float)
+                dc = DimensionScale(
+                    data=array,
+                    axiscode=axiscode,
+                    attrs={"units": units},
+                    file_obj=self._file_obj,
+                    Netcdf4Dimid=self._Netcdf4Dimid,
+                )
+                dim_ncvar = self.add_to_variables(dc, "dimension_coordinate")
+            
+                self._cache[key] = dim_ncvar
+            
+            self._axis["z"] = dim_ncvar
 
         self.add_to_coordinates(dim_ncvar)
         return dim_ncvar
