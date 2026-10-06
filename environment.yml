@@ -6,11 +6,8 @@ channels:
 dependencies:
   - python >=3.11
   - numpy >=2
-  - cf-python >=3.21.0
-  - cfdm >=1.13.3
   - fsspec >=2024.3.0
   - pip
   - pyfive >=1.1.2
   - pytest >=8
   - pytest-xdist
-  - udunits2  # cf-python needs it

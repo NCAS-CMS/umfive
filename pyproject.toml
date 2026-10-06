@@ -21,8 +21,6 @@ authors = [
 ]
 dependencies = [
 	"cftime",
-        "cf-python>=3.21.0",
-        "cfdm>=1.13.3",
         "numpy>=2",
 ]
 
