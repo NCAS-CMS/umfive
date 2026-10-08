@@ -9,10 +9,13 @@ def main(argv=None):
 
     match argv:
         case []:
-            print(
-                """An `ncdump -h` view of a UK Met Office PP or fields file dataset.
-Usage: umdump [<name of a PP or fields file dataset>]"""
-            )
+            print("""An `ncdump -h` view of a UK Met Office PP or fields
+                  file dataset.
+
+                  Usage: umdump [<name of a PP or fields file dataset>]
+
+                  """
+                     )
             return 0
 
         case [filename]:

@@ -10,7 +10,7 @@ repos:
   # Use specific format-enforcing pre-commit hooks from the core library
   # with the default configuration (see pre-commit.com for documentation)
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v6.0.0
     hooks:
       - id: check-ast
       - id: debug-statements
@@ -23,7 +23,7 @@ repos:
   # (see https://black.readthedocs.io/en/stable/ for documentation and see
   # the cfdm pyproject.toml file for our custom black configuration)
   - repo: https://github.com/ambv/black
-    rev: 24.4.2
+    rev: 26.10.0
     hooks:
       - id: black
         language_version: python3
@@ -35,7 +35,7 @@ repos:
   # configuration as below)
 #  - repo: https://github.com/myint/docformatter
   - repo: https://github.com/PyCQA/docformatter
-    rev: v1.7.6
+    rev: v1.7.8
     hooks:
       - id: docformatter
         # These arguments act as the configuration for docformatter. They:
@@ -43,7 +43,7 @@ repos:
         # * ensure there is a blank line after the final non-empty line;
         # * wraps both summary and description at 72 characters (the latter
         #   by default).
-        args: [--in-place, --blank, --wrap-summaries=72]
+        args: [--in-place, --blank, --wrap-summaries=72, --wrap-descriptions=0]
 
   # Check the docstrings conforms to Google docstring format as much as can
   # be detected by the 'pydocstyle' checker
@@ -58,7 +58,7 @@ repos:
   # (see https://flake8.pycqa.org/en/latest/ for documentation and see
   # the cfdm .flake8 file for our custom flake8 configuration)
   - repo: https://github.com/PyCQA/flake8
-    rev: 7.1.0
+    rev: 7.4.1
     hooks:
       - id: flake8
 
@@ -67,7 +67,7 @@ repos:
   # compatible with 'black' with the lines set to ensure so in the repo's
   # pyproject.toml. Other than that and the below, no extra config is required.
   - repo: https://github.com/PyCQA/isort
-    rev: 5.13.2
+    rev: 9.0.2
     hooks:
       - id: isort
         name: isort (python)

@@ -186,8 +186,8 @@ class DataVariableID(ChunkReadMixin):
         :Returns:
 
             `dict`
-                 The `StoreInfo` objects, each keyed by the `tuple` of
-                 its chunk indices.
+                The `StoreInfo` objects, each keyed by the `tuple` of
+                its chunk indices.
 
         """
         if not self.__chunk_init_check():
@@ -1009,7 +1009,7 @@ class DataVariable(_Mixin):
     @property
     def compression_modes(self):
         """The unique data chunk compression flags.
-        
+
         These are the unique values, excluding ``0``, of the N2 digit
         of LBPACK across all data chunks in the variable.
 
