@@ -90,7 +90,8 @@ class LocalPosixReader(ByteReader):
         """Best-effort cache drop for local benchmarking.
 
         On macOS this tries the `purge` command when available.
-        Returns True when a cache-drop command was executed successfully.
+        Returns True when a cache-drop command was executed
+        successfully.
 
         """
         if platform.system() == "Darwin" and shutil.which("purge"):

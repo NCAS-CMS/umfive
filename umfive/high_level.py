@@ -80,7 +80,7 @@ class File(Mapping):
     2-d "slices" within a single file are always combined, where
     possible, into fields with 3-d or 4-d data.
 
-    **CF mappings**
+    :CF mappings:
 
     The contents of the dataset are mapped to CF dimensions and
     coordinate variables (as `DimensionScale` objects); auxiliary
@@ -88,7 +88,7 @@ class File(Mapping):
     (as `Variable` objects); and data variables (as `DataVariable`
     objects).
 
-    **Performance**
+    :Performance:
 
     The read of the dataset is lazy in that only the metadata
     (i.e. the lookup headers and any extra data) are accessed during
@@ -98,7 +98,7 @@ class File(Mapping):
     stored for each lookup header (see `set_parallelism` and
     `get_parallelism`).
 
-    **Interoperability**
+    :Interoperability:
 
     This class is registered as a virtual subclass of `pyfive.File`,
     meaning that it implements the core abstract methods required to
@@ -106,7 +106,7 @@ class File(Mapping):
     type-checking using ``isinstance(file_instance, pyfive.File)``
     will evaluate to `True`.
 
-    **Initialisation**
+    :Initialisation:
 
     :Parameters:
 
@@ -116,11 +116,11 @@ class File(Mapping):
 
             * A string-like path name of a local dataset (such as a
               `str` or `pathlib.Path` instance).
-              
+
             * A file-like object that accesses a local or remote
               dataset (such as a `io.BufferedReader` instance, or the
               result of an `fsspec` file system open).
-              
+
             * A subclass of `umfive.ByteReader` that accesses a local
               or remote dataset (such as `umfive.LocalPosixReader` or
               `umfive.FileObjReader`).
@@ -949,7 +949,7 @@ class DataVariableMetadata:
     ``DIMENSION_LIST`` attributes may be used to create a
     `DataVariable` instance.
 
-    **Initialisation**
+    :Initialisation:
 
     :Parameters:
 
@@ -1286,7 +1286,9 @@ class DataVariableMetadata:
                 # information given in the STASH to standard_name
                 # conversion table
                 height, units = self._cf_info["height"]
-                dim_ncvar = self.size_1_height_coordinate(height, units, scalar=False)
+                dim_ncvar = self.size_1_height_coordinate(
+                    height, units, scalar=False
+                )
             elif axiscode == 14:
                 dim_ncvar = self.atmosphere_hybrid_height_coordinate(axiscode)
             else:
@@ -1304,11 +1306,13 @@ class DataVariableMetadata:
                 self._lblev = LBLEV
                 self.model_level_number_coordinate(aux=dim_ncvar is not None)
 
-        elif not has_z_axis and "height" in  self._cf_info:
+        elif not has_z_axis and "height" in self._cf_info:
             # Create a scalar height coordinate from the information
             # given in the STASH to standard_name conversion table
             height, units = self._cf_info["height"]
-            dim_ncvar = self.size_1_height_coordinate(height, units, scalar=True)
+            dim_ncvar = self.size_1_height_coordinate(
+                height, units, scalar=True
+            )
 
         # --------------------------------------------------------
         # Create the 'Y' dimension coordinate
@@ -1481,7 +1485,7 @@ class DataVariableMetadata:
     def atmosphere_hybrid_height_coordinate(self, axiscode):
         """`atmosphere_hybrid_height_coordinate` when not an array axis.
 
-        **From appendix A of UMDP F3**
+        :From appendix A of UMDP F3:
 
         From UM Version 5.2, the method of defining the model levels
         in PP headers was revised. At vn5.0 and 5.1, eta values were
@@ -2053,7 +2057,7 @@ class DataVariableMetadata:
 
             `tuple`
 
-        **Examples**
+        :Examples:
 
         >>> u.dtime(rec)
         (1991, 2, 1, 0, 0)
@@ -2303,9 +2307,9 @@ class DataVariableMetadata:
         :Returns:
 
             `str`
-               The runid (e.g. ``'aaa5u'``). If LBEXP is a negative
-               integer then that number is returned as a string
-               (e.g. ``'-34'``).
+                The runid (e.g. ``'aaa5u'``). If LBEXP is a negative
+                integer then that number is returned as a string (e.g.
+                ``'-34'``).
 
         """
         LBEXP = self._int_hdr[INDEX_LBEXP]
@@ -2370,13 +2374,13 @@ class DataVariableMetadata:
             if dim_ncvar is None:
                 array = np.array(height, dtype=float)
                 standard_name = _coord_standard_name.get(axiscode)
-                sc =  Variable(
+                sc = Variable(
                     name=standard_name,
                     data=array,
                     attrs={"standard_name": standard_name, "units": units},
                 )
                 dim_ncvar = self.add_to_variables(sc)
-    
+
                 self._cache[key] = dim_ncvar
         else:
             # Create a 1-d coordinate
@@ -2392,9 +2396,9 @@ class DataVariableMetadata:
                     Netcdf4Dimid=self._Netcdf4Dimid,
                 )
                 dim_ncvar = self.add_to_variables(dc, "dimension_coordinate")
-            
+
                 self._cache[key] = dim_ncvar
-            
+
             self._axis["z"] = dim_ncvar
 
         self.add_to_coordinates(dim_ncvar)
@@ -2913,7 +2917,7 @@ class DataVariableMetadata:
 
             `tuple`
 
-        **Examples**
+        :Examples:
 
         >>> u.vtime(rec)
         (1991, 1, 1, 0, 0)

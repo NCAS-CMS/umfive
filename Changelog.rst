@@ -5,7 +5,7 @@ Version 0.4.0
 
 * Add documentation pages
   (https://github.com/NCAS-CMS/umfive/issues/34)
-* Fix vertical dimension for TOTAL MOISTURE FLUX variables
+* Fix vertical dimension for single-surface variables
   (https://github.com/NCAS-CMS/umfive/issues/36)
 
 Version 0.3.0
