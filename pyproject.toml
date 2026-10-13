@@ -2,6 +2,7 @@
 requires = [
   "setuptools>=80",
   "setuptools_scm>=8",
+  "numpy>=2",
 ]
 build-backend = "setuptools.build_meta"
 
@@ -19,7 +20,7 @@ authors = [
         {name = "Valeriu Predoi - package"},
 ]
 dependencies = [
-	"cftime",
+        "cftime",
         "numpy>=2",
 ]
 
