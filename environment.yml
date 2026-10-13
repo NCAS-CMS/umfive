@@ -12,3 +12,4 @@ dependencies:
   - pyfive >=1.1.2
   - pytest >=8
   - pytest-xdist
+  - xnetcdf
