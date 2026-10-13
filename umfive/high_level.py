@@ -2515,7 +2515,7 @@ class DataVariableMetadata:
         # discern between different coordinates, and can make
         # identical coordinates look different.
         time_indicator = (self._lbtim_ib, self._lbtim_ic)
-        
+
         vtimes = tuple(self.time_since_vtime(rec) for rec in t_recs)
         dtimes = tuple(self.time_since_dtime(rec) for rec in t_recs)
         key = (
