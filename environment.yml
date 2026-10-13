@@ -6,8 +6,10 @@ channels:
 dependencies:
   - python >=3.11
   - numpy >=2
-  - fsspec >=2024.3.0
+  - cftime
+  - fsspec
   - pip
   - pyfive >=1.1.2
   - pytest >=8
   - pytest-xdist
+  - xnetcdf
