@@ -1066,14 +1066,15 @@ class DataVariableMetadata:
         # guaranteed to be the same for all records in a variable
         # ------------------------------------------------------------
         ia, ib = divmod(LBTIM, 100)
-        self._lbtim_ib, ic = divmod(ib, 10)
+        self._lbtim_ib, self._lbtim_ic = divmod(ib, 10)
 
-        if ic == 1:
-            self._calendar = "gregorian"
-        elif ic == 4:
-            self._calendar = "365_day"
-        else:
-            self._calendar = "360_day"
+        match self._lbtim_ic:
+            case 1:
+                self._calendar = "gregorian"
+            case 4:
+                self._calendar = "365_day"
+            case _:
+                self._calendar = "360_day"
 
         self._refunits = f"days since {LBYR}-1-1"
 
@@ -2509,13 +2510,19 @@ class DataVariableMetadata:
         """
         t_recs = self._t_recs
 
+        # Log the time indicator as (IB, IC), ignoring IA from
+        # LBTIM. This is because the value of IA does not help to
+        # discern between different coordinates, and can make
+        # identical coordinates look different.
+        time_indicator = (self._lbtim_ib, self._lbtim_ic)
+        
         vtimes = tuple(self.time_since_vtime(rec) for rec in t_recs)
         dtimes = tuple(self.time_since_dtime(rec) for rec in t_recs)
         key = (
             "time_coordinate",
             self._refunits,
             self._calendar,
-            self._lbtim,
+            time_indicator,
             vtimes,
             dtimes,
         )

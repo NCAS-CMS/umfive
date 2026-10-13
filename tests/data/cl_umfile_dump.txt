@@ -1,4 +1,4 @@
-tests/data/cl_umfile: <umfive.File: 49 data variables, 29 metadata variables>
+tests/data/cl_umfile: <umfive.File: 49 data variables, 27 metadata variables>
     Attributes:
         Conventions: 'CF-1.13'
     Data variables:
@@ -1524,12 +1524,12 @@ tests/data/cl_umfile: <umfive.File: 49 data variables, 29 metadata variables>
                    2512.149673461914  ],
                   [2748.69921875      , 2756.8030395507812 , 2802.506591796875  , ..., 2706.177734375     , 2736.3880290985107 ,
                    2743.0874633789062 ]]]
-        UM_m01s01i201_vn405: <umfive.DataVariable: UM_m01s01i201_vn405, shape=(12, 37, 48), dimensions=(time_1, latitude, longitude)>
+        UM_m01s01i201_vn405: <umfive.DataVariable: UM_m01s01i201_vn405, shape=(12, 37, 48), dimensions=(time, latitude, longitude)>
             Attributes:
-                DIMENSION_LIST: (('time_1',), ('latitude',), ('longitude',))
+                DIMENSION_LIST: (('time',), ('latitude',), ('longitude',))
                 _FillValue: np.float64(-1073741824.0)
-                cell_methods: 'time_1: mean'
-                coordinates: 'time_1 latitude longitude'
+                cell_methods: 'time: mean'
+                coordinates: 'time latitude longitude'
                 lbcode: '1'
                 lbproc: '128'
                 lbtim: '322'
@@ -1738,12 +1738,12 @@ tests/data/cl_umfile: <umfive.File: 49 data variables, 29 metadata variables>
                    437.1542144877251   , 437.1542144877245   ],
                   [437.15421448772435  , 437.15421448772435  , 437.15421448772435  , ..., 437.15421448772435  ,
                    437.15421448772435  , 437.15421448772435  ]]]
-        UM_m01s01i208_vn405: <umfive.DataVariable: UM_m01s01i208_vn405, shape=(12, 37, 48), dimensions=(time_1, latitude, longitude)>
+        UM_m01s01i208_vn405: <umfive.DataVariable: UM_m01s01i208_vn405, shape=(12, 37, 48), dimensions=(time, latitude, longitude)>
             Attributes:
-                DIMENSION_LIST: (('time_1',), ('latitude',), ('longitude',))
+                DIMENSION_LIST: (('time',), ('latitude',), ('longitude',))
                 _FillValue: np.float64(-1073741824.0)
-                cell_methods: 'time_1: mean'
-                coordinates: 'time_1 latitude longitude'
+                cell_methods: 'time: mean'
+                coordinates: 'time latitude longitude'
                 lbcode: '1'
                 lbproc: '128'
                 lbtim: '322'
@@ -1845,12 +1845,12 @@ tests/data/cl_umfile: <umfive.File: 49 data variables, 29 metadata variables>
                    291.16388154830753  , 291.43634398043804  ],
                   [289.53401018662333  , 289.53401018662333  , 289.53401018662333  , ..., 289.53401018662333  ,
                    289.53401018662333  , 289.53401018662333  ]]]
-        UM_m01s01i209_vn405: <umfive.DataVariable: UM_m01s01i209_vn405, shape=(12, 37, 48), dimensions=(time_1, latitude, longitude)>
+        UM_m01s01i209_vn405: <umfive.DataVariable: UM_m01s01i209_vn405, shape=(12, 37, 48), dimensions=(time, latitude, longitude)>
             Attributes:
-                DIMENSION_LIST: (('time_1',), ('latitude',), ('longitude',))
+                DIMENSION_LIST: (('time',), ('latitude',), ('longitude',))
                 _FillValue: np.float64(-1073741824.0)
-                cell_methods: 'time_1: mean'
-                coordinates: 'time_1 latitude longitude'
+                cell_methods: 'time: mean'
+                coordinates: 'time latitude longitude'
                 lbcode: '1'
                 lbproc: '128'
                 lbtim: '322'
@@ -1952,12 +1952,12 @@ tests/data/cl_umfile: <umfive.File: 49 data variables, 29 metadata variables>
                    291.5261571691769    , 292.29547353180175   ],
                   [290.187043726817     , 290.187043726817     , 290.187043726817     , ..., 290.187043726817     ,
                    290.187043726817     , 290.187043726817     ]]]
-        UM_m01s01i210_vn405: <umfive.DataVariable: UM_m01s01i210_vn405, shape=(12, 37, 48), dimensions=(time_1, latitude, longitude)>
+        UM_m01s01i210_vn405: <umfive.DataVariable: UM_m01s01i210_vn405, shape=(12, 37, 48), dimensions=(time, latitude, longitude)>
             Attributes:
-                DIMENSION_LIST: (('time_1',), ('latitude',), ('longitude',))
+                DIMENSION_LIST: (('time',), ('latitude',), ('longitude',))
                 _FillValue: np.float64(-1073741824.0)
-                cell_methods: 'time_1: mean'
-                coordinates: 'time_1 latitude longitude'
+                cell_methods: 'time: mean'
+                coordinates: 'time latitude longitude'
                 lbcode: '1'
                 lbproc: '128'
                 lbtim: '322'
@@ -2059,12 +2059,12 @@ tests/data/cl_umfile: <umfive.File: 49 data variables, 29 metadata variables>
                    3.6234303004964409e+02, 3.6374577577850988e+02],
                   [3.6394397527023949e+02, 3.6394397527023949e+02, 3.6394397527023949e+02, ..., 3.6394397527023949e+02,
                    3.6394397527023949e+02, 3.6394397527023949e+02]]]
-        UM_m01s01i211_vn405: <umfive.DataVariable: UM_m01s01i211_vn405, shape=(12, 37, 48), dimensions=(time_1, latitude, longitude)>
+        UM_m01s01i211_vn405: <umfive.DataVariable: UM_m01s01i211_vn405, shape=(12, 37, 48), dimensions=(time, latitude, longitude)>
             Attributes:
-                DIMENSION_LIST: (('time_1',), ('latitude',), ('longitude',))
+                DIMENSION_LIST: (('time',), ('latitude',), ('longitude',))
                 _FillValue: np.float64(-1073741824.0)
-                cell_methods: 'time_1: mean'
-                coordinates: 'time_1 latitude longitude'
+                cell_methods: 'time: mean'
+                coordinates: 'time latitude longitude'
                 lbcode: '1'
                 lbproc: '128'
                 lbtim: '322'
@@ -2166,12 +2166,12 @@ tests/data/cl_umfile: <umfive.File: 49 data variables, 29 metadata variables>
                    2.8100358947192370e+02, 2.8200128701965770e+02],
                   [2.7885371509513220e+02, 2.7885371509513220e+02, 2.7885371509513220e+02, ..., 2.7885371509513220e+02,
                    2.7885371509513220e+02, 2.7885371509513220e+02]]]
-        UM_m01s01i235_vn405: <umfive.DataVariable: UM_m01s01i235_vn405, shape=(12, 37, 48), dimensions=(time_1, latitude, longitude)>
+        UM_m01s01i235_vn405: <umfive.DataVariable: UM_m01s01i235_vn405, shape=(12, 37, 48), dimensions=(time, latitude, longitude)>
             Attributes:
-                DIMENSION_LIST: (('time_1',), ('latitude',), ('longitude',))
+                DIMENSION_LIST: (('time',), ('latitude',), ('longitude',))
                 _FillValue: np.float64(-1073741824.0)
-                cell_methods: 'time_1: mean'
-                coordinates: 'time_1 latitude longitude'
+                cell_methods: 'time: mean'
+                coordinates: 'time latitude longitude'
                 lbcode: '1'
                 lbproc: '128'
                 lbtim: '322'
@@ -2273,12 +2273,12 @@ tests/data/cl_umfile: <umfive.File: 49 data variables, 29 metadata variables>
                    3.2914192482360090e+02, 3.2930447919211247e+02],
                   [3.4413773057025708e+02, 3.4413773057025708e+02, 3.4413773057025708e+02, ..., 3.4413773057025708e+02,
                    3.4413773057025708e+02, 3.4413773057025708e+02]]]
-        UM_m01s02i201_vn405: <umfive.DataVariable: UM_m01s02i201_vn405, shape=(12, 37, 48), dimensions=(time_1, latitude, longitude)>
+        UM_m01s02i201_vn405: <umfive.DataVariable: UM_m01s02i201_vn405, shape=(12, 37, 48), dimensions=(time, latitude, longitude)>
             Attributes:
-                DIMENSION_LIST: (('time_1',), ('latitude',), ('longitude',))
+                DIMENSION_LIST: (('time',), ('latitude',), ('longitude',))
                 _FillValue: np.float64(-1073741824.0)
-                cell_methods: 'time_1: mean'
-                coordinates: 'time_1 latitude longitude'
+                cell_methods: 'time: mean'
+                coordinates: 'time latitude longitude'
                 lbcode: '1'
                 lbproc: '128'
                 lbtim: '322'
@@ -2380,12 +2380,12 @@ tests/data/cl_umfile: <umfive.File: 49 data variables, 29 metadata variables>
                     -64.97776760241685  ,  -64.71503611859005  ],
                   [ -70.49568070278316  ,  -70.49568070278316  ,  -70.49568070278316  , ...,  -70.49568070278316  ,
                     -70.49568070278316  ,  -70.49568070278316  ]]]
-        UM_m01s02i205_vn405: <umfive.DataVariable: UM_m01s02i205_vn405, shape=(12, 37, 48), dimensions=(time_1, latitude, longitude)>
+        UM_m01s02i205_vn405: <umfive.DataVariable: UM_m01s02i205_vn405, shape=(12, 37, 48), dimensions=(time, latitude, longitude)>
             Attributes:
-                DIMENSION_LIST: (('time_1',), ('latitude',), ('longitude',))
+                DIMENSION_LIST: (('time',), ('latitude',), ('longitude',))
                 _FillValue: np.float64(-1073741824.0)
-                cell_methods: 'time_1: mean'
-                coordinates: 'time_1 latitude longitude'
+                cell_methods: 'time: mean'
+                coordinates: 'time latitude longitude'
                 lbcode: '1'
                 lbproc: '128'
                 lbtim: '322'
@@ -2487,12 +2487,12 @@ tests/data/cl_umfile: <umfive.File: 49 data variables, 29 metadata variables>
                    171.82672701927652],
                   [176.23825657418922, 176.23825657418922, 176.23825657418922, ..., 176.23825657418922, 176.23825657418922,
                    176.23825657418922]]]
-        UM_m01s02i206_vn405: <umfive.DataVariable: UM_m01s02i206_vn405, shape=(12, 37, 48), dimensions=(time_1, latitude, longitude)>
+        UM_m01s02i206_vn405: <umfive.DataVariable: UM_m01s02i206_vn405, shape=(12, 37, 48), dimensions=(time, latitude, longitude)>
             Attributes:
-                DIMENSION_LIST: (('time_1',), ('latitude',), ('longitude',))
+                DIMENSION_LIST: (('time',), ('latitude',), ('longitude',))
                 _FillValue: np.float64(-1073741824.0)
-                cell_methods: 'time_1: mean'
-                coordinates: 'time_1 latitude longitude'
+                cell_methods: 'time: mean'
+                coordinates: 'time latitude longitude'
                 lbcode: '1'
                 lbproc: '128'
                 lbtim: '322'
@@ -2594,12 +2594,12 @@ tests/data/cl_umfile: <umfive.File: 49 data variables, 29 metadata variables>
                    181.8738390853902 ],
                   [181.7244858231764 , 181.7244858231764 , 181.7244858231764 , ..., 181.7244858231764 , 181.7244858231764 ,
                    181.7244858231764 ]]]
-        UM_m01s02i207_vn405: <umfive.DataVariable: UM_m01s02i207_vn405, shape=(12, 37, 48), dimensions=(time_1, latitude, longitude)>
+        UM_m01s02i207_vn405: <umfive.DataVariable: UM_m01s02i207_vn405, shape=(12, 37, 48), dimensions=(time, latitude, longitude)>
             Attributes:
-                DIMENSION_LIST: (('time_1',), ('latitude',), ('longitude',))
+                DIMENSION_LIST: (('time',), ('latitude',), ('longitude',))
                 _FillValue: np.float64(-1073741824.0)
-                cell_methods: 'time_1: mean'
-                coordinates: 'time_1 latitude longitude'
+                cell_methods: 'time: mean'
+                coordinates: 'time latitude longitude'
                 lbcode: '1'
                 lbproc: '128'
                 lbtim: '322'
@@ -2701,12 +2701,12 @@ tests/data/cl_umfile: <umfive.File: 49 data variables, 29 metadata variables>
                    155.85930950677593],
                   [148.3955114058003 , 148.3955114058003 , 148.3955114058003 , ..., 148.3955114058003 , 148.3955114058003 ,
                    148.3955114058003 ]]]
-        UM_m01s02i208_vn405: <umfive.DataVariable: UM_m01s02i208_vn405, shape=(12, 37, 48), dimensions=(time_1, latitude, longitude)>
+        UM_m01s02i208_vn405: <umfive.DataVariable: UM_m01s02i208_vn405, shape=(12, 37, 48), dimensions=(time, latitude, longitude)>
             Attributes:
-                DIMENSION_LIST: (('time_1',), ('latitude',), ('longitude',))
+                DIMENSION_LIST: (('time',), ('latitude',), ('longitude',))
                 _FillValue: np.float64(-1073741824.0)
-                cell_methods: 'time_1: mean'
-                coordinates: 'time_1 latitude longitude'
+                cell_methods: 'time: mean'
+                coordinates: 'time latitude longitude'
                 lbcode: '1'
                 lbproc: '128'
                 lbtim: '322'
@@ -2808,12 +2808,12 @@ tests/data/cl_umfile: <umfive.File: 49 data variables, 29 metadata variables>
                    132.55024374240242],
                   [134.12968049063826, 134.12968049063826, 134.12968049063826, ..., 134.12968049063826, 134.12968049063826,
                    134.12968049063826]]]
-        UM_m01s02i260_vn405: <umfive.DataVariable: UM_m01s02i260_vn405, shape=(12, 11, 37, 48), dimensions=(time_1, atmosphere_hybrid_sigma_pressure_coordinate_1, latitude, longitude)>
+        UM_m01s02i260_vn405: <umfive.DataVariable: UM_m01s02i260_vn405, shape=(12, 11, 37, 48), dimensions=(time, atmosphere_hybrid_sigma_pressure_coordinate_1, latitude, longitude)>
             Attributes:
-                DIMENSION_LIST: (('time_1',), ('atmosphere_hybrid_sigma_pressure_coordinate_1',), ('latitude',), ('longitude',))
+                DIMENSION_LIST: (('time',), ('atmosphere_hybrid_sigma_pressure_coordinate_1',), ('latitude',), ('longitude',))
                 _FillValue: np.float64(-1073741824.0)
-                cell_methods: 'time_1: mean'
-                coordinates: 'time_1 atmosphere_hybrid_sigma_pressure_coordinate_1 model_level_number latitude longitude'
+                cell_methods: 'time: mean'
+                coordinates: 'time atmosphere_hybrid_sigma_pressure_coordinate_1 model_level_number latitude longitude'
                 lbcode: '1'
                 lbproc: '128'
                 lbtim: '322'
@@ -9217,35 +9217,6 @@ tests/data/cl_umfile: <umfive.File: 49 data variables, 29 metadata variables>
                  [0.05071154024117194, 0.01240238537133334],
                  [0.01240238537133334, 0.                 ],
                  [0.                 , 0.                 ]]
-        time_1: <umfive.DimensionScale: time_1, shape=(12,)>
-            Attributes:
-                CLASS: b'DIMENSION_SCALE'
-                NAME: b'netCDF dimension coordinate variable'
-                _Netcdf4Dimid: np.int32(8)
-                axis: 'T'
-                bounds: 'time_1_bounds'
-                calendar: '360_day'
-                standard_name: 'time'
-                units: 'days since 7542-1-1'
-            Data float64:
-                [345., 375., 405., 435., 465., 495., 525.,
-                 555., 585., 615., 645., 675.]
-        time_1_bounds: <umfive.Variable: time_1_bounds, shape=(12, 2), dimensions=(time_1, bounds2)>
-            Attributes:
-                DIMENSION_LIST: (('time_1',), ('bounds2',))
-            Data float64:
-                [[330., 360.],
-                 [360., 390.],
-                 [390., 420.],
-                 [420., 450.],
-                 [450., 480.],
-                 [480., 510.],
-                 [510., 540.],
-                 [540., 570.],
-                 [570., 600.],
-                 [600., 630.],
-                 [630., 660.],
-                 [660., 690.]]
         height: <umfive.Variable: height, shape=(), dimensions=()>
             Attributes:
                 DIMENSION_LIST: ()
@@ -9257,7 +9228,7 @@ tests/data/cl_umfile: <umfive.File: 49 data variables, 29 metadata variables>
             Attributes:
                 CLASS: b'DIMENSION_SCALE'
                 NAME: b'netCDF dimension coordinate variable'
-                _Netcdf4Dimid: np.int32(9)
+                _Netcdf4Dimid: np.int32(8)
                 axis: 'Z'
                 standard_name: 'model_level_number'
                 units: '1'
@@ -9267,7 +9238,7 @@ tests/data/cl_umfile: <umfive.File: 49 data variables, 29 metadata variables>
             Attributes:
                 CLASS: b'DIMENSION_SCALE'
                 NAME: b'netCDF dimension coordinate variable'
-                _Netcdf4Dimid: np.int32(10)
+                _Netcdf4Dimid: np.int32(9)
                 axis: 'Z'
                 positive: 'down'
                 standard_name: 'air_pressure'
