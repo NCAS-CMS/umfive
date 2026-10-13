@@ -10,6 +10,7 @@ dataset_suffix = {
     "extra_data": ".pp",
     "umfile": ".pp",
     "wgdos_packed": ".pp",
+    "hybrid_height": ".pp",
 }
 
 for dataset, suffix in dataset_suffix.items():

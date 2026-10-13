@@ -1066,14 +1066,15 @@ class DataVariableMetadata:
         # guaranteed to be the same for all records in a variable
         # ------------------------------------------------------------
         ia, ib = divmod(LBTIM, 100)
-        self._lbtim_ib, ic = divmod(ib, 10)
+        self._lbtim_ib, self._lbtim_ic = divmod(ib, 10)
 
-        if ic == 1:
-            self._calendar = "gregorian"
-        elif ic == 4:
-            self._calendar = "365_day"
-        else:
-            self._calendar = "360_day"
+        match self._lbtim_ic:
+            case 1:
+                self._calendar = "gregorian"
+            case 4:
+                self._calendar = "365_day"
+            case _:
+                self._calendar = "360_day"
 
         self._refunits = f"days since {LBYR}-1-1"
 
@@ -1593,13 +1594,13 @@ class DataVariableMetadata:
 
             # atmosphere_hybrid_height_coordinate dimension coordinate
             if toa_height is None:
-                d = DimensionScale(
+                dc = DimensionScale(
                     name="atmosphere_hybrid_height_coordinate",
                     size=array_a.size,
                     file_obj=self._file_obj,
                     Netcdf4Dimid=self._Netcdf4Dimid,
                 )
-                dim_ncvar = self.add_to_variables(d, "dimension")
+                dim_ncvar = self.add_to_variables(dc, "dimension")
                 self._axis["z"] = dim_ncvar
 
                 bounds_ncvar = None
@@ -1650,7 +1651,7 @@ class DataVariableMetadata:
             self.add_to_variables(da_a)
 
             # "a" domain ancillary bounds
-            bounds_dim = self.bounds_dim(bounds)
+            bounds_dim = self.bounds_dim(bounds_a)
             da_a_bounds = Variable(
                 name=f"{da_a.name}_bounds",
                 data=bounds_a,
@@ -1674,7 +1675,7 @@ class DataVariableMetadata:
             self.add_to_variables(da_b)
 
             # "b" domain ancillary bounds
-            bounds_dim = self.bounds_dim(bounds)
+            bounds_dim = self.bounds_dim(bounds_b)
             da_b_bounds = Variable(
                 name=f"{da_b.name}_bounds",
                 data=bounds_b,
@@ -1686,9 +1687,10 @@ class DataVariableMetadata:
             # Set the 'formula terms' attributes on the parent
             # coordinate and coordinate bounds variables
             self.formula_terms(dc, f"a: {da_a.name} b: {da_b.name}")
-            self.formula_terms(
-                dc_bounds, f"a: {da_a_bounds.name} b: {da_b_bounds.name}"
-            )
+            if bounds_ncvar is not None:
+                self.formula_terms(
+                    dc_bounds, f"a: {da_a_bounds.name} b: {da_b_bounds.name}"
+                )
 
             self._cache[key] = dim_ncvar
         else:
@@ -2508,13 +2510,19 @@ class DataVariableMetadata:
         """
         t_recs = self._t_recs
 
+        # Log the time indicator as (IB, IC), ignoring IA from
+        # LBTIM. This is because the value of IA does not help to
+        # discern between different coordinates, and can make
+        # identical coordinates look different.
+        time_indicator = (self._lbtim_ib, self._lbtim_ic)
+
         vtimes = tuple(self.time_since_vtime(rec) for rec in t_recs)
         dtimes = tuple(self.time_since_dtime(rec) for rec in t_recs)
         key = (
             "time_coordinate",
             self._refunits,
             self._calendar,
-            self._lbtim,
+            time_indicator,
             vtimes,
             dtimes,
         )
