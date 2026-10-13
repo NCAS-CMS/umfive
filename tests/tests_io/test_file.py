@@ -14,6 +14,7 @@ import umfive
         ("extra_data", ".pp"),
         ("umfile", ".pp"),
         ("wgdos_packed", ".pp"),
+        ("hybrid_height", ".pp"),
     ],
 )
 def test_file(dataset, suffix):

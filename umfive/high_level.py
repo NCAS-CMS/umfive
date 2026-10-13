@@ -1593,13 +1593,13 @@ class DataVariableMetadata:
 
             # atmosphere_hybrid_height_coordinate dimension coordinate
             if toa_height is None:
-                d = DimensionScale(
+                dc = DimensionScale(
                     name="atmosphere_hybrid_height_coordinate",
                     size=array_a.size,
                     file_obj=self._file_obj,
                     Netcdf4Dimid=self._Netcdf4Dimid,
                 )
-                dim_ncvar = self.add_to_variables(d, "dimension")
+                dim_ncvar = self.add_to_variables(dc, "dimension")
                 self._axis["z"] = dim_ncvar
 
                 bounds_ncvar = None
@@ -1650,7 +1650,7 @@ class DataVariableMetadata:
             self.add_to_variables(da_a)
 
             # "a" domain ancillary bounds
-            bounds_dim = self.bounds_dim(bounds)
+            bounds_dim = self.bounds_dim(bounds_a)
             da_a_bounds = Variable(
                 name=f"{da_a.name}_bounds",
                 data=bounds_a,
@@ -1674,7 +1674,7 @@ class DataVariableMetadata:
             self.add_to_variables(da_b)
 
             # "b" domain ancillary bounds
-            bounds_dim = self.bounds_dim(bounds)
+            bounds_dim = self.bounds_dim(bounds_b)
             da_b_bounds = Variable(
                 name=f"{da_b.name}_bounds",
                 data=bounds_b,
@@ -1686,9 +1686,10 @@ class DataVariableMetadata:
             # Set the 'formula terms' attributes on the parent
             # coordinate and coordinate bounds variables
             self.formula_terms(dc, f"a: {da_a.name} b: {da_b.name}")
-            self.formula_terms(
-                dc_bounds, f"a: {da_a_bounds.name} b: {da_b_bounds.name}"
-            )
+            if bounds_ncvar is not None:
+                self.formula_terms(
+                    dc_bounds, f"a: {da_a_bounds.name} b: {da_b_bounds.name}"
+                )
 
             self._cache[key] = dim_ncvar
         else:
