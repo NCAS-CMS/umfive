@@ -41,7 +41,7 @@ jobs:
       - name: Verify installation
         run: |
           python -c "import umfive"
-          umfive
+          umdump
       - name: Check environment contents
         run: |
           conda list
