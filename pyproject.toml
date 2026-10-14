@@ -14,7 +14,6 @@ dynamic = [
 ]
 description = "PP/Fields reader with pyfive-style high-level API"
 license = {text = "MIT"}
-readme = "README.md"
 requires-python = ">=3.11"
 authors = [
 	{name = "David Hassell"},
