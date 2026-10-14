@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - semver_version_and_conda_pkg_gha
   schedule:
     - cron: "0 4 * * *"
 
