@@ -4,4 +4,16 @@ from .core import RecordInfo
 from .stash import load_stash_table, stash_records, stash_table
 from .io import ByteReader, FileObjReader, LocalPosixReader
 
-__version__ = "0.4.0"
+from importlib.metadata import version, PackageNotFoundError
+
+
+try:
+    __version__ = version("umfive")
+except PackageNotFoundError as exc:
+    msg = (
+        "umfive package not found, please run `pip install -e .` before "
+        "importing the package."
+    )
+    raise PackageNotFoundError(
+        msg,
+    ) from exc

@@ -8,7 +8,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "umfive"
-version = "0.4.0"
+dynamic = [
+    "readme",
+    "version",
+]
 description = "PP/Fields reader with pyfive-style high-level API"
 license = {text = "MIT"}
 readme = "README.md"
@@ -39,6 +42,9 @@ umdump = "umfive.umdump:main"
 [tool.setuptools]
 include-package-data = true
 license-files = ["LICENSE"]
+
+[tool.setuptools_scm]
+version_scheme = "release-branch-semver"
 
 [tool.setuptools.packages.find]
 include = ["umfive*"]
