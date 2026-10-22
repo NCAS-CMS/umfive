@@ -7,15 +7,20 @@ def main(argv=None):
     if argv is None:
         argv = sys.argv[1:]
 
+    info = (
+        "An ncdump-like view of a UK Met Office PP, fields file "
+        "or dump dataset."
+        "\n\n"
+        "Usage: umdump [--help] [<dataset name>]"
+    )
+
     match argv:
         case []:
-            print("""An `ncdump -h` view of a UK Met Office PP or fields
-                  file dataset.
+            print(info)
+            return 1
 
-                  Usage: umdump [<name of a PP or fields file dataset>]
-
-                  """
-                     )
+        case ["--help"]:
+            print(info)
             return 0
 
         case [filename]:
@@ -29,7 +34,10 @@ def main(argv=None):
                 return 2
 
             try:
-                x = xnetcdf.Dataset(filename, backend="umfive")
+                import umfive
+
+                u = umfive.File(filename)
+                x = xnetcdf.Dataset(u, backend="umfive")
                 x.ncdump()
             except Exception as error:
                 print(
@@ -43,7 +51,7 @@ def main(argv=None):
         case _:
             args = " ".join([f"{arg}" for arg in argv])
             print(f"Invalid arguments: {args}")
-            return 1
+            return 2
 
 
 if __name__ == "__main__":
