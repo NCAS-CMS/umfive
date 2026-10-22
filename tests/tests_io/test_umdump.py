@@ -4,7 +4,7 @@ import subprocess
 def test_umdump_no_args():
     """Test running 'umdump' with no arguments."""
     result = subprocess.run(["umdump"], capture_output=True, text=True)
-    assert result.returncode == 1
+    assert result.returncode == 0
     output = result.stderr or result.stdout
     assert "usage" in output.lower()
 

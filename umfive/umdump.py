@@ -17,7 +17,7 @@ def main(argv=None):
     match argv:
         case []:
             print(info)
-            return 1
+            return 0
 
         case ["--help"]:
             print(info)
