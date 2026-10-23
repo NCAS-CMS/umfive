@@ -53,4 +53,5 @@ jobs:
       - name: Check umdump
         run: |
           umdump
+          pwd
           umdump tests/data/test.pp
