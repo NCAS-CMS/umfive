@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - tidy_up_GHA
   schedule:
     - cron: "0 4 * * *"
 
