@@ -46,6 +46,10 @@ jobs:
         run: |
           conda list
           pip list
+      - name: Install xnetcdf and show environment again
+        run: |
+          mamba install xnetcdf
+          conda list
       - name: Check umdump
         run: |
           umdump
