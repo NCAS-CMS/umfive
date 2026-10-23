@@ -24,6 +24,8 @@ authors = [
 dependencies = [
         "cftime",
         "numpy>=2",
+        "pyfive",
+        "xnetcdf",
 ]
 
 [project.optional-dependencies]
@@ -32,7 +34,6 @@ test = [
 	"pytest>=8",
 	"pytest-cov>=5",
         "pytest-xdist",
-	"xnetcdf"
 ]
 
 [project.scripts]
