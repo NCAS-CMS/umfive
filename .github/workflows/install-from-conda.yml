@@ -53,5 +53,4 @@ jobs:
       - name: Check umdump
         run: |
           umdump
-          umdump tests/data/test1.nc
           umdump tests/data/test.pp

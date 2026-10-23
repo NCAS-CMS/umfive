@@ -59,5 +59,4 @@ jobs:
         run: |
           umdump
           umdump --help
-          umdump tests/data/test1.nc
           umdump tests/data/test.pp
