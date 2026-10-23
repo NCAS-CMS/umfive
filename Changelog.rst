@@ -1,3 +1,11 @@
+Version 0.5.0
+-------------
+
+**2026-10-??**
+
+* Include ``--help`` option to `umdump`
+  (https://github.com/NCAS-CMS/umfive/issues/50)
+
 Version 0.4.0
 -------------
 
