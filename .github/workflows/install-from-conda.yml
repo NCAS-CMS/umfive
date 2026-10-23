@@ -45,3 +45,12 @@ jobs:
         run: |
           conda list
           pip list
+      - name: Install xnetcdf and show environment again
+        run: |
+          mamba install xnetcdf
+          conda list
+      - name: Check umdump
+        run: |
+          umdump
+          git clone https://github.com/NCAS-CMS/umfive.git
+          umdump umfive/tests/data/test.pp

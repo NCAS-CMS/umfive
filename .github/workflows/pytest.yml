@@ -56,4 +56,7 @@ jobs:
       - name: Test with pytest
         run: pytest -n 2
       - name: Verify umdump command
-        run: umdump
+        run: |
+          umdump
+          umdump --help
+          umdump tests/data/test.pp
