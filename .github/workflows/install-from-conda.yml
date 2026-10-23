@@ -45,6 +45,7 @@ jobs:
         run: |
           conda list
           pip list
+      # TODO remove after new release 0.5.0
       - name: Install xnetcdf and show environment again
         run: |
           mamba install xnetcdf
