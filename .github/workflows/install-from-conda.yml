@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - tidy_up_GHA
   schedule:
     - cron: "0 4 * * *"
 
@@ -45,3 +46,8 @@ jobs:
         run: |
           conda list
           pip list
+      - name: Check umdump
+        run: |
+          umdump
+          umdump tests/data/test1.nc
+          umdump tests/data/test.pp
