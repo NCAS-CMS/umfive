@@ -1347,8 +1347,10 @@ class DataVariable(_Mixin):
             if i < N_INT_HDR:
                 out[item] = [int(rec.int_hdr[i]) for rec in self.chunk_records]
             else:
-                i -= N_INT_HDR                
-                out[item] = [float(rec.real_hdr[i]) for rec in self.chunk_records]
+                i -= N_INT_HDR
+                out[item] = [
+                    float(rec.real_hdr[i]) for rec in self.chunk_records
+                ]
 
         if not display:
             return out

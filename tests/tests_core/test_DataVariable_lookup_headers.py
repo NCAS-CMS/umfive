@@ -44,27 +44,22 @@ def test_DataVariable_lookup_header_items():
 
     # Test list return
     items = v.lookup_header_items(display=False)
-    assert isinstance(items, list)
-    # 45 int + 19 real = 64 items
+    assert isinstance(items, dict)
     assert len(items) == 64
-    assert items[0][0] == "LBYR"
-    assert items[0][1] == [1979] * 15
+    assert items["LBYR"] == [1979] * 15
 
     for item in ("LBYRD", "lbyrd", ["LBYRD"]):
         items = v.lookup_header_items(item, display=False)
-        assert isinstance(items, list)
+        assert isinstance(items, dict)
         assert len(items) == 1
-        assert items[0][0] == "LBYRD"
-        assert items[0][1] == [1979] * 15
+        assert items["LBYRD"] == [1979] * 15
 
     for item in ("LBYRD", "lbyrd", ["LBYRD"]):
         items = v.lookup_header_items(["LBMON", "lbyr"], display=False)
-        assert isinstance(items, list)
+        assert isinstance(items, dict)
         assert len(items) == 2
-        assert items[0][0] == "LBMON"
-        assert items[0][1] == [5] * 15
-        assert items[1][0] == "LBYR"
-        assert items[1][1] == [1979] * 15
+        assert items["LBMON"] == [5] * 15
+        assert items["LBYR"] == [1979] * 15
 
     # Test display=True (stdout)
     buf = StringIO()

@@ -1,4 +1,5 @@
-"""An ncdump-like view of a UK Met Office PP, UM fields file, or UM dump dataset."""
+"""An ncdump-like view of a UK Met Office PP, UM fields file, or UM dump
+dataset."""
 
 import sys
 
