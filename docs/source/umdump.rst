@@ -17,8 +17,11 @@ kB
 .. code-block:: console
    :caption: Example   
 
-   $ umdump test.pp 
-   netcdf test.pp {
+   $ umdump --help
+   An ncdump-like view of a UK Met Office PP, fields file or dump dataset.
+
+   Usage: umdump [--help] [<dataset name>]
+   $ umdump test.pp
    dimensions:
         time = 3 ;
         bounds2 = 2 ;
@@ -78,3 +81,4 @@ kB
    // global attributes:
             :Conventions = "CF-1.13" ;
    }
+

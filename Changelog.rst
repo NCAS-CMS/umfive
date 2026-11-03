@@ -6,6 +6,8 @@ Version 0.5.0
 * Update the `STASH_to_CF.txt` file to include more 1.5m and 10m
   vertical coordinates, and more units
   (https://github.com/NCAS-CMS/umfive/issues/63)
+* Include ``--help`` option to `umdump`
+  (https://github.com/NCAS-CMS/umfive/issues/50)
 
 Version 0.4.0
 -------------
