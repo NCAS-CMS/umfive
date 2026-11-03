@@ -4,7 +4,8 @@ Version 0.5.0
 **2026-11-??**
 
 * Update the `STASH_to_CF.txt` file to include more 1.5m and 10m
-  vertical coordinates, and more units
+  vertical coordinates; more units; and atmosphere STASH codes 1298,
+  1299, 3662, 3663, 3691
   (https://github.com/NCAS-CMS/umfive/issues/63)
 * Include ``--help`` option to `umdump`
   (https://github.com/NCAS-CMS/umfive/issues/50)
