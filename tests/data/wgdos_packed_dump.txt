@@ -9,6 +9,7 @@ tests/data/wgdos_packed.pp: <umfive.File: 1 data variable, 7 metadata variables>
                 cell_methods: 'time: point'
                 coordinates: 'time air_pressure latitude longitude'
                 lbcode: '1'
+                lbpack: '1'
                 lbproc: '0'
                 lbtim: '12'
                 lbvc: '8'

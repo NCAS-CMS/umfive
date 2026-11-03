@@ -2,13 +2,14 @@ tests/data/hybrid_height.pp: <umfive.File: 1 data variable, 13 metadata variable
     Attributes:
         Conventions: 'CF-1.13'
     Data variables:
-        UM_m01s00i002_vn1201_true_latitude_longitude: <umfive.DataVariable: UM_m01s00i002_vn1201_true_latitude_longitude, shape=(1, 1, 144, 192), dimensions=(time, pseudolevel, latitude, longitude)>
+        UM_m01s00i002_vn1201_true_latitude_longitude: <umfive.DataVariable: UM_m01s00i002_vn1201_true_latitude_longitude, shape=(1, 1, 144, 192), dimensions=(time, atmosphere_hybrid_height_coordinate, latitude, longitude)>
             Attributes:
-                DIMENSION_LIST: (('time',), ('pseudolevel',), ('latitude',), ('longitude',))
+                DIMENSION_LIST: (('time',), ('atmosphere_hybrid_height_coordinate',), ('latitude',), ('longitude',))
                 _FillValue: np.float32(-1.0737418e+09)
                 cell_methods: 'time: point'
-                coordinates: 'time atmosphere_hybrid_height_coordinate model_level_number latitude longitude pseudolevel'
+                coordinates: 'time atmosphere_hybrid_height_coordinate model_level_number latitude longitude'
                 lbcode: '1'
+                lbpack: '0'
                 lbproc: '0'
                 lbtim: '2'
                 lbvc: '65'
@@ -43,12 +44,30 @@ tests/data/hybrid_height.pp: <umfive.File: 1 data variable, 13 metadata variable
                 units: 'days since 2202-1-1'
             Data float64:
                 [180.]
-        atmosphere_hybrid_height_coordinate: <umfive.DimensionScale: atmosphere_hybrid_height_coordinate, size=1>
+        atmosphere_hybrid_height_coordinate: <umfive.DimensionScale: atmosphere_hybrid_height_coordinate, shape=(1,)>
+            Attributes:
+                CLASS: b'DIMENSION_SCALE'
+                NAME: b'netCDF dimension coordinate variable'
+                _Netcdf4Dimid: np.int32(1)
+                axis: 'Z'
+                bounds: 'atmosphere_hybrid_height_coordinate_bounds'
+                formula_terms: 'a: atmosphere_hybrid_height_coordinate_a b: atmosphere_hybrid_height_coordinate_b'
+                positive: 'up'
+                standard_name: 'atmosphere_hybrid_height_coordinate'
+                units: '1'
+            Data float64:
+                [0.5000002384186019]
+        bounds2: <umfive.DimensionScale: bounds2, size=2>
             Attributes:
                 CLASS: b'DIMENSION_SCALE'
                 NAME: b'This is a netCDF dimension but not a netCDF variable.'
-                _Netcdf4Dimid: np.int32(1)
-                formula_terms: 'a: atmosphere_hybrid_height_coordinate_a b: atmosphere_hybrid_height_coordinate_b'
+                _Netcdf4Dimid: np.int32(2)
+        atmosphere_hybrid_height_coordinate_bounds: <umfive.Variable: atmosphere_hybrid_height_coordinate_bounds, shape=(1, 2), dimensions=(atmosphere_hybrid_height_coordinate, bounds2)>
+            Attributes:
+                DIMENSION_LIST: (('atmosphere_hybrid_height_coordinate',), ('bounds2',))
+                formula_terms: 'a: atmosphere_hybrid_height_coordinate_a_bounds b: atmosphere_hybrid_height_coordinate_b_bounds'
+            Data float64:
+                [[0., 1.]]
         atmosphere_hybrid_height_coordinate_a: <umfive.Variable: atmosphere_hybrid_height_coordinate_a, shape=(1,), dimensions=(atmosphere_hybrid_height_coordinate)>
             Attributes:
                 DIMENSION_LIST: (('atmosphere_hybrid_height_coordinate',),)
@@ -57,11 +76,6 @@ tests/data/hybrid_height.pp: <umfive.File: 1 data variable, 13 metadata variable
                 units: 'm'
             Data float32:
                 [10.000004]
-        bounds2: <umfive.DimensionScale: bounds2, size=2>
-            Attributes:
-                CLASS: b'DIMENSION_SCALE'
-                NAME: b'This is a netCDF dimension but not a netCDF variable.'
-                _Netcdf4Dimid: np.int32(2)
         atmosphere_hybrid_height_coordinate_a_bounds: <umfive.Variable: atmosphere_hybrid_height_coordinate_a_bounds, shape=(1, 2), dimensions=(atmosphere_hybrid_height_coordinate, bounds2)>
             Attributes:
                 DIMENSION_LIST: (('atmosphere_hybrid_height_coordinate',), ('bounds2',))
@@ -520,12 +534,3 @@ tests/data/hybrid_height.pp: <umfive.File: 1 data variable, 13 metadata variable
                  [353.4375, 355.3125],
                  [355.3125, 357.1875],
                  [357.1875, 359.0625]]
-        pseudolevel: <umfive.DimensionScale: pseudolevel, shape=(1,)>
-            Attributes:
-                CLASS: b'DIMENSION_SCALE'
-                NAME: b'netCDF dimension coordinate variable'
-                _Netcdf4Dimid: np.int32(5)
-                long_name: 'pseudolevel'
-                units: '1'
-            Data int32:
-                [-32768]

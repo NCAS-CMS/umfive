@@ -5,21 +5,22 @@ Overview
 --------
 
 `umfive` is a Python open source library for representing `UK Met
-Office PP and UM fields file datasets
+Office PP, UM fields file, and UM dump datasets
 <https://artefacts.ceda.ac.uk/badc_datadocs/um/umdp_F3-UMDPF3.pdf>`_
 with `CF-netCDF <https://cfconventions.org/>`_-like structures that
 follow the API of `pyfive <https://pyfive.readthedocs.io>`_, an HDF5
 reader.
 
-The contents of a PP or UM fields file dataset are mapped to a
-`umfive.File` object that follows the `CF conventions
+The contents of a PP, UM fields file, or UM dump dataset are mapped to
+a `umfive.File` object that follows the `CF conventions
 <https://cfconventions.org/>`_ in that it contains data variables
 (`umfive.DataVariable` objects); dimensions and coordinate variables
 (`umfive.DimensionScale` objects); and auxiliary coordinate, domain
 ancillary, bounds, and grid mapping variables (`umfive.Variable`
 objects).
 
-32-bit and 64-bit PP and fields files of any endian-ness can be read.
+32-bit and 64-bit PP, UM fields file, and UM dump datasets of any
+endian-ness can be read.
 
 2-d "slices" defined by a single lookup headers are always combined,
 where possible, into fields with 3-d or 4-d data.
@@ -62,6 +63,7 @@ a single data variable with 9 supporting metadata variables.
     'coordinates': 'time air_pressure grid_latitude grid_longitude',
     'grid_mapping': 'rotated_latitude_longitude',
     'lbcode': '101',
+    'lbpack': '0',
     'lbproc': '128',
     'lbtim': '121',
     'lbvc': '8',
@@ -125,12 +127,12 @@ Data array reads are parallelised over the 2-d slices defined by each
 lookup header (see `umfive.File.set_parallelism` and
 `umfive.File.get_parallelism`).
 
-The initial lazy read of the dataset is faster for a fields file than
-for the equivalent PP file, because in the former case all of the
-lookup headers are in a contiguous block in the file, as opposed to be
-being spread out throughout the file. When the dataset is being
-accessed remotely, the difference in performance can be large. For
-instance in one test, a remote S3 fields file (64-bit, 7.0 GiB)
-containing 210 lookup headers took 4 seconds to lazily read, and the
-PP equivalent with the same number of lookup headers (32-bit, 3.7 GiB)
-took 63 seconds.
+The initial lazy read of the dataset is faster for a fields file or
+dump than for the equivalent PP file, because in the former case all
+of the lookup headers are in a contiguous block in the file, as
+opposed to be being spread out throughout the file. When the dataset
+is being accessed remotely, the difference in performance can be
+large. For instance in one test, a remote S3 fields file (64-bit, 7.0
+GiB) containing 210 lookup headers took 4 seconds to read lazily, and
+the PP equivalent with the same number of lookup headers (32-bit, 3.7
+GiB) took 63 seconds to read lazily.

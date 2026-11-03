@@ -23,6 +23,7 @@ from ..constants import (
     INDEX_LBHR,
     INDEX_LBHRD,
     INDEX_LBLEV,
+    INDEX_LBLREC,
     INDEX_LBMIN,
     INDEX_LBMIND,
     INDEX_LBMON,
@@ -81,6 +82,17 @@ def _between_var_key(rec):
     """
     ih = rec.int_hdr
     rh = rec.real_hdr
+
+    # Only set LBLREC to a meaningful value for compressed records (in
+    # other cases LBLREC may reasonably be different for records that
+    # are in the same group)
+    if int(ih[INDEX_LBPACK]) in (120, 220):
+        # Compressed
+        LBLREC = int(ih[INDEX_LBLREC])
+    else:
+        # Not compressed
+        LBLREC = -1
+
     return (
         int(ih[INDEX_LBUSER4]),
         int(ih[INDEX_LBUSER7]),
@@ -93,6 +105,7 @@ def _between_var_key(rec):
         int(ih[INDEX_LBHEM]),
         int(ih[INDEX_LBROW]),
         int(ih[INDEX_LBNPT]),
+        LBLREC,
         _float_key(rh[INDEX_BGOR]),
         _float_key(rh[INDEX_BZY]),
         _float_key(rh[INDEX_BDY]),
@@ -144,8 +157,6 @@ def _within_var_key(rec):
 def _record_is_skippable(rec):
     """Whether or not the record should be skipped.
 
-    Mirrors key skip logic in process_vars.c.
-
     :Parameters:
 
         rec: `RecordInfo`
@@ -158,15 +169,14 @@ def _record_is_skippable(rec):
 
     """
     ih = rec.int_hdr
-
     if int(ih[INDEX_LBNPT]) == INT_MISSING_DATA:
         return True
 
     if int(ih[INDEX_LBROW]) == INT_MISSING_DATA:
         return True
 
-    compression = (int(ih[INDEX_LBPACK]) // 10) % 10
-    if compression == 1:
+    compression_N2 = (int(ih[INDEX_LBPACK]) // 10) % 10
+    if compression_N2 == 1:
         return True
 
     return False
@@ -363,6 +373,59 @@ def _equal_extra_data(rec0, rec1):
     return True
 
 
+def can_have_multiple_levels(rec):
+    """Evaluates whether a data variable allows Z > 1.
+
+    :Parameters:
+
+        rec: `RecordInfo`
+            The first loookup header for the data variable.
+
+    :Returns:
+
+        `bool`
+            `True` if Z may be > 1, otherwise `False`.
+
+    """
+    lblev = rec.int_hdr[INDEX_LBLEV]
+    lbvc = rec.int_hdr[INDEX_LBVC]
+    lbuser5 = rec.int_hdr[INDEX_LBUSER5]
+
+    # Pseudo-level check this FIRST (e.g. surface tiles, radiation
+    # bands, plant functional types) UMDP F3: LBUSER5 > 0 indicates
+    # pseudo-level index (1, 2, 3...)
+    if lbuser5 > 0:
+        return True
+
+    # Multi-level field packed into a single header (e.g. LBCs)
+    if lblev == 7777:
+        return True
+
+    # Surface and special single-level coordinates (126 <= LBVC <= 139
+    # or LBVC == 0) 0: No vertical coord, 128: MSL, 129: Surface, 130:
+    # Tropopause, 131: Max wind, 133: TOA without pseudo-levels
+    # (LBUSER5 <= 0), ALL surface/special levels are strictly 2-d (Z =
+    # 1).
+    if (126 <= lbvc <= 139) or (lbvc == 0):
+        return False
+
+    # Explicit single-level non-surface diagnostic flag
+    if lblev == 8888:
+        return False
+
+    # Continuous 3-d/multi-level vertical coordinate types
+    # (atmosphere, ocean, soil) 1: height, 2: depth, 3: geopotential
+    # height, 4: geometric height, 6: deep soil levels, 7: theta
+    # surfaces, 8: pressure, 9: hybrid pressure, 10: sigma, 65: hybrid
+    # height.
+    multilevel_lbvc_codes = {1, 2, 3, 4, 6, 7, 8, 9, 10, 65}
+    if lbvc in multilevel_lbvc_codes:
+        return True
+
+    # Default fallback
+    return False
+
+
 def build_data_variable_index(records, reader, parallelism):
     """Create a dictionary of data variable descriptions.
 
@@ -446,16 +509,7 @@ def build_data_variable_index(records, reader, parallelism):
             nz = len(z_levels)
             nt = len(t_steps)
 
-            is_single_level_surface = (
-                nz == 1
-                and 126 <= LBVC <= 139
-                or (
-                    # LBVC == 0
-                    # and first.int_hdr[INDEX_LBLEV] in (0, 8888, 9999)
-                    first.int_hdr[INDEX_LBLEV] in (0, 8888, 9999)
-                    and first.int_hdr[INDEX_LBUSER5] == 0
-                )
-            )
+            is_single_level_surface = not can_have_multiple_levels(first)
             has_z_axis = not is_single_level_surface
 
             dtype = np.dtype(_dtype_name(first))
@@ -497,7 +551,34 @@ def build_data_variable_index(records, reader, parallelism):
                 _z_index,
                 _has_z_axis,
             ):
-                def _load(thread_count=0, cat_range_allowed=True):
+                def _load(thread_count=0, cat_range_allowed=True, mask=None):
+                    LBPACK = group_recs[0].int_hdr[INDEX_LBPACK]
+                    if mask is not None:
+                        # A mask has been provided, so we assume that
+                        # the field is run length encoded.
+                        if LBPACK not in (120, 220):
+                            raise ValueError(
+                                "Field is not run length encoded "
+                                "f(LBPACK={LBPACK}) but a land/sea mask has "
+                                "been provided. "
+                                f"Lookup header:\n{group_recs[0]}"
+                            )
+
+                        # Reset (_ny, _nx) from (0, 0) to the shape of
+                        # the mask
+                        _ny, _nx = mask.shape[-2:]
+                    else:
+                        # No mask has been provided, implying that the
+                        # field is not run length encoded.
+                        mask = None
+                        if LBPACK in (120, 220):
+                            raise ValueError(
+                                "Can't get run length encoded data "
+                                f"(LBPACK={LBPACK}) when there is no suitable "
+                                "land/sea mask (STASH code 30) in the "
+                                f"dataset. Lookup header:\n{group_recs[0]}"
+                            )
+
                     out_shape = (_nt, _nz, _ny, _nx)
 
                     out = np.empty(out_shape, dtype=_dtype)
@@ -528,7 +609,9 @@ def build_data_variable_index(records, reader, parallelism):
                                 rec, raw = item
                                 ti = _t_index[_t_key(rec)]
                                 zi = _z_index[_z_key(rec)]
-                                values = decode_record_array_from_raw(raw, rec)
+                                values = decode_record_array_from_raw(
+                                    raw, rec, mask=mask
+                                )
                                 return ti, zi, values
 
                             if thread_count > 1:
@@ -561,7 +644,7 @@ def build_data_variable_index(records, reader, parallelism):
                         def _read_one(rec):
                             ti = _t_index[_t_key(rec)]
                             zi = _z_index[_z_key(rec)]
-                            values = read_record_array(reader, rec)
+                            values = read_record_array(reader, rec, mask=mask)
                             return ti, zi, values
 
                         with ThreadPoolExecutor(
@@ -582,7 +665,7 @@ def build_data_variable_index(records, reader, parallelism):
                     for rec in group_recs:
                         ti = _t_index[_t_key(rec)]
                         zi = _z_index[_z_key(rec)]
-                        values = read_record_array(reader, rec)
+                        values = read_record_array(reader, rec, mask=mask)
                         out[ti, zi, :, :] = values.reshape((_ny, _nx))
 
                     if not _has_z_axis:
