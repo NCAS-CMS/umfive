@@ -6,7 +6,6 @@ from .io import ByteReader, FileObjReader, LocalPosixReader
 
 from importlib.metadata import version, PackageNotFoundError
 
-
 try:
     __version__ = version("umfive")
 except PackageNotFoundError as exc:

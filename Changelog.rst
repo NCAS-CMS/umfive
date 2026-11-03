@@ -1,3 +1,12 @@
+Version 0.5.0
+-------------
+
+**2026-11-??**
+
+* Update the `STASH_to_CF.txt` file to include more 1.5m and 10m
+  vertical coordinates, and more units
+  (https://github.com/NCAS-CMS/umfive/issues/63)
+
 Version 0.4.0
 -------------
 
