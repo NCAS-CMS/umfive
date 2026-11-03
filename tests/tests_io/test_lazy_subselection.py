@@ -20,7 +20,7 @@ def test_subselection_reads_only_intersecting_chunks(monkeypatch):
         calls = []
         original = chunk_read_module.read_record_array
 
-        def _counting_read(reader, rec):
+        def _counting_read(reader, rec, mask):
             calls.append(int(rec.data_offset))
             return original(reader, rec)
 

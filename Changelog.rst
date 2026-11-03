@@ -7,6 +7,14 @@ Version 0.5.0
   vertical coordinates; more units; and atmosphere STASH codes 1298,
   1299, 3662, 3663, 3691
   (https://github.com/NCAS-CMS/umfive/issues/63)
+* New lookup header inspection methods:
+  `umfive.DataVariable.lookup_header`,
+  `umfive.DataVariable.lookup_header_items`
+  (https://github.com/NCAS-CMS/umfive/issues/57)
+* Allow the decoding of run length encoded data
+  (https://github.com/NCAS-CMS/umfive/issues/57)
+* Fix multiple issues when reading UM dumps
+  (https://github.com/NCAS-CMS/umfive/issues/57)
 * Include ``--help`` option to `umdump`
   (https://github.com/NCAS-CMS/umfive/issues/50)
 

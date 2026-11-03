@@ -3,8 +3,8 @@
 CF-netCDF structure
 ===================
 
-The contents of a PP or UM fields file dataset are mapped to a
-`umfive.File` object that follows the `CF conventions
+The contents of a PP, UM fields file, or UM dump dataset are mapped to
+a `umfive.File` object that follows the `CF conventions
 <https://cfconventions.org/>`_ in that it contains data variables
 (`umfive.DataVariable` objects); and metadata variables comprising
 dimensions and coordinate variables (`umfive.DimensionScale` objects),
@@ -73,9 +73,10 @@ instances):
 ===================  =========================================================
 Attribute            Description
 ===================  =========================================================
-``lbcode``           The value of LBCODE (word 16, grid code)
-``lbproc``           The value of LBPROC (word 25, pocessing code)
 ``lbtim``            The value of LBTIM (word 13, time indicator)
+``lbcode``           The value of LBCODE (word 16, grid code)
+``lbpack``           The value of LBPACK (word 20, packing method indicator)
+``lbproc``           The value of LBPROC (word 25, pocessing code)
 ``lbvc``             The value of LBVC (word 26, vertical co-ordinate type)
 ``runid``            The runid decoded from LBEXP (word 28, experiment number)
 ``source``           The source decoded from LBSRCE (word 38)
@@ -91,7 +92,8 @@ Attribute            Description
 Dataset
 -------
 
-A PP or fields file dataset is mapped to a `umfive.File` object.
+A PP, UM fields file, or UM dump dataset is mapped to a `umfive.File`
+object.
 
 Dataset definition
 ^^^^^^^^^^^^^^^^^^
@@ -344,6 +346,7 @@ The attributes of a data or metadata variable are accessed by the
     'coordinates': 'time air_pressure grid_latitude grid_longitude',
     'grid_mapping': 'rotated_latitude_longitude',
     'lbcode': '101',
+    'lbpack': '0',
     'lbproc': '128',
     'lbtim': '121',
     'lbvc': '8',

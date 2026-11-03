@@ -9,6 +9,7 @@ tests/data/umfile.pp: <umfive.File: 1 data variable, 7 metadata variables>
                 cell_methods: 'time: mean'
                 coordinates: 'time latitude longitude'
                 lbcode: '1'
+                lbpack: '0'
                 lbproc: '128'
                 lbtim: '122'
                 lbvc: '129'

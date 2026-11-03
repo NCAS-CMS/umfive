@@ -82,6 +82,7 @@ kB
             UM_m01s15i201_vn405:coordinates = "time air_pressure grid_latitude grid_longitude" ;
             UM_m01s15i201_vn405:grid_mapping = "rotated_latitude_longitude" ;
             UM_m01s15i201_vn405:lbcode = "101" ;
+            UM_m01s15i201_vn405:lbpack = "0" ;
             UM_m01s15i201_vn405:lbproc = "128" ;
             UM_m01s15i201_vn405:lbtim = "121" ;
             UM_m01s15i201_vn405:lbvc = "8" ;

@@ -4,11 +4,11 @@ The `umdump` utility
 ====================
 
 `umfive` includes a command line tool `umdump` which can be used to
-dump the contents of a PP or fields file dataset to the terminal
-(e.g. `umdump test.pp`). `umdump` displays the CF-netCDF view of the
-dataset CDL format, using a very similarly layout to `ncdump -h`
-(i.e. it does not include any variable data arrays), but without any
-dependencies on the netCDF C library.
+dump the contents of a PP, UM fields file or UM dump dataset to the
+terminal (e.g. `umdump test.pp`). `umdump` displays the CF-netCDF view
+of the dataset CDL format, using a very similarly layout to `ncdump
+-h` (i.e. it does not include any variable data arrays), but without
+any dependencies on the netCDF C library.
 
 The example in this section uses the `test.pp` dataset (`download 704
 kB
@@ -18,7 +18,7 @@ kB
    :caption: Example   
 
    $ umdump --help
-   An ncdump-like view of a UK Met Office PP, fields file or dump dataset.
+   An ncdump-like view of a UK Met Office PP, UM fields file or UM dump dataset.
 
    Usage: umdump [--help] [<dataset name>]
    $ umdump test.pp
@@ -35,6 +35,7 @@ kB
             UM_m01s15i201_vn405:coordinates = "time air_pressure grid_latitude grid_longitude" ;
             UM_m01s15i201_vn405:grid_mapping = "rotated_latitude_longitude" ;
             UM_m01s15i201_vn405:lbcode = "101" ;
+            UM_m01s15i201_vn405:lbpack = "0" ;
             UM_m01s15i201_vn405:lbproc = "128" ;
             UM_m01s15i201_vn405:lbtim = "121" ;
             UM_m01s15i201_vn405:lbvc = "8" ;

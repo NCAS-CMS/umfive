@@ -98,89 +98,90 @@ each data and metadata variable. IF the `data=True` keyword is used, then each v
 
    >>> um.dump()
    test.pp: <umfive.File: 1 data variable, 9 metadata variables>
-       Attributes:
-           Conventions: 'CF-1.13'
-       Data variables:
-           UM_m01s15i201_vn405: <umfive.DataVariable: UM_m01s15i201_vn405, shape=(3, 5, 110, 106), dimensions=(time, air_pressure, grid_latitude, grid_longitude)>
-               Attributes:
-                   DIMENSION_LIST: (('time',), ('air_pressure',), ('grid_latitude',), ('grid_longitude',))
-                   _FillValue: np.float32(-1.0737418e+09)
-                   cell_methods: 'time: mean'
-                   coordinates: 'time air_pressure grid_latitude grid_longitude'
-                   grid_mapping: 'rotated_latitude_longitude'
-                   lbcode: '101'
-                   lbproc: '128'
-                   lbtim: '121'
-                   lbvc: '8'
-                   long_name: 'U COMPNT OF WIND ON PRESSURE LEVELS'
-                   missing_value: np.float32(-1.0737418e+09)
-                   runid: 'aaacf'
-                   source: 'UM'
-                   standard_name: 'eastward_wind'
-                   stash_code: '15201'
-                   submodel: '1'
-                   um_identity: 'UM_m01s15i201_vn405'
-                   um_stash_source: 'm01s15i201'
-                   um_version: '4.5'
-                   units: 'm s-1'
-       Metadata variables:
-           time: <umfive.DimensionScale: time, shape=(3,)>
-               Attributes:
-                   CLASS: b'DIMENSION_SCALE'
-                   NAME: b'netCDF dimension coordinate variable'
-                   _Netcdf4Dimid: np.int32(0)
-                   axis: 'T'
-                   bounds: 'time_bounds'
-                   calendar: 'gregorian'
-                   standard_name: 'time'
-                   units: 'days since 1979-1-1'
-           bounds2: <umfive.DimensionScale: bounds2, size=2>
-               Attributes:
-                   CLASS: b'DIMENSION_SCALE'
-                   NAME: b'This is a netCDF dimension but not a netCDF variable.'
-                   _Netcdf4Dimid: np.int32(1)
-           time_bounds: <umfive.Variable: time_bounds, shape=(3, 2), dimensions=(time, bounds2)>
-               Attributes:
-                   DIMENSION_LIST: (('time',), ('bounds2',))
-           air_pressure: <umfive.DimensionScale: air_pressure, shape=(5,)>
-               Attributes:
-                   CLASS: b'DIMENSION_SCALE'
-                   NAME: b'netCDF dimension coordinate variable'
-                   _Netcdf4Dimid: np.int32(2)
-                   axis: 'Z'
-                   positive: 'down'
-                   standard_name: 'air_pressure'
-                   units: 'hPa'
-           grid_latitude: <umfive.DimensionScale: grid_latitude, shape=(110,)>
-               Attributes:
-                   CLASS: b'DIMENSION_SCALE'
-                   NAME: b'netCDF dimension coordinate variable'
-                   _Netcdf4Dimid: np.int32(3)
-                   axis: 'Y'
-                   bounds: 'grid_latitude_bounds'
-                   standard_name: 'grid_latitude'
-                   units: 'degrees'
-           grid_latitude_bounds: <umfive.Variable: grid_latitude_bounds, shape=(110, 2), dimensions=(grid_latitude, bounds2)>
-               Attributes:
-                   DIMENSION_LIST: (('grid_latitude',), ('bounds2',))
-           grid_longitude: <umfive.DimensionScale: grid_longitude, shape=(106,)>
-               Attributes:
-                   CLASS: b'DIMENSION_SCALE'
-                   NAME: b'netCDF dimension coordinate variable'
-                   _Netcdf4Dimid: np.int32(4)
-                   axis: 'X'
-                   bounds: 'grid_longitude_bounds'
-                   standard_name: 'grid_longitude'
-                   units: 'degrees'
-           grid_longitude_bounds: <umfive.Variable: grid_longitude_bounds, shape=(106, 2), dimensions=(grid_longitude, bounds2)>
-               Attributes:
-                   DIMENSION_LIST: (('grid_longitude',), ('bounds2',))
-           rotated_latitude_longitude: <umfive.Variable: rotated_latitude_longitude, shape=(), dimensions=()>
-               Attributes:
-                   DIMENSION_LIST: ()
-                   grid_mapping_name: 'rotated_latitude_longitude'
-                   grid_north_pole_latitude: np.float32(38.0)
-                   grid_north_pole_longitude: np.float32(190.0)
+    Attributes:
+        Conventions: 'CF-1.13'
+    Data variables:
+        UM_m01s15i201_vn405: <umfive.DataVariable: UM_m01s15i201_vn405, shape=(3, 5, 110, 106), dimensions=(time, air_pressure, grid_latitude, grid_longitude)>
+            Attributes:
+                DIMENSION_LIST: (('time',), ('air_pressure',), ('grid_latitude',), ('grid_longitude',))
+                _FillValue: np.float32(-1.0737418e+09)
+                cell_methods: 'time: mean'
+                coordinates: 'time air_pressure grid_latitude grid_longitude'
+                grid_mapping: 'rotated_latitude_longitude'
+                lbcode: '101'
+                lbpack: '0'
+                lbproc: '128'
+                lbtim: '121'
+                lbvc: '8'
+                long_name: 'U COMPNT OF WIND ON PRESSURE LEVELS'
+                missing_value: np.float32(-1.0737418e+09)
+                runid: 'aaacf'
+                source: 'UM'
+                standard_name: 'eastward_wind'
+                stash_code: '15201'
+                submodel: '1'
+                um_identity: 'UM_m01s15i201_vn405'
+                um_stash_source: 'm01s15i201'
+                um_version: '4.5'
+                units: 'm s-1'
+    Metadata variables:
+        time: <umfive.DimensionScale: time, shape=(3,)>
+            Attributes:
+                CLASS: b'DIMENSION_SCALE'
+                NAME: b'netCDF dimension coordinate variable'
+                _Netcdf4Dimid: np.int32(0)
+                axis: 'T'
+                bounds: 'time_bounds'
+                calendar: 'gregorian'
+                standard_name: 'time'
+                units: 'days since 1979-1-1'
+        bounds2: <umfive.DimensionScale: bounds2, size=2>
+            Attributes:
+                CLASS: b'DIMENSION_SCALE'
+                NAME: b'This is a netCDF dimension but not a netCDF variable.'
+                _Netcdf4Dimid: np.int32(1)
+        time_bounds: <umfive.Variable: time_bounds, shape=(3, 2), dimensions=(time, bounds2)>
+            Attributes:
+                DIMENSION_LIST: (('time',), ('bounds2',))
+        air_pressure: <umfive.DimensionScale: air_pressure, shape=(5,)>
+            Attributes:
+                CLASS: b'DIMENSION_SCALE'
+                NAME: b'netCDF dimension coordinate variable'
+                _Netcdf4Dimid: np.int32(2)
+                axis: 'Z'
+                positive: 'down'
+                standard_name: 'air_pressure'
+                units: 'hPa'
+        grid_latitude: <umfive.DimensionScale: grid_latitude, shape=(110,)>
+            Attributes:
+                CLASS: b'DIMENSION_SCALE'
+                NAME: b'netCDF dimension coordinate variable'
+                _Netcdf4Dimid: np.int32(3)
+                axis: 'Y'
+                bounds: 'grid_latitude_bounds'
+                standard_name: 'grid_latitude'
+                units: 'degrees'
+        grid_latitude_bounds: <umfive.Variable: grid_latitude_bounds, shape=(110, 2), dimensions=(grid_latitude, bounds2)>
+            Attributes:
+                DIMENSION_LIST: (('grid_latitude',), ('bounds2',))
+        grid_longitude: <umfive.DimensionScale: grid_longitude, shape=(106,)>
+            Attributes:
+                CLASS: b'DIMENSION_SCALE'
+                NAME: b'netCDF dimension coordinate variable'
+                _Netcdf4Dimid: np.int32(4)
+                axis: 'X'
+                bounds: 'grid_longitude_bounds'
+                standard_name: 'grid_longitude'
+                units: 'degrees'
+        grid_longitude_bounds: <umfive.Variable: grid_longitude_bounds, shape=(106, 2), dimensions=(grid_longitude, bounds2)>
+            Attributes:
+                DIMENSION_LIST: (('grid_longitude',), ('bounds2',))
+        rotated_latitude_longitude: <umfive.Variable: rotated_latitude_longitude, shape=(), dimensions=()>
+            Attributes:
+                DIMENSION_LIST: ()
+                grid_mapping_name: 'rotated_latitude_longitude'
+                grid_north_pole_latitude: np.float32(38.0)
+                grid_north_pole_longitude: np.float32(190.0)
 
 .. rubric:: Access variable attributes
 
@@ -200,6 +201,7 @@ See :ref:`Variable-attributes`.
     'coordinates': 'time air_pressure grid_latitude grid_longitude',
     'grid_mapping': 'rotated_latitude_longitude',
     'lbcode': '101',
+    'lbpack': '0',
     'lbproc': '128',
     'lbtim': '121',
     'lbvc': '8',

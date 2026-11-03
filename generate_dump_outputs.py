@@ -11,6 +11,7 @@ dataset_suffix = {
     "umfile": ".pp",
     "wgdos_packed": ".pp",
     "hybrid_height": ".pp",
+    "run_length_encoded": ".pp",
 }
 
 for dataset, suffix in dataset_suffix.items():

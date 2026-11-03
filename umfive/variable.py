@@ -197,11 +197,41 @@ class DataVariableID(ChunkReadMixin):
 
     def get_data(self, args=()):
         """Called by `DataVariable.__getitem__`."""
+        variable = self._variable
+
+        # Get the mask needed for decompression (if there is one)
+        mask = variable.data_loader_options.get("mask")
+        if mask is not None and not isinstance(mask, np.ndarray):
+            # The mask is itself a `DataVariable` instance, so convert
+            # to a 2-d Boolean numpy array.
+            mask = mask[...]
+
+            # Removing any leading size 1 T and Z dimensions
+            shape = mask.shape
+            if mask.size == shape[-2] * shape[-1]:
+                mask = mask.reshape(shape[-2:])
+
+            if mask.ndim > 2:
+                rec = variable.chunk_records[0]
+                LBPACK = rec.int_hdr[INDEX_LBPACK]
+                raise ValueError(
+                    "Can't get run length encoded data "
+                    f"(LBPACK={int(LBPACK)}) when the land/sea mask is "
+                    f"not logically 2-d. Mask shape is {mask.shape}."
+                    f"Lookup header:\n{rec}"
+                )
+
+            # Convert the mask to a Boolean array that is True for
+            # land grid cells, False for sea grid cells.
+            mask = mask != 0
+
+            # Store the Boolean mask within the data variable
+            variable.data_loader_options["mask"] = mask
+
         if self.__chunk_init_check():
             return self._get_selection_via_chunks(args)
 
         # Fallback for variables with data_loader but no chunk records
-        variable = self._variable
         if variable.data_loader is not None:
             data = variable.data_loader(**variable.data_loader_options)
             if data is None:
@@ -1200,6 +1230,134 @@ class DataVariable(_Mixin):
 
         """
         return self.id.iter_chunks(args)
+
+    def lookup_header(self, n=0, display=True):
+        """Display lookup headers.
+
+        :Parameters:
+
+            n: `int` or `str`, optional
+                Which lookup header to display. The first lookup is
+                identified by ``0``, which is the default. Negative
+                indices are allowed (such as ``-1``). The special
+                value of ``'all'`` displays all of the lookup headers.
+
+            display: `bool`, optional
+                If False then return the description as a string. By
+                default the description is printed.
+
+        :Returns:
+
+            `None` or `str`
+                The description. If *display* is True then the
+                description is printed and `None` is
+                returned. Otherwise the description is returned as a
+                string.
+
+        """
+        n_recs = len(self.chunk_records)
+
+        if n == "all":
+            out = [
+                self.lookup_header(n=i, display=False) for i in range(n_recs)
+            ]
+            out = "\n\n".join(out)
+
+            if not display:
+                return out
+
+            print(out)
+            return
+
+        # Still here? Then deal with an integer n
+        if not -n_recs <= n < n_recs:
+            raise ValueError(
+                f"{self.name} has only {n_recs} lookup headers, so an integer "
+                f"must be -{n_recs} <= n < {n_recs}. Got: n={n}"
+            )
+
+        if n < 0:
+            n = n + n_recs
+
+        title = f"{self.name}: Lookup header {n + 1} of {n_recs}"
+        out = f"{title}\n{'-' * len(title)}"
+        out += f"\n{self.chunk_records[n]}"
+
+        if not display:
+            return out
+
+        print(out)
+
+    def lookup_header_items(self, items="all", display=True):
+        """Display the values for each item from all lookup headers.
+
+        :Parameters:
+
+            items: (sequence of) `str`, optional
+                Specify which items to display. Valid items are (case
+                insenstive): ``'LBYR'``, ``'LBMON'``, ``'LBDAT'``,
+                ``'LBHR'``, ``'LBMIN'``, ``'LBDAY'``, ``'LBYRD'``,
+                ``'LBMOND'``, ``'LBDATD'``, ``'LBHRD'``, ``'LBMIND'``,
+                ``'LBDAYD'``, ``'LBTIM'``, ``'LBFT'``, ``'LBLREC'``,
+                ``'LBCODE'``, ``'LBHEM'``, ``'LBROW'``, ``'LBNPT'``,
+                ``'LBEXT'``, ``'LBPACK'``, ``'LBREL'``, ``'LBFC'``,
+                ``'LBCFC'``, ``'LBPROC'``, ``'LBVC'``, ``'LBRVC'``,
+                ``'LBEXP'``, ``'LBEGIN'``, ``'LBNREC'``, ``'LBPROJ'``,
+                ``'LBTYP'``, ``'LBLEV'``, ``'LBRSVD1'``,
+                ``'LBRSVD2'``, ``'LBRSVD3'``, ``'LBRSVD4'``,
+                ``'LBSRCE'``, ``'LBUSER1'``, ``'LBUSER2'``,
+                ``'LBUSER3'``, ``'LBUSER4'``, ``'LBUSER5'``,
+                ``'LBUSER6'``, ``'LBUSER7'``, ``'BRSVD1'``,
+                ``'BRSVD2'``, ``'BRSVD3'``, ``'BRSVD4'``,
+                ``'BDATUM'``, ``'BACC'``, ``'BLEV'``, ``'BRLEV'``,
+                ``'BHLEV'``, ``'BHRLEV'``, ``'BPLAT'``, ``'BPLON'``,
+                ``'BGOR'``, ``'BZY'``, ``'BDY'``, ``'BZX'``,
+                ``'BDX'``, ``'BMDI'``, ``'BMKS'``. By default the
+                specal value ``'all'`` displays all 64 items, in the
+                order given here.
+
+            display: `bool`, optional
+                If False then return the description as a list. By
+                default the description is printed.
+
+        :Returns:
+
+            `None` or `dict`
+                The description. If *display* is True then the
+                description is printed and `None` is
+                returned. Otherwise the description is returned as a
+                dictionary keyed by item names.
+
+        """
+        from .constants import N_INT_HDR, _header_names
+
+        out = {}
+
+        if items == "all":
+            items = _header_names
+        elif isinstance(items, str):
+            items = (items,)
+
+        for item in items:
+            item = item.upper()
+            if item not in _header_names:
+                raise ValueError()
+
+            i = _header_names.index(item)
+            if i < N_INT_HDR:
+                out[item] = [int(rec.int_hdr[i]) for rec in self.chunk_records]
+            else:
+                i -= N_INT_HDR
+                out[item] = [
+                    float(rec.real_hdr[i]) for rec in self.chunk_records
+                ]
+
+        if not display:
+            return out
+
+        out = [f"{item}: {values}" for item, values in out.items()]
+        out = "\n".join(out)
+        print(out)
 
     def read_direct(self, array, source_sel=None, dest_sel=None):
         """Read from the dataset directly into a `numpy` array.

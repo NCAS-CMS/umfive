@@ -184,7 +184,7 @@ def read_record_raw(reader, rec):
     return raw
 
 
-def decode_record_array_from_raw(raw, rec):
+def decode_record_array_from_raw(raw, rec, mask=None):
     """Decode packed data.
 
     :Parameters:
@@ -195,6 +195,17 @@ def decode_record_array_from_raw(raw, rec):
         rec: `RecordInfo`
             The record for the data array.
 
+        mask: `numpy.ndarray` or `None`, optional
+            When set to a numpy array, it must contain the land-sea
+            mask for the field that is required for decompressing run
+            length encoded fields. It must have shape (LBROW, LBNPT)
+            and contain Booleans such that True indicates a land grid
+            cell and False indicates a sea grid cell. The default of
+            `None` indicates that no land/sea mask required, or else
+            one is required but it could not be found.
+
+            .. versionadded:: 0.5.0
+
     :Returns:
 
         `nump.ndarray`
@@ -203,14 +214,40 @@ def decode_record_array_from_raw(raw, rec):
     """
     word_size = rec.word_size
     byte_order = rec.byte_order
-    pack = int(rec.int_hdr[INDEX_LBPACK]) % 10
+    lbpack = int(rec.int_hdr[INDEX_LBPACK])
+    pack = lbpack % 10
     nwords = get_num_data_words(rec.int_hdr, word_size)
 
     if pack == 0:
+        # The data is not packed (but might be compressed)
+        if lbpack in (120, 220):
+            # The data is compressed
+            if mask is None:
+                raise RuntimeError(
+                    f"Cannot uncompress field with LBPACK={lbpack}: no "
+                    "suitable land/sea mask found in dataset. "
+                    f"Lookup header:\n{rec}"
+                )
+
+            dtype = _dtype_for_record(rec)
+            compressed_data = np.frombuffer(raw, dtype=dtype)
+            out = np.full(mask.shape, rec.real_hdr[INDEX_BMDI], dtype=dtype)
+
+            if lbpack == 220:
+                # Convert the mask to a Boolean array that is True for
+                # sea grid cell cells (on my laptop this takes ~150
+                # microseconds for an array of size 5000000)
+                mask = ~mask
+
+            out[mask] = compressed_data
+            return out.ravel()
+
+        # Still here? Then the data is neither packed nor compressed.
         need = nwords * word_size
         dtype = _dtype_for_record(rec)
         return np.frombuffer(raw[:need], dtype=dtype, count=nwords).copy()
 
+    # Still here? Then the data is packed.
     if pack == 1:
         mdi = float(rec.real_hdr[INDEX_BMDI])
         return unpack_wgdos(raw, nwords, mdi, word_size)
@@ -232,7 +269,7 @@ def decode_record_array_from_raw(raw, rec):
     )
 
 
-def read_record_array(reader, rec):
+def read_record_array(reader, rec, mask=None):
     """Read a data array into a `numpy` array.
 
     :Parameters:
@@ -243,6 +280,17 @@ def read_record_array(reader, rec):
         rec: `RecordInfo`
             The record for the data array.
 
+        mask: `numpy.ndarray` or `None`, optional
+            When set to a numpy array, it must contain the land-sea
+            mask for the field that is required for decompressing run
+            length encoded fields. It must have shape (LBROW, LBNPT)
+            and contain Booleans such that True indicates a land grid
+            cell and False indicates a sea grid cell. The default of
+            `None` indicates that no land/sea mask required, or else
+            one is required but it could not be found.
+
+            .. versionadded:: 0.5.0
+
     :Returns:
 
         `nump.ndarray`
@@ -250,4 +298,4 @@ def read_record_array(reader, rec):
 
     """
     raw = read_record_raw(reader, rec)
-    return decode_record_array_from_raw(raw, rec)
+    return decode_record_array_from_raw(raw, rec, mask=mask)

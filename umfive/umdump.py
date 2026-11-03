@@ -1,4 +1,5 @@
-"""An `ncdump -h` view of a UK Met Office PP or fields file dataset."""
+"""An ncdump-like view of a UK Met Office PP, UM fields file, or UM dump
+dataset."""
 
 import sys
 
@@ -8,8 +9,8 @@ def main(argv=None):
         argv = sys.argv[1:]
 
     info = (
-        "An ncdump-like view of a UK Met Office PP, fields file "
-        "or dump dataset."
+        "An ncdump-like view of a UK Met Office PP, UM fields file "
+        "or UM dump dataset."
         "\n\n"
         "Usage: umdump [--help] [<dataset name>]"
     )
