@@ -4,8 +4,9 @@ import re
 import sys
 from collections import defaultdict
 
-# Ordered list of regex patterns and their corresponding units.
-# The first match found will be used. Add new safe cases here.
+# Ordered list of regex patterns and their corresponding UDUNITS units
+# strings. This an ordered list, and the first match found will be
+# used. Add new conversions here.
 UNIT_PATTERNS = [
     # ----------------------------------------------------------------
     # 2 spaces
@@ -13,7 +14,9 @@ UNIT_PATTERNS = [
     # 14 characters
     (re.compile(r" KG M\*\*-2 S\*\*-1 *$"), "kg m-2 s-1"),
     # 12 characters
-    (re.compile(r" \(kg m-2 s-1\) *$"), "kg m-2 s-1"),
+    (re.compile(r"\(kg m-2 s-1\) *$"), "kg m-2 s-1"),
+    # 11 characters
+    (re.compile(r"\(W m-2 K-1\) *$"), "W m-2 K-1"),
     # 10 characters
     (re.compile(r" KG M-1 S-2 *$"), "kg m-1 s-2"),
     # ----------------------------------------------------------------
@@ -43,27 +46,37 @@ UNIT_PATTERNS = [
     # 9 characters
     (re.compile(r"\(cm2/cm3\) *$"), "cm2 cm-3"),
     (re.compile(r" kgm\^2s\^-1 *$"), "kg m2 s-1"),
+    (re.compile(r" KG/M\*\*2/S *$"), "kg m-2 s-1"),
     (re.compile(r" KG/M2/SEC *$"), "kg m-2 s-1"),
     # 8 characters
     (re.compile(r"\(J/K\.m2\) *$"), "J K-1 m2"),
     (re.compile(r"\(kgm\^-2\) *$"), "kg m-2"),
     (re.compile(r"\(kgm\^-3\) *$"), "kg m-3"),
-    (re.compile(r"\MMOL/M\^3 *$"), "mmol m-3"),
+    (re.compile(r"\(KG M-2\) *$"), "kg m-2"),
+    (re.compile(r"\(KG M-3\) *$"), "kg m-3"),
+    (re.compile(r"\(MICRON\) *$"), "um"),
+    (re.compile(r"MMOL/M\^3 *$"), "mmol m-3"),
     # 7 characters
-    (re.compile(r"\(J/M\^2) *$"), "J m-2"),
+    (re.compile(r"\(J/M\^2\) *$"), "J m-2"),
+    (re.compile(r"\(KG/KG\) *$"), "kg kg-1"),
     (re.compile(r"\(kg/kg\) *$"), "kg kg-1"),
     (re.compile(r"\(kg/m2\) *$"), "kg m-2"),
+    (re.compile(r"\(KG/M2\) *$"), "kg m-2"),
     (re.compile(r"\(kg/m3\) *$"), "kg m-3"),
+    (re.compile(r"\(KGM-3\) *$"), "kg m-3"),
     (re.compile(r"\(mol/s\) *$"), "mol s-1"),
-    (re.compile(r"\(W/M\^2) *$"), "W m-2"),
+    (re.compile(r"\(N\.M-2\) *$"), "Pa"),
+    (re.compile(r"\(W/M\^2\) *$"), "W m-2"),
     (re.compile(r" kg/kg/s *$"), "s-1"),
     (re.compile(r" KG/KG/S *$"), "s-1"),
     (re.compile(r" KG/M2/S *$"), "kg m-2 s-1"),
+    (re.compile(r" MICRONS *$"), "um"),
     # 6 characters
     (re.compile(r"\(J/m2\) *$"), "J m-2"),
     (re.compile(r"\(m/s2\) *$"), "m s-2"),
     (re.compile(r"\(m\^-3\) *$"), "m-3"),
     (re.compile(r"\(W/m2\) *$"), "W m-2"),
+    (re.compile(r" J/M\*\*2 *$"), "J m-2"),
     (re.compile(r" M2\.S-2 *$"), "m2 s-2"),
     (re.compile(r" W/M\*\*2 *$"), "W m-2"),
     # 5 characters
@@ -75,8 +88,11 @@ UNIT_PATTERNS = [
     (re.compile(r"\(M/S\) *$"), "m s-1"),
     (re.compile(r"\(s-1\) *$"), "s-1"),
     (re.compile(r"\(S-1\) *$"), "s-1"),
+    (re.compile(r" CM2/S *$"), "cm2 s-1"),
+    (re.compile(r" CM3/S *$"), "cm3 s-1"),
     (re.compile(r" kg/m2 *$"), "kg m-2"),
     (re.compile(r" KG/KG *$"), "kg kg-1"),
+    (re.compile(r" kg/kg *$"), "kg kg-1"),
     (re.compile(r" KG/M2 *$"), "kg m-2"),
     (re.compile(r" KG/M3 *$"), "kg m-3"),
     (re.compile(r" M2/S2 *$"), "m2 s-2"),
@@ -85,6 +101,7 @@ UNIT_PATTERNS = [
     # 4 characters
     (re.compile(r"\(K2\) *$"), "K"),
     (re.compile(r"\(Pa\) *$"), "Pa"),
+    (re.compile(r" CM/S *$"), "cm s-1"),
     (re.compile(r" J/kg *$"), "J kg-1"),
     (re.compile(r" KG/S *$"), "kg s-1"),
     (re.compile(r" M/S2 *$"), "m s-2"),
@@ -93,12 +110,13 @@ UNIT_PATTERNS = [
     (re.compile(r" W/M2 *$"), "W m-2"),
     # 3 characters
     (re.compile(r"\(K\) *$"), "K"),
-    (re.compile(r"\(m\) *$"), "m"),
     (re.compile(r"\(M\) *$"), "m"),
+    (re.compile(r"\(m\) *$"), "m"),
     (re.compile(r" M/S *$"), "m s-1"),
     (re.compile(r" K/S *$"), "K s-1"),
     (re.compile(r" S-1 *$"), "s-1"),
     # 2 characters
+    (re.compile(r" CM *$"), "cm"),
     (re.compile(r" mm *$"), "mm"),
     (re.compile(r" Pa *$"), "Pa"),
     # 1 character
@@ -328,7 +346,8 @@ def main():
                 last_idx = cf_dict[(model, stash)][-1]
                 last_parts = cf_entries[last_idx]
                 if last_parts[2].strip() == sm_name.strip():
-                    # If the name is the same as the retired one, copy its metadata
+                    # If the name is the same as the retired one, copy
+                    # its metadata
                     new_entries.append(
                         create_new_entry(
                             model,
@@ -352,7 +371,8 @@ def main():
                     break
 
             if not name_matches:
-                # Name changed, retire old active entries and create new ones
+                # Name changed, retire old active entries and create
+                # new ones
                 for idx in active_indices:
                     cf_entries[idx][5] = prev_v_str
                     ref_parts = cf_entries[idx]
