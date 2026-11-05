@@ -5,8 +5,10 @@ STASH-to-CF mappings
 
 ``umfive`` provides a mapping between Unified Model (UM) STASH codes
 and the Climate and Forecast (CF) metadata conventions. It is used to
-assign standard names, units, and sometimes coordinates and cell
-methods, to UM data variables.
+assign CF standard names, long names, units, and sometimes coordinates
+and cell methods, to UM data variables. It is used in conjunction with
+the contents of the contents of the lookup headers to populate the
+full CF metadata for a UM data variable.
 
 This STASH-to-CF table of mappings stored is the package's
 ``STASH_to_CF.txt`` file, which can be viewed :ref:`here
