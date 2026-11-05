@@ -175,7 +175,7 @@ load, query, and modify the STASH table in memory.
 The STASH-to-CF table
 ---------------------
 
-The following is the default STASH-to-CF table stored in the
+Here is the default STASH-to-CF table stored in the
 ``STASH_to_CF.txt`` file that is included with ``umfive``:
 
 .. literalinclude:: ../../umfive/data/STASH_to_CF.txt
