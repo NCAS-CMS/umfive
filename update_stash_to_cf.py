@@ -116,6 +116,10 @@ UNIT_PATTERNS = [
     (re.compile(r" K/S *$"), "K s-1"),
     (re.compile(r" S-1 *$"), "s-1"),
     # 2 characters
+    #
+    # Warning: Do not include " KM *$", because "!PROBABILITY OF VIS
+    #          LESS THAN 5 KM !" and "!PROBABILITY OF VIS LESS THAN 1
+    #          KM !" will get erroneously assigned.
     (re.compile(r" CM *$"), "cm"),
     (re.compile(r" mm *$"), "mm"),
     (re.compile(r" Pa *$"), "Pa"),
