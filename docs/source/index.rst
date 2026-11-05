@@ -13,6 +13,7 @@
    cf_netcdf_structure
    xnetcdf
    umdump
+   lookup_headers
    api_reference
    stash_to_cf
    changelog

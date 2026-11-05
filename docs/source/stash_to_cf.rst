@@ -121,8 +121,8 @@ The columns are:
 Accessing and modifying the STASH-to-CF table
 ---------------------------------------------
 
-The ``umfive`` module provides public functions to load, query,
-and modify the STASH table in memory.
+The ``umfive`` module provides :ref:`functions <Package-functions>` to
+load, query, and modify the STASH table in memory.
 
 .. code-block:: python
 

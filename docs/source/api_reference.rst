@@ -12,4 +12,5 @@ API Reference
    api_fileobjreader
    api_localposixreader
    api_bytereader
+   api_functions
 

@@ -7,7 +7,7 @@ from pathlib import PosixPath
 _NUMBER_REGEX = r"([-+]?\d*\.?\d+(e[-+]?\d+)?)"
 
 # Column indices in STASH_to_CF.txt
-_MODEL = 0
+_SUBMODEL = 0
 _STASH = 1
 _NAME = 2
 _UNITS = 3
@@ -27,6 +27,8 @@ _stash_table = {}
 def _parse_version(value):
     """Parse UM versions from the STASH table source.
 
+    .. versionadded:: 0.3.0
+
     :Parameters:
 
         value: `str`
@@ -38,7 +40,7 @@ def _parse_version(value):
             The parsed version, which will a `float`, or `None` of the
             input *value* cannot be converted to a `float`.
 
-    **Examples**
+    :Examples:
 
     >>> _parse_version('503')
     503.0
@@ -59,6 +61,8 @@ def _parse_version(value):
 def _parse_cf_extra(value):
     """Parse CF extra information from the STASH table source.
 
+    .. versionadded:: 0.3.0
+
     :Parameters:
 
         value: `str`
@@ -69,7 +73,7 @@ def _parse_cf_extra(value):
         `dict`
             A dictionary containing the extra inormation.
 
-    **Examples**
+    :Examples:
 
     >>> _parse_cf_extra('height=1.5m')
     {'height': ['1.5', 'm']}
@@ -100,14 +104,13 @@ def _parse_cf_extra(value):
 
 
 def load_stash_table(table=None, delimiter="!", merge=True, reset=False):
-    """Load a STASH to standard name conversion table from a file.
-
-    This used when reading PP and UM fields files.
+    """Load a STASH-to-CF table from a file.
 
     Each mapping is defined by a separate line in a text file. Each
     line contains nine ``!``-delimited entries:
 
-    0. ID: UM sub model identifier (1 = atmosphere, 2 = ocean, etc.)
+    0. Submodel: UM sub model identifier (1 = atmosphere, 2 = ocean,
+       etc.)
     1. STASH: STASH code (e.g. 3236)
     2. STASHmaster description:STASH name as given in the STASHmaster
        files
@@ -119,16 +122,17 @@ def load_stash_table(table=None, delimiter="!", merge=True, reset=False):
     8. PP conditions: PP conditions which need to be satisfied for
        this translation
 
-    Only entries "ID", "STASH", and "CF standard name" are mandatory,
-    all other entries may be left blank. For example,
+    Only entries "Submodel", "STASH", and "CF standard name" are
+    mandatory, all other entries may be left blank. For example,
     ``1!999!!!!!ultraviolet_index!!`` is a valid mapping from
-    atmosphere STASH code 999 to the standard name
-    ultraviolet_index.
+    atmosphere STASH code 999 to the standard name ultraviolet_index.
 
     If the "Valid from" and "Valid to" entries are omitted then the
-    stash mapping is assumed to apply to all UM versions.
+    STASH-to-CF mapping is assumed to apply to all UM versions.
 
-    .. seealso:: `stash_records`, `stash_table`
+    .. versionadded:: 0.3.0
+
+    .. seealso:: `add_stash_record`, `stash_records`, `stash_table`
 
     :Parameters:
 
@@ -156,7 +160,7 @@ def load_stash_table(table=None, delimiter="!", merge=True, reset=False):
 
         `None`
 
-    **Examples**
+    :Examples:
 
     >>> load_stash_table()
     >>> load_stash_table('my_table.txt')
@@ -202,7 +206,7 @@ def load_stash_table(table=None, delimiter="!", merge=True, reset=False):
             if len(row) < 9:
                 row = row + [""] * (9 - len(row))
 
-            key = (int(row[_MODEL]), int(row[_STASH]))
+            key = (int(row[_SUBMODEL]), int(row[_STASH]))
             name = row[_NAME]
             units = row[_UNITS] or None
             valid_from = _parse_version(row[_VALID_FROM])
@@ -240,9 +244,11 @@ def load_stash_table(table=None, delimiter="!", merge=True, reset=False):
 
 
 def stash_table(reset=False):
-    """Return a copy of the current STASH table.
+    """Return a copy of the current STASH-to-CF table.
 
-    .. seealso:: `load_stash_table`, `stash_record`
+    .. versionadded:: 0.3.0
+
+    .. seealso:: `add_stash_record`, `load_stash_table`, `stash_record`
 
     :Parameters:
 
@@ -263,9 +269,11 @@ def stash_table(reset=False):
 
 
 def stash_records(submodel, stash_code):
-    """Return the STASH records for a particular stash code.
+    """Return the STASH-to-CF records for a particular STASH code.
 
-    .. seealso:: `load_stash_table`, `stash_table`
+    .. versionadded:: 0.3.0
+
+    .. seealso:: `add_stash_record`, `load_stash_table`, `stash_table`
 
     :Parameters:
 
@@ -281,7 +289,7 @@ def stash_records(submodel, stash_code):
             The STASH records from the currently loaded STASH table
             for the given *submodel* and *stash_code*.
 
-    **Examples**
+    :Examples:
 
     >>> stash_records(2, 101)
     (('POTENTIAL TEMPERATURE (OCEAN)  DEG.C', 'K @ 273.15',  None,  900.0, 'sea_water_potential_temperature', {}, ''),)
@@ -295,3 +303,90 @@ def stash_records(submodel, stash_code):
         load_stash_table()
 
     return _stash_table.get((int(submodel), int(stash_code)), ())
+
+
+def add_stash_record(
+    submodel,
+    stash_code,
+    name,
+    units=None,
+    valid_from=None,
+    valid_to=None,
+    standard_name=None,
+    cf_info=None,
+    pp_extra="",
+):
+    """Add a new STASH record to the STASH-to-CF table in memory.
+
+    .. versionadded:: 0.5.0
+
+    .. seealso:: `load_stash_table`, `stash_records`, `stash_table`
+
+    :Parameters:
+
+        submodel: `int`
+            The submodel of the STASH code (e.g. ``1``).
+
+        stash_code: `int`
+            The STASH code (e.g. ``3209``).
+
+        name: `str`
+            The description of the STASH code.
+
+        units: `str`, optional
+            The physical units of the STASH code.
+
+        valid_from: `float` or `str`, optional
+            The UM version from which the STASH code is valid.
+
+        valid_to: `float` or `str`, optional
+            The UM version until which the STASH code is valid.
+
+        standard_name: `str`, optional
+            The CF standard name.
+
+        cf_info: `dict` or `str`, optional
+            Additional CF attributes or conditions.
+
+        pp_extra: `str`, optional
+            PP conditions which need to be satisfied.
+
+    :Returns:
+
+        `None`
+
+    :Examples:
+
+    >>> add_stash_record(
+    ...     3, 999, 'MY WATER TABLE DEPTH', 'm',
+    ...     standard_name='water_table_depth'
+    ... )
+
+    """
+    if not _stash_table:
+        load_stash_table()
+
+    key = (int(submodel), int(stash_code))
+
+    valid_from = _parse_version(valid_from)
+    valid_to = _parse_version(valid_to)
+
+    if cf_info is None:
+        cf_info = {}
+    elif isinstance(cf_info, str):
+        cf_info = _parse_cf_extra(cf_info)
+
+    entry = (
+        name,
+        units,
+        valid_from,
+        valid_to,
+        standard_name,
+        cf_info,
+        pp_extra,
+    )
+
+    if key in _stash_table:
+        _stash_table[key] += (entry,)
+    else:
+        _stash_table[key] = (entry,)

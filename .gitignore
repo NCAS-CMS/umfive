@@ -46,3 +46,4 @@ umfive/_wgdos.cpython*
 
 # Local large test data (do not commit)
 tests/data/dk922*
+.aider*

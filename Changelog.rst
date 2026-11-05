@@ -3,6 +3,8 @@ Version 0.5.0
 
 **2026-11-??**
 
+* New function: `umfive.add_stash_record`
+  (https://github.com/NCAS-CMS/umfive/issues/63)
 * Update the `STASH_to_CF.txt` file to include more 1.5m and 10m
   vertical coordinates; more units; and atmosphere STASH codes up to
   UM vn14.1 (https://github.com/NCAS-CMS/umfive/issues/63)

@@ -140,7 +140,7 @@ def test_add_stash_record():
         valid_to=None,
         standard_name="water_table_depth",
         cf_info="height=1.5m",
-        pp_extra="some_extra"
+        pp_extra="some_extra",
     )
 
     records = stash_records(3, 999)
@@ -174,7 +174,7 @@ def test_add_stash_record():
 
     records = stash_records(3, 999)
     assert len(records) == 2
-    
+
     (
         long_name_2,
         units_2,

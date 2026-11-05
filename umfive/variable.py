@@ -897,7 +897,7 @@ class DataVariable(_Mixin):
 
         name: `str`
             The name of the data variable, e.g.
-            ``'UM_m01s30i201_vn1100:'``.
+            ``'UM_m01s30i201_vn1100'``.
 
         attrs: `dict`
             The data variable attributes.
@@ -1324,9 +1324,9 @@ class DataVariable(_Mixin):
 
             `None` or `dict`
                 The description. If *display* is True then the
-                description is printed and `None` is
-                returned. Otherwise the description is returned as a
-                dictionary keyed by item names.
+                description is printed and `None` is returned.
+                Otherwise the description is returned as a dictionary
+                keyed by item names.
 
         """
         from .constants import N_INT_HDR, _header_names
