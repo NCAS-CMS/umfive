@@ -70,6 +70,7 @@ UNIT_PATTERNS = [
     (re.compile(r" kg/kg/s *$"), "s-1"),
     (re.compile(r" KG/KG/S *$"), "s-1"),
     (re.compile(r" KG/M2/S *$"), "kg m-2 s-1"),
+    (re.compile(r" kg/m2/s *$"), "kg m-2 s-1"),
     (re.compile(r" MICRONS *$"), "um"),
     # 6 characters
     (re.compile(r"\(J/m2\) *$"), "J m-2"),

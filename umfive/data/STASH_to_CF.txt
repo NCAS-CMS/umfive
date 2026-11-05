@@ -2049,6 +2049,8 @@
 1!4275!SURFACE MAX HAIL DIAMETER   mm      !mm!1101!!!!
 1!4276!COLUMN MAX HAIL DIAMETER   mm       !mm!1101!!!!
 1!4277!MAX HAIL DIAMETER MODEL LEVELS   mm !mm!1101!!!!
+1!4278!HAIL PRECIP RATE kg/m2/s            !kg m-2 s-1!1402!!!!
+1!4279!HAIL PRECIP AMOUNT kg/m2/timestep   !!1402!!!!
 1!4281!TEMPERATURE INCR: pc2 erosion       !!802!!!!
 1!4282!SPECIFIC HUMIDITY INCR: pc2 erosion !!802!!!!
 1!4283!QCL INCR: pc2 erosion               !!802!!!!
@@ -8163,6 +8165,8 @@
 1!50439!CH4 STE flux (3D)                   !!1200!!!!
 1!50442![H+] aq concentrations (3D)         !!1300!!!!
 1!50450!Plume height of exp eruption (m)    !m!1305!!!!
+1!50993!B85 RXN: N2O5+H2O => HONO2+HONO2    !!1402!!!!
+1!50994!H04 RXN: N2O5+H2O => HONO2+HONO2    !!1402!!!!
 1!51001!O3 MASS MIXING RATIO ON PRESS LEVS  !1!1001!!!!
 1!51002!NO MASS MIXING RATIO ON PRESS LEVS  !1!1001!!!!
 1!51003!NO3 MASS MIXING RATIO ON PRESS LEVS !1!1001!!!!
@@ -8794,6 +8798,8 @@
 1!52438!CH4 soil uptake flux (3D) PLEVS     !!1200!!!!
 1!52439!CH4 STE flux (3D) PLEVS             !!1200!!!!
 1!52442![H+] aq concentrations (3D) PLEVS   !!1300!!!!
+1!52993!B85:N2O5+H2O => HONO2+HONO2  PLEVS  !!1402!!!!
+1!52994!H04:N2O5+H2O => HONO2+HONO2  PLEVS  !!1402!!!!
 1!53181!Temperature Inc: Idealised  (K/step)!!1002!!!!
 1!53182!water vapour Inc: Ideal (kg/kg/step)!!1002!!!!
 1!53185!U wind Inc: Idealised     (m/s/step)!m s-1!1002!!!!
