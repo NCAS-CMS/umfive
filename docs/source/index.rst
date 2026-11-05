@@ -14,6 +14,7 @@
    xnetcdf
    umdump
    api_reference
+   stash_to_cf
    changelog
    contributing
    genindex
