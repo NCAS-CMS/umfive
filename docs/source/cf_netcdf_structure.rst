@@ -22,9 +22,10 @@ CF attributes
 
 The following `CF
 <https://cfconventions.org/cf-conventions/cf-conventions.html>`_
-attributes are derived from the lookup headers and, are added to the
-output variables, or as global attributes, where possible and
-appropriate:
+attributes, derived from a UM data variable's lookup headers in
+conjunction with the :ref:`STASH-to-CF mappings
+<STASH-to-CF-mappings>`, are added to the output variables, or as
+global attributes, where possible and appropriate:
 
 =================  ========================================================
 CF attribute       CF variable/global usage
@@ -48,6 +49,9 @@ CF attribute       CF variable/global usage
 ``standard_name``  Data, Coordinate, Auxiliary coordinate, Domain ancillary
 ``units``          Data, Coordinate, Auxiliary coordinate, Domain ancillary
 =================  ========================================================
+
+
+
 
 .. _Orography:
    
