@@ -1,3 +1,21 @@
+# Latest UM version: 1402
+#
+# Each line represents the CF mapping for a single STASH code in a
+# single UM submodel for a range of UM versions, and consists of nine
+# !-delimited columns. Empty columns entries are permitted and
+# represent missing or inapplicable data for that field. The columns
+# are:
+#
+# 1. Submodel: The UM submodel 
+# 2. STASH code: The STASH code  
+# 3. Description: The description of the STASH code 
+# 4. Units: The physical units of the STASH code, in UDUNITS format 
+# 5. Valid from: The UM version from which the STASH code is valid 
+# 6. Valid to: The UM version until which this STASH code is valid 
+# 7. CF standard name: The CF standard name for the STASH code 
+# 8. CF info: Additional CF coordinate and cell methods qualifiers
+# 9. Coordinate system: The coordinate system for the CF mapping applies
+#
 1!1!PSTAR AFTER TIMESTEP                !Pa!!407!surface_air_pressure!!
 1!2!U COMPNT OF WIND AFTER TIMESTEP     !m s-1!!!eastward_wind!!true_latitude_longitude
 1!2!U COMPNT OF WIND AFTER TIMESTEP     !m s-1!!!x_wind!!rotated_latitude_longitude

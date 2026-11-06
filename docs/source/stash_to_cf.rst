@@ -10,7 +10,7 @@ and cell methods, to UM data variables. It is used in conjunction with
 the contents of the contents of the lookup headers to populate the
 full CF metadata for a UM data variable.
 
-This STASH-to-CF table of mappings stored is the package's
+The STASH-to-CF table of mappings stored is the package's
 ``STASH_to_CF.txt`` file, which can be viewed :ref:`here
 <The-STASH-to-CF-table>`.
 
@@ -22,10 +22,9 @@ Table structure
 
 The table is a plain text file that uses the exclamation mark (``!``)
 as a delimiter. Each line represents the CF mapping for a single STASH
-code in a single UM submodel for a range of valid UM versions, and
-consists of nine columns. Empty columns are permitted and represent
-missing or inapplicable data for that field, and may have default
-interpretations. The columns are:
+code in a single UM submodel for a range of UM versions, and consists
+of nine columns. Empty columns entries are permitted and represent
+missing or inapplicable data for that field. The columns are:
 
 1. **Submodel**: The STASH code's UM submodel (e.g. ``1`` for
    atmosphere, ``2`` for ocean, ``3`` for slab, ``4`` for
@@ -44,18 +43,18 @@ interpretations. The columns are:
    (e.g. ``Pa``, ``m s-1``, ``K``, ``1``, ``kg kg-1``). If this field
    is empty it means that no units have been assigned, not that there
    are no units, nor does it imply that the STASH code is
-   dimensionaless (although it may be).
+   dimensionless (although it may be).
 
 5. **Valid from**: The UM version from which the STASH code and its CF
    mapping is valid (e.g. ``407`` for UM version 4.7, ``606.4`` for UM
    version 6.6.4, ``1308`` for UM version 13.8). When this field is
    empty it means that the STASH code is valid for all versions up to
-   and including the version in the "valid from" field, or for all
+   and including the version in the **Valid to** field, or for all
    versions if that field is also empty.
 
 6. **Valid to**: The UM version until which this STASH code and its CF
    mapping is valid. When this field is empty it means that the STASH
-   code is valid for all versions from and after the "valid from"
+   code is valid for all versions from and after the **Valid from**
    field, or for all versions if that field is also empty.
 
 7. **CF standard name**: The CF standard name for the STASH code
@@ -64,9 +63,9 @@ interpretations. The columns are:
    necessarily that there is no standard name (but note that a
    standard name mapping will not exist for all STASH codes).
 
-8. **CF extra metadata**: Additional CF coordinate and cell methods
-   qualifiers conditions associated with the STASH variable
-   (e.g. ``height=10m``, ``where_land``, ``where_open_sea``).
+8. **CF info**: Additional CF coordinate and cell methods qualifiers
+   conditions associated with the STASH variable (e.g. ``height=10m``,
+   ``where_land``, ``where_open_sea``).
 
 9. **Coordinate system**: Specifies the UM coordinate system to which
    the mapping applies (e.g. ``true_latitude_longitude``,
@@ -92,8 +91,8 @@ The columns are:
 5. **Valid from**: ``501`` (Valid from UM version 5.1)
 6. **Valid to**: *empty* (Valid for all UM versions from 5.1 onwards)
 7. **CF standard name**: ``eastward_wind``
-8. **CF extra metadata**: ``height=10m`` (Requires a CF size 1 height
-   coordinate at 10 metres)
+8. **CF info**: ``height=10m`` (Requires a CF size 1 height coordinate
+   at 10 metres)
 9. **Coordinate system**: ``true_latitude_longitude`` (This mapping is
    only for UM models with a true (i.e. unrotated) latitude-longitude
    grid)
@@ -113,7 +112,7 @@ The columns are:
 5. **Valid from**: ``606.2`` (Valid from UM version 6.6.2)
 6. **Valid to**: ``606.4`` (Valid until UM version 6.6.4)
 7. **CF standard name**: *empty* (No standard name assigned)
-8. **CF extra metadata**: *empty*
+8. **CF info**: *empty*
 9. **Coordinate system**: *empty*
 
 .. _Accessing-and-modifying-the-STASH-to-CF-table:

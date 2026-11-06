@@ -297,17 +297,29 @@ def main():
                             4
                         ]  # Keep original spacing for the new entry
                         stash_code = section * 1000 + item
-                        stashmaster_entries[(model, stash_code)] = name
+                        if model != -1:  # -1: END OF FILE MARK
+                            stashmaster_entries[(model, stash_code)] = name
+
                     except ValueError:
                         continue
 
     # Read STASH_to_CF.txt
+    header = []
     cf_entries = []
     with open(args.stash_to_cf, "r") as f:
         for line in f:
             line = line.strip("\n")
             if not line:
                 continue
+
+            # Store header
+            if line[0] == '#':
+                if line.startswith("# Latest UM version:"):
+                    line = f"# Latest UM version: {new_v_str}"
+                
+                header.append(line)
+                continue
+            
             parts = line.split("!")
             # Ensure we have exactly 9 columns (0 to 8)
             while len(parts) < 9:
@@ -397,6 +409,9 @@ def main():
 
     # Write output
     with open(args.output, "w") as f:
+        for line in header:
+            f.write(f"{line}\n")
+            
         for parts in all_entries:
             f.write("!".join(parts) + "\n")
 

@@ -1239,8 +1239,11 @@ class DataVariable(_Mixin):
             n: `int` or `str`, optional
                 Which lookup header to display. The first lookup is
                 identified by ``0``, which is the default. Negative
-                indices are allowed (such as ``-1``). The special
-                value of ``'all'`` displays all of the lookup headers.
+                indices are allowed, which count from the last lookup
+                header (e.g. if there are 15 lookup headers, then
+                ``-1`` and ``14`` are equivalent, as are ``-2`` and
+                ``13``, etc.). The special value of ``'all'`` displays
+                all of the lookup headers.
 
             display: `bool`, optional
                 If False then return the description as a string. By
