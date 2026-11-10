@@ -1401,6 +1401,7 @@ class DataVariableMetadata:
         # Create the 'Z' dimension coordinate
         # --------------------------------------------------------
         axiscode = self._iz
+
         if has_z_axis and axiscode is not None:
             dim_ncvar = None
 
@@ -2513,6 +2514,7 @@ class DataVariableMetadata:
                 sc = Variable(
                     name=standard_name,
                     data=array,
+                    axiscode=axiscode,
                     attrs={"standard_name": standard_name, "units": units},
                 )
                 dim_ncvar = self.add_to_variables(sc)
