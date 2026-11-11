@@ -897,7 +897,7 @@ class DataVariable(_Mixin):
 
         name: `str`
             The name of the data variable, e.g.
-            ``'UM_m01s30i201_vn1100:'``.
+            ``'UM_m01s30i201_vn1100'``.
 
         attrs: `dict`
             The data variable attributes.
@@ -1239,8 +1239,11 @@ class DataVariable(_Mixin):
             n: `int` or `str`, optional
                 Which lookup header to display. The first lookup is
                 identified by ``0``, which is the default. Negative
-                indices are allowed (such as ``-1``). The special
-                value of ``'all'`` displays all of the lookup headers.
+                indices are allowed, which count from the last lookup
+                header (e.g. if there are 15 lookup headers, then
+                ``-1`` and ``14`` are equivalent, as are ``-2`` and
+                ``13``, etc.). The special value of ``'all'`` displays
+                all of the lookup headers.
 
             display: `bool`, optional
                 If False then return the description as a string. By
@@ -1324,9 +1327,9 @@ class DataVariable(_Mixin):
 
             `None` or `dict`
                 The description. If *display* is True then the
-                description is printed and `None` is
-                returned. Otherwise the description is returned as a
-                dictionary keyed by item names.
+                description is printed and `None` is returned.
+                Otherwise the description is returned as a dictionary
+                keyed by item names.
 
         """
         from .constants import N_INT_HDR, _header_names
